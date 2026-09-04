@@ -278,6 +278,37 @@ async function run() {
   const broken = statuses.filter((entry) => !entry.ok).map((entry) => entry.url);
   ok('every precached URL resolves', broken.length === 0, broken.join(', ') || `${statuses.length} checked`);
 
+  // Walking the real module graph, because "every listed file exists" says
+  // nothing about a file that was never listed -- which is exactly how two
+  // modules quietly stayed out of the offline shell.
+  async function moduleGraph(entry) {
+    const reached = new Set();
+    const pending = [entry];
+
+    while (pending.length > 0) {
+      const url = pending.pop();
+      if (reached.has(url)) continue;
+      reached.add(url);
+
+      const source = await (await fetch(url)).text();
+      const specifiers = [
+        ...[...source.matchAll(/from\s+'([^']+)'/g)].map((m) => m[1]),
+        // workers are addressed by URL rather than imported
+        ...[...source.matchAll(/new URL\('([^']+)'/g)].map((m) => m[1]),
+      ];
+      for (const specifier of specifiers) {
+        if (!specifier.startsWith('.')) continue;
+        pending.push(new URL(specifier, new URL(url, location.origin)).pathname);
+      }
+    }
+    return [...reached];
+  }
+
+  const reachable = await moduleGraph('/src/main.js');
+  const unlisted = reachable.filter((url) => !listed.includes(url));
+  ok('every module the app loads is in the offline shell', unlisted.length === 0,
+     unlisted.join(', ') || `${reachable.length} modules reached`);
+
   // The list drifts the moment a module is added, so compare it with what the
   // page actually imports.
   const pageSource = await (await fetch('/index.html')).text();
