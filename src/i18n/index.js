@@ -68,7 +68,10 @@ export function applyTranslations(root = document) {
     node.title = t(node.dataset.i18nTitle);
   }
   for (const node of root.querySelectorAll('[data-i18n-label]')) {
-    node.setAttribute('aria-label', t(node.dataset.i18nLabel));
+    // A group inside a dropdown carries its label as an attribute the browser
+    // draws, not as one a screen reader announces.
+    if (node instanceof HTMLOptGroupElement) node.label = t(node.dataset.i18nLabel);
+    else node.setAttribute('aria-label', t(node.dataset.i18nLabel));
   }
   // Two phrases live in the stylesheet, where a key cannot reach them.
   const style = document.documentElement.style;

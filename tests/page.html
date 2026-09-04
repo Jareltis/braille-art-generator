@@ -17,6 +17,7 @@ window.addEventListener('unhandledrejection', (event) => {
 });
 </script>
 <script type="module">
+import { TERMINAL_PALETTES } from "../src/core/palette.js";
 const log = [];
 const out = (t) => {
   document.getElementById('r').textContent = t;
@@ -393,6 +394,54 @@ async function run() {
     ok('and the hint explains auto, not the kind it found',
        $('presetHint').textContent.length > 0 && !$('presetHint').textContent.includes('XDoG'),
        $('presetHint').textContent);
+  }
+
+  mark('colour can be cut to a palette');
+  // --- colour can be cut to a palette --------------------------------------
+  // One control, one code path: whatever the palette is, the cells are snapped
+  // to it before anything downstream sees them, so the screen, the HTML, the
+  // PNG and the terminal cannot disagree about what colour a cell is.
+  {
+    const doc = frame.contentDocument;
+    $('colour').checked = true;
+    $('colour').dispatchEvent(new Event('change', { bubbles: true }));
+    const shades = () => new Set([...doc.querySelectorAll('#output span')].map((span) => span.style.color));
+    ok('colour arrives', await until(() => shades().size > 0), `${shades().size} shades`);
+    const fullColour = shades().size;
+
+    const choose = async (value, settled) => {
+      $('palette').value = value;
+      $('palette').dispatchEvent(new Event('change', { bubbles: true }));
+      return until(settled, 8000);
+    };
+
+    ok('four colours means four colours', await choose('picture4', () => shades().size > 0 && shades().size <= 4),
+       `${shades().size} shades`);
+    ok('and full colour had more to say than that', fullColour > 4, `${fullColour} shades`);
+
+    // Every cell must land on a real terminal entry, not near one.
+    const known = new Set();
+    for (let i = 0; i * 3 < TERMINAL_PALETTES.ansi16.length; i++) {
+      known.add(`rgb(${TERMINAL_PALETTES.ansi16[i * 3]}, ${TERMINAL_PALETTES.ansi16[i * 3 + 1]}, ${TERMINAL_PALETTES.ansi16[i * 3 + 2]})`);
+    }
+    await choose('ansi16', () => shades().size > 0 && [...shades()].every((shade) => known.has(shade)));
+    const strays = [...shades()].filter((shade) => !known.has(shade));
+    check('sixteen colours means the sixteen a terminal has', strays.join(' '), '');
+
+    await choose('full', () => shades().size > 4);
+    ok('and full colour comes back', shades().size > 4, `${shades().size} shades`);
+
+    // A transparent background is an export setting, so it travels like one.
+    const before = frame.contentWindow.location.hash;
+    $('transparent').checked = true;
+    $('transparent').dispatchEvent(new Event('change', { bubbles: true }));
+    ok('a transparent background is remembered in the link',
+       await until(() => frame.contentWindow.location.hash !== before), frame.contentWindow.location.hash.slice(0, 40));
+    $('transparent').checked = false;
+    $('transparent').dispatchEvent(new Event('change', { bubbles: true }));
+    $('colour').checked = false;
+    $('colour').dispatchEvent(new Event('change', { bubbles: true }));
+    await wait(200);
   }
 
   mark('a phone puts the result first');

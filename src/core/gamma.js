@@ -43,6 +43,35 @@ export function luminance(r, g, b) {
 }
 
 /**
+ * The same colour in L*a*b*, where distance means roughly what the eye means.
+ *
+ * Nothing in the tone pipeline needs this -- coverage answers to light, not to
+ * hue -- but choosing between palette entries does: straight distance between
+ * sRGB numbers treats a step in dark green as the same size as a step in pale
+ * yellow, and the eye does not. D65, which is what sRGB is defined against.
+ *
+ * L* here is on its own 0..100 scale rather than the 0..255 the tone path uses,
+ * because a and b have no such scaling and mixing the two would make the
+ * distance mean nothing.
+ */
+const WHITE = [0.95047, 1, 1.08883];
+const fold = (t) => (t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116);
+
+export function lab(r, g, b) {
+  // srgbToLinear already answers in 0..1; dividing again is how white came out
+  // at L* 3.5 the first time this was written.
+  const red = srgbToLinear(r);
+  const green = srgbToLinear(g);
+  const blue = srgbToLinear(b);
+
+  const x = fold((0.4124 * red + 0.3576 * green + 0.1805 * blue) / WHITE[0]);
+  const y = fold((0.2126 * red + 0.7152 * green + 0.0722 * blue) / WHITE[1]);
+  const z = fold((0.0193 * red + 0.1192 * green + 0.9505 * blue) / WHITE[2]);
+
+  return [116 * y - 16, 500 * (x - y), 200 * (y - z)];
+}
+
+/**
  * Perceptual lightness (CIE L*), scaled to 0..255.
  *
  * Edge detection belongs here, not in linear light. A difference of Gaussians

@@ -41,6 +41,8 @@ import { FALLBACK, LOCALES, formatNumber, setLocale, t } from '../src/i18n/index
 import { fromHash, textFits, toHash } from '../src/ui/link.js';
 import { brailleToAnsi, brailleToHtml, brailleToSvg } from '../src/ui/export.js';
 import { cellColours, cellHex, colourRuns } from '../src/core/colour.js';
+import { PALETTES, TERMINAL_PALETTES, ansiForeground, medianCut, nearest, paletteFor, snap } from '../src/core/palette.js';
+import { lab } from '../src/core/gamma.js';
 import {
   PLATFORMS, calibrationOf, clearCalibration, forPlatform, messageLength, partsFit, ruler,
   saveCalibration, splitForPlatform,
@@ -1352,6 +1354,96 @@ async function run() {
        drawn.every((recipe) => DITHER_METHODS[recipe.method] && recipe.detail >= 0 && recipe.detail <= 100
                     && EDGE_MODES.includes(recipe.edge.mode)),
        drawn.filter((recipe) => !DITHER_METHODS[recipe.method]).map((r) => r.method).join(',') || 'all sound');
+  }
+
+  // --- fewer colours, on purpose -------------------------------------------
+  {
+    // L*a*b* against values anyone can look up. Getting this wrong is quiet:
+    // every match still returns something, just the wrong entry. It was wrong
+    // once already -- white came back at L* 3.5 because the conversion divided
+    // by 255 a second time.
+    const near3 = (name, got, want) => ok(name, Math.abs(got - want) < 0.3, `${got.toFixed(1)} against ${want}`);
+    near3('white is L* 100', lab(255, 255, 255)[0], 100);
+    near3('and has no colour in it', lab(255, 255, 255)[1], 0);
+    near3('red sits where the tables say', lab(255, 0, 0)[1], 80.1);
+    near3('and green opposite it', lab(0, 255, 0)[1], -86.2);
+    near3('blue is the deep one', lab(0, 0, 255)[2], -107.9);
+
+    check('the terminal palettes are the sizes they claim', TERMINAL_PALETTES.ansi256.length / 3, 256);
+    check('and sixteen is sixteen', TERMINAL_PALETTES.ansi16.length / 3, 16);
+
+    // A colour already in the palette must come back unchanged, or every colour
+    // in the picture drifts by an entry. Checked on the colour and not on the
+    // index, because the xterm palette really does hold duplicates: entry 16 is
+    // black again and 231 is white again, both already in the first sixteen. A
+    // tie goes to the lower index, which is the better answer anyway -- the
+    // plain sixteen are understood everywhere.
+    const exact = [0, 9, 15, 16, 231, 232, 255];
+    const drifted = exact.filter((index) => {
+      const at = index * 3;
+      const found = nearest(
+        TERMINAL_PALETTES.ansi256,
+        TERMINAL_PALETTES.ansi256[at], TERMINAL_PALETTES.ansi256[at + 1], TERMINAL_PALETTES.ansi256[at + 2],
+      ) * 3;
+      return TERMINAL_PALETTES.ansi256[found] !== TERMINAL_PALETTES.ansi256[at]
+        || TERMINAL_PALETTES.ansi256[found + 1] !== TERMINAL_PALETTES.ansi256[at + 1]
+        || TERMINAL_PALETTES.ansi256[found + 2] !== TERMINAL_PALETTES.ansi256[at + 2];
+    });
+    check('a palette colour comes back as itself', drifted.join(','), '');
+
+    check('pure red picks the red', nearest(TERMINAL_PALETTES.ansi16, 250, 10, 10), 9);
+    check('pure blue picks the blue', nearest(TERMINAL_PALETTES.ansi16, 10, 10, 250), 12);
+
+    // The codes: sixteen colours are named directly, because a terminal that
+    // has only sixteen prints "38;5;n" rather than obeying it.
+    check('the first eight are the plain codes', ansiForeground('ansi16', 3), '33');
+    check('the bright eight are the high ones', ansiForeground('ansi16', 11), '93');
+    check('and 256 names an index', ansiForeground('ansi256', 200), '38;5;200');
+
+    // Median cut spends its entries where the colours are.
+    const twoBands = new Uint8ClampedArray(60 * 3);
+    for (let cell = 0; cell < 60; cell++) {
+      const at = cell * 3;
+      if (cell < 30) { twoBands[at] = 200; twoBands[at + 1] = 30; twoBands[at + 2] = 30; }
+      else { twoBands[at] = 30; twoBands[at + 1] = 60; twoBands[at + 2] = 200; }
+    }
+    const two = medianCut(twoBands, 2);
+    check('two colours in, two colours out', two.length / 3, 2);
+    ok('and it finds both of them',
+       [0, 1].every((i) => two[i * 3] > 150 || two[i * 3 + 2] > 150)
+       && two[0] !== two[3],
+       [...two].join(','));
+
+    // Asking for more entries than there are colours must not invent any.
+    const flat = new Uint8ClampedArray([120, 120, 120, 120, 120, 120]);
+    ok('it cannot be talked into more colours than exist', medianCut(flat, 8).length / 3 <= 2,
+       `${medianCut(flat, 8).length / 3} entries`);
+
+    // Snapping leaves nothing outside the palette.
+    const snapped = snap(twoBands, TERMINAL_PALETTES.ansi16);
+    const inPalette = new Set();
+    for (let i = 0; i * 3 < TERMINAL_PALETTES.ansi16.length; i++) {
+      inPalette.add(`${TERMINAL_PALETTES.ansi16[i * 3]},${TERMINAL_PALETTES.ansi16[i * 3 + 1]},${TERMINAL_PALETTES.ansi16[i * 3 + 2]}`);
+    }
+    let strays = 0;
+    for (let cell = 0; cell * 3 < snapped.length; cell++) {
+      const at = cell * 3;
+      if (!inPalette.has(`${snapped[at]},${snapped[at + 1]},${snapped[at + 2]}`)) strays++;
+    }
+    check('after snapping every cell is a palette colour', strays, 0);
+
+    check('full colour snaps nothing', paletteFor('full', twoBands), null);
+    ok('every offered palette resolves to something usable',
+       PALETTES.every((kind) => kind === 'full' || (paletteFor(kind, twoBands)?.length ?? 0) >= 3),
+       PALETTES.filter((kind) => kind !== 'full' && !paletteFor(kind, twoBands)).join(',') || 'all sound');
+
+    // And the terminal output names entries rather than shouting in 24 bits.
+    const art = String.fromCharCode(0x28FF, 0x2801);
+    const ansi = brailleToAnsi(art, snapped, 2, 'ansi16');
+    ok('a sixteen-colour terminal gets sixteen-colour codes',
+       !ansi.includes('38;2;') && /\[\d\dm/.test(ansi), JSON.stringify(ansi.slice(0, 24)));
+    ok('and full colour still gets the full codes',
+       brailleToAnsi(art, snapped, 2, 'full').includes('38;2;'), 'truecolor');
   }
 
   const failed = log.filter((l) => l.startsWith('FAIL')).length;

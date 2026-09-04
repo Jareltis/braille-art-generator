@@ -7,6 +7,7 @@ import {
   LOCALES, currentLocale, initLocale, onLocaleChange, preferredLocale, setLocale, t,
 } from './i18n/index.js';
 import { cellHex, colourRuns } from './core/colour.js';
+import { paletteFor, snap } from './core/palette.js';
 import { DEFAULT_DITHER } from './core/dither.js';
 import { CONTENT_PRESETS } from './core/presets.js';
 import { classifyImage } from './core/classify.js';
@@ -67,6 +68,8 @@ const dom = {
   trimBlank: el('trimBlank'),
   fitLimit: el('fitLimit'),
   colour: el('colour'),
+  palette: el('palette'),
+  transparent: el('transparent'),
   language: el('language'),
   copyLink: el('copyLink'),
   downloadHtml: el('downloadHtml'),
@@ -333,13 +336,17 @@ async function render() {
   );
   if (token !== generateToken) return;
 
+  // Snapped here, once, so the screen, the HTML, the PNG, the SVG and the
+  // terminal all agree about what colour a cell is.
+  const painted = snap(colours, paletteFor(dom.palette.value, colours));
+
   if (dom.trimBlank.checked) {
     const bounds = trimBounds(text);
-    artColours = trimColours(colours, gridCols, bounds);
+    artColours = trimColours(painted, gridCols, bounds);
     artText = trimBlank(text);
     artCols = bounds ? bounds.right - bounds.left + 1 : 0;
   } else {
-    artColours = colours;
+    artColours = painted;
     artText = text;
     artCols = gridCols;
   }
@@ -650,7 +657,7 @@ const PERSISTED_RANGES = [
 ];
 const PERSISTED_FIELDS = [
   'preset', 'platform', 'dither', 'invert', 'edgeMode', 'outWidth', 'outHeight', 'fontSize', 'layout',
-  'sourceKind', 'textInput', 'textFont',
+  'sourceKind', 'textInput', 'textFont', 'palette',
 ];
 
 function collectSettings() {
@@ -660,6 +667,7 @@ function collectSettings() {
     keepAspect: dom.keepAspect.checked,
     textBold: dom.textBold.checked,
     colour: dom.colour.checked,
+    transparent: dom.transparent.checked,
     trimBlank: dom.trimBlank.checked,
     smooth: smoothScaling,
   };
@@ -749,6 +757,7 @@ function applySettings(values) {
   if (typeof values.textBold === 'boolean') dom.textBold.checked = values.textBold;
   if (typeof values.trimBlank === 'boolean') dom.trimBlank.checked = values.trimBlank;
   if (typeof values.colour === 'boolean') dom.colour.checked = values.colour;
+  if (typeof values.transparent === 'boolean') dom.transparent.checked = values.transparent;
   if (typeof values.smooth === 'boolean') smoothScaling = values.smooth;
 
   setLayout(dom.layout.value);
@@ -774,6 +783,7 @@ function resetEverything() {
   dom.keepAspect.checked = true;
   dom.trimBlank.checked = false;
   dom.colour.checked = false;
+  dom.transparent.checked = false;
   smoothScaling = true;
   dom.presetHint.textContent = '';
   setLayout(LAYOUTS[0]);
@@ -1362,7 +1372,9 @@ function exportStyle() {
     fontSize,
     lineHeight,
     foreground: style.color,
-    background: style.backgroundColor,
+    // 'transparent' is a colour as far as a canvas fill is concerned: it paints
+    // nothing, which is exactly what is wanted.
+    background: dom.transparent.checked ? 'transparent' : style.backgroundColor,
     colours: artColours,
   };
 }
@@ -1436,6 +1448,10 @@ function init() {
   dom.textBold.addEventListener('change', () => { useTextSource(); persist(); });
 
   dom.suggest.addEventListener('click', () => { suggestVariants(); });
+  // The palette rewrites the colours the art is tinted with, so it needs the
+  // encoder again; a transparent background only changes what export paints.
+  dom.palette.addEventListener('change', () => changed({ affectsPreview: false }));
+  dom.transparent.addEventListener('change', persist);
   dom.settingsUndo.addEventListener('click', undoSettings);
   dom.settingsRedo.addEventListener('click', redoSettings);
   dom.preset.addEventListener('change', () => {
@@ -1493,7 +1509,7 @@ function init() {
 
   dom.downloadAnsi.addEventListener('click', () => {
     if (!requireArt()) return;
-    downloadText(brailleToAnsi(artText, artColours, artCols), 'braille.ans');
+    downloadText(brailleToAnsi(artText, artColours, artCols, dom.palette.value), 'braille.ans');
     setStatus(
       artColours
         ? t('status.ansiSaved')

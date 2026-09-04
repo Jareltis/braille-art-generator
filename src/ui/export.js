@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Saving and copying the finished art.
 
+import { TERMINAL_PALETTES, ansiForeground, nearest } from '../core/palette.js';
 import { createCanvas } from './canvas.js';
 import { cellHex, colourRuns } from '../core/colour.js';
 
@@ -193,13 +194,27 @@ export function brailleToHtml(text, colours, cols, { fontFamily, fontSize, lineH
  * Reset at the end of every line rather than only at the end: a truncated paste
  * then cannot leave the terminal stuck in the last colour it saw.
  */
-export function brailleToAnsi(text, colours, cols) {
+/**
+ * The art with colour, for a terminal.
+ *
+ * `palette` says what the receiving end can read. Twenty-four-bit codes are the
+ * default and the best answer where they work, but a terminal that has only 256
+ * colours -- or sixteen -- does not ignore the rest: it prints them, and the art
+ * arrives buried in escape sequences. So when the colours have been snapped to
+ * one of those palettes, the entry is named by its index instead.
+ */
+export function brailleToAnsi(text, colours, cols, palette = 'full') {
+  const fixed = TERMINAL_PALETTES[palette] ?? null;
+  const known = fixed ? new Map() : null;
   const lines = text.split('\n');
   return lines.map((line, row) => {
     if (!colours) return line;
     const painted = colourRuns(colours, row, line.length).map(({ start, end, index }) => {
       const at = index * 3;
-      return `${ESC}[38;2;${colours[at]};${colours[at + 1]};${colours[at + 2]}m${line.slice(start, end)}`;
+      const select = fixed
+        ? ansiForeground(palette, nearest(fixed, colours[at], colours[at + 1], colours[at + 2], known))
+        : `38;2;${colours[at]};${colours[at + 1]};${colours[at + 2]}`;
+      return `${ESC}[${select}m${line.slice(start, end)}`;
     }).join('');
     return painted + RESET;
   }).join('\n') + '\n';

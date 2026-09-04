@@ -31,6 +31,7 @@ const ASSETS = [
   './src/i18n/index.js',
   './src/i18n/ru.js',
   './src/core/otsu.js',
+  './src/core/palette.js',
   './src/core/pixels.js',
   './src/core/presets.js',
   './src/core/sample.js',

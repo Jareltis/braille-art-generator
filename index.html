@@ -625,6 +625,28 @@
             <label for="colour" data-i18n="colour.label"></label>
           </div>
 
+          <div class="field">
+            <label for="palette" data-i18n="palette.label"></label>
+            <select id="palette">
+              <option value="full" data-i18n="palette.full" selected></option>
+              <optgroup label="terminal" data-i18n-label="palette.terminal">
+                <option value="ansi256" data-i18n="palette.ansi256"></option>
+                <option value="ansi16" data-i18n="palette.ansi16"></option>
+              </optgroup>
+              <optgroup label="picture" data-i18n-label="palette.picture">
+                <option value="picture8" data-i18n="palette.picture8"></option>
+                <option value="picture4" data-i18n="palette.picture4"></option>
+                <option value="picture2" data-i18n="palette.picture2"></option>
+              </optgroup>
+            </select>
+            <p class="hint" data-i18n="palette.hint"></p>
+          </div>
+
+          <div class="field check">
+            <input id="transparent" type="checkbox">
+            <label for="transparent" data-i18n="export.transparent"></label>
+          </div>
+
           <div class="field row">
             <div>
               <label for="dither" data-i18n="dither.label"></label>

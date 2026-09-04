@@ -27,6 +27,7 @@ only ever hands out static files.
 | **Thresholds** | global, automatic by Otsu, and local adaptive (Sauvola) |
 | **Edge detection** | XDoG for drawn strokes, Sobel for gradients, a slider between fill and lines |
 | **Colour** | one tint per cell: on screen, in PNG, SVG, HTML and ANSI for the terminal |
+| **Palette** | full colour, the 256 or 16 a terminal has, or a few drawn from the picture |
 | **Image adjustment** | brightness, contrast, saturation, sharpness |
 | **Output** | width and height in cells, proportions kept automatically, inversion |
 | **Presets** | photographs, line art, logos, pixel art — each sets every control it covers |
@@ -330,6 +331,35 @@ which flattens error diffusion into solid blobs and inverts the ranking. The
 bench now goes through the same function the application does, which is the only
 version of this that stays true.
 
+### Fewer colours, on purpose
+
+Colour leaves here in two directions, and both want the same operation. A
+terminal may have only 256 entries, or 16, and sending twenty-four-bit codes to
+one that cannot read them does not degrade gracefully: the escape sequences are
+printed as text. The other direction is taste — a picture cut to eight colours
+reads as a deliberate thing rather than as a photograph that lost.
+
+So there is one control and one code path. What differs is only where the
+palette comes from: fixed for a terminal, drawn from the picture by median cut
+otherwise. Cells are snapped as they arrive, before anything downstream sees
+them, so the screen, the HTML, the PNG, the SVG and the terminal cannot disagree
+about what colour a cell is.
+
+Matching is done in **L\*a\*b\***, not by distance between sRGB numbers. Straight
+RGB distance treats a step in dark green as the same size as a step in pale
+yellow, and the eye does not. This is plain CIE76 rather than the later
+refinements: for choosing among 256 fixed entries the difference between them
+does not show. Median cut splits on sRGB channels as the method assumes, but
+averages each box in linear light — averaging gamma-encoded channels gives a
+result systematically too bright, which is the same mistake the dithering path
+was written to avoid.
+
+The xterm palette contains duplicates — entry 16 is black again, 231 is white
+again — and a tie goes to the lower index, which is also the better answer: the
+plain sixteen are understood everywhere.
+
+PNG and SVG can also be exported on a transparent background.
+
 ### Which kind of picture is this
 
 Choosing between the presets means knowing which one applies, which is a
@@ -519,6 +549,7 @@ src/
     pixels.js         luma, clamping, fitting, cell geometry
     presets.js        control values per kind of image
     classify.js       which of those kinds a picture is
+    palette.js        fewer colours: terminal palettes and median cut
     score.js          how much an art still looks like its picture
     variants.js       a spread of recipes, and which are worth offering
   worker/
