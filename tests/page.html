@@ -33,6 +33,26 @@ async function until(fn, timeout = 15000) {
   return false;
 }
 
+/**
+ * Wait for a value to stop moving, and return it.
+ *
+ * A render arrives in more than one pass -- the row count is derived once the
+ * image size is known, and the art is drawn again at the new grid -- so "there
+ * is output" is not "the output is finished". Snapshots taken on the first
+ * condition compare a half-finished art against a finished one and fail once in
+ * a few runs.
+ */
+async function stable(read, timeout = 15000) {
+  let previous = null;
+  await until(() => {
+    const now = read();
+    const settled = now !== '' && now === previous;
+    previous = now;
+    return settled;
+  }, timeout);
+  return previous;
+}
+
 const started = Date.now();
 const mark = (name) => {
   const line = `${name} at ${((Date.now() - started) / 1000).toFixed(1)}s`;
@@ -355,7 +375,10 @@ async function run() {
   ok('a pasted image loads', await until(() => $('srcMeta').textContent === '90×30'),
      `srcMeta = ${$('srcMeta').textContent}`);
 
-  ok('the grid caption reports the sampled size', /\d+×\d+/.test($('gridMeta').textContent), $('gridMeta').textContent);
+  // Awaited, not read straight away: the caption is filled in when the render
+  // lands, which is a moment after the image itself is in.
+  ok('the grid caption reports the sampled size',
+     await until(() => /\d+×\d+/.test($('gridMeta').textContent)), $('gridMeta').textContent);
 
   mark('reset');
   // --- reset ---------------------------------------------------------------
@@ -796,11 +819,10 @@ async function run() {
     $('file').files = colourFile.files;
     $('file').dispatchEvent(new Event('change', { bubbles: true }));
     await until(() => $('srcMeta').textContent === '300×200');
-    await until(() => $('output').textContent.length > 0);
+    const plainArt = await stable(() => $('output').textContent);
 
     check('colour is off unless asked for', $('colour').checked, false);
     check('a plain art has no markup in it', $('output').querySelectorAll('span').length, 0);
-    const plainArt = $('output').textContent;
 
     $('colour').checked = true;
     $('colour').dispatchEvent(new Event('change', { bubbles: true }));

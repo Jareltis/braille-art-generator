@@ -170,8 +170,20 @@ meme templates that is the wrong question — what matters is the line.
   side of an edge, so the result is a one-sided stroke of varying weight rather
   than a band straddling the boundary, and that variation is the part a 2×4 cell
   can show.
-- **Sobel** reports gradient magnitude: fast and predictable, but a soft edge
-  comes back as a wide band.
+- **Sobel** reports gradient magnitude: fast and predictable, but it answers
+  "how steep is it here", so a slope answers across its whole width — measured,
+  four pixels for a hard step and eleven for one that fades over eight. Only the
+  crest is kept. A point survives if it is at least as strong as the two points
+  either side of it *along* the slope, and those two are interpolated rather
+  than snapped to the eight compass directions, which is what keeps a diagonal a
+  line instead of a row of dashes. Both bands come back one pixel wide, at the
+  strength they had.
+
+  That thinning matters more than it used to. Line maps are reduced to the grid
+  by taking the strongest value in each cell — averaging would erase the very
+  stroke the map exists to report — so a band hands its peak to every dot it
+  touches, and eleven pixels of slope became three dots of solid ink where one
+  line belonged.
 
 τ is deliberately 1 rather than the ≈0.98 the XDoG paper uses for stylisation.
 Below 1 the flat-field response is `l·(1−τ)` — proportional to brightness — so
@@ -326,7 +338,7 @@ src/
     dither.js         error diffusion, ordered matrices, local threshold
     bluenoise.js      a void-and-cluster threshold tile, built at load
     colour.js         average colour per cell, collapsed into runs
-    edges.js          XDoG and Sobel, mixed with tone
+    edges.js          XDoG and Sobel, thinning, mixed with tone
     blur.js           separable Gaussian
     otsu.js           a threshold from the histogram
     adjust.js         tone and unsharp masking

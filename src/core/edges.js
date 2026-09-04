@@ -11,14 +11,15 @@ import { gaussianBlur } from './blur.js';
 export const EDGE_MODES = Object.freeze(['none', 'sobel', 'xdog']);
 
 /**
- * Sobel gradient magnitude.
+ * Sobel gradient: magnitude, and the two components it was built from.
  *
- * Fast and predictable, but it answers "how steep is it here", so a soft edge
- * comes back as a wide band rather than a line. Good for hard-edged art and for
- * seeing quickly what the image has; xdog is the one that draws.
+ * The components are kept because thinning needs to know which way the slope
+ * runs, and recomputing them afterwards would mean convolving the image twice.
  */
-export function sobel(plane, width, height) {
-  const out = new Float32Array(plane.length);
+export function gradient(plane, width, height) {
+  const magnitude = new Float32Array(plane.length);
+  const gx = new Float32Array(plane.length);
+  const gy = new Float32Array(plane.length);
   const at = (x, y) => {
     const cx = x < 0 ? 0 : x > width - 1 ? width - 1 : x;
     const cy = y < 0 ? 0 : y > height - 1 ? height - 1 : y;
@@ -27,13 +28,81 @@ export function sobel(plane, width, height) {
 
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      const gx = at(x + 1, y - 1) + 2 * at(x + 1, y) + at(x + 1, y + 1)
+      const horizontal = at(x + 1, y - 1) + 2 * at(x + 1, y) + at(x + 1, y + 1)
         - at(x - 1, y - 1) - 2 * at(x - 1, y) - at(x - 1, y + 1);
-      const gy = at(x - 1, y + 1) + 2 * at(x, y + 1) + at(x + 1, y + 1)
+      const vertical = at(x - 1, y + 1) + 2 * at(x, y + 1) + at(x + 1, y + 1)
         - at(x - 1, y - 1) - 2 * at(x, y - 1) - at(x + 1, y - 1);
+      const i = y * width + x;
       // Peak magnitude of either axis is 4*255, so a quarter puts it back in range.
-      const magnitude = Math.hypot(gx, gy) / 4;
-      out[y * width + x] = magnitude > 255 ? 255 : magnitude;
+      const strength = Math.hypot(horizontal, vertical) / 4;
+      magnitude[i] = strength > 255 ? 255 : strength;
+      gx[i] = horizontal;
+      gy[i] = vertical;
+    }
+  }
+  return { magnitude, gx, gy };
+}
+
+/**
+ * Sobel gradient magnitude.
+ *
+ * Fast and predictable, but it answers "how steep is it here", so a soft edge
+ * comes back as a wide band rather than a line. `thin` is what turns the band
+ * back into a line; on its own this is the map of where slope lives, which is
+ * what the structure gate wants.
+ */
+export function sobel(plane, width, height) {
+  return gradient(plane, width, height).magnitude;
+}
+
+/**
+ * Keep only the crest of each ridge: non-maximum suppression.
+ *
+ * A gradient answers across the whole width of a slope, so a soft edge arrives
+ * as a band -- measured, four pixels for a hard step and eleven for one that
+ * fades over eight. That mattered little when the map was averaged down, but
+ * line maps are now reduced by taking the strongest value, which hands the
+ * band's peak to every dot it touches: an eleven-pixel band becomes three dots
+ * of solid ink where one line belongs.
+ *
+ * A point survives only if it is at least as strong as the two points either
+ * side of it *along the slope* -- across the ridge, never down its length.
+ * Those two neighbours rarely land on whole pixels, so they are interpolated
+ * from the four around them; quantising the direction to eight compass points
+ * instead would make diagonal lines climb in steps.
+ *
+ * The comparison is >= on one side and > on the other. On a ridge of even width
+ * the two crest pixels are exactly equal, and a symmetric test would either
+ * keep both or, worse, discard both and erase the edge.
+ */
+export function thin({ magnitude, gx, gy }, width, height) {
+  const out = new Float32Array(magnitude.length);
+
+  // Bilinear read, clamped at the border like the gradient itself.
+  const at = (x, y) => {
+    const cx = x < 0 ? 0 : x > width - 1 ? width - 1 : x;
+    const cy = y < 0 ? 0 : y > height - 1 ? height - 1 : y;
+    const x0 = Math.floor(cx), y0 = Math.floor(cy);
+    const x1 = Math.min(width - 1, x0 + 1), y1 = Math.min(height - 1, y0 + 1);
+    const fx = cx - x0, fy = cy - y0;
+    const top = magnitude[y0 * width + x0] * (1 - fx) + magnitude[y0 * width + x1] * fx;
+    const bottom = magnitude[y1 * width + x0] * (1 - fx) + magnitude[y1 * width + x1] * fx;
+    return top * (1 - fy) + bottom * fy;
+  };
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = y * width + x;
+      const here = magnitude[i];
+      if (here <= 0) continue;
+
+      // Step one full pixel along the longer component, so the neighbours are
+      // always on the next row or column rather than somewhere inside this one.
+      const reach = Math.max(Math.abs(gx[i]), Math.abs(gy[i]));
+      if (reach === 0) { out[i] = here; continue; }
+      const dx = gx[i] / reach, dy = gy[i] / reach;
+
+      if (here >= at(x + dx, y + dy) && here > at(x - dx, y - dy)) out[i] = here;
     }
   }
   return out;
@@ -107,7 +176,7 @@ export function lineMap(plane, width, height, { mode = 'none', radius = 1 } = {}
   // Both detectors amplify noise, so smooth first. For xdog this same radius is
   // the stroke width; for sobel it is purely denoising.
   return mode === 'sobel'
-    ? sobel(gaussianBlur(plane, width, height, radius), width, height)
+    ? thin(gradient(gaussianBlur(plane, width, height, radius), width, height), width, height)
     : xdog(plane, width, height, radius);
 }
 

@@ -11,7 +11,7 @@ import { otsuThreshold } from '../src/core/otsu.js';
 import { lightness, linearToThreshold, luminance, thresholdToLinear } from '../src/core/gamma.js';
 import { applyAdjustments } from '../src/core/adjust.js';
 import { gaussianBlur } from '../src/core/blur.js';
-import { sobel, xdog, applyEdges } from '../src/core/edges.js';
+import { sobel, xdog, applyEdges, gradient, thin, lineMap, structureMap } from '../src/core/edges.js';
 import { CONTENT_PRESETS } from '../src/core/presets.js';
 import { EDGE_MODES } from '../src/core/edges.js';
 import { createCanvas, drawScaled, readImageData } from '../src/ui/canvas.js';
@@ -238,6 +238,85 @@ async function run() {
   // than straddling it, which is what makes it read as a drawn stroke.
   ok('xdog stroke is one-sided', midRow(ink, W / 2 - 1) > midRow(ink, W / 2 + 1),
      `dark side ${midRow(ink, W / 2 - 1).toFixed(0)} vs light side ${midRow(ink, W / 2 + 1).toFixed(0)}`);
+
+  // --- thinning ------------------------------------------------------------
+  // A gradient answers across the whole width of a slope. That was tolerable
+  // when line maps were averaged down; now that they are reduced by taking the
+  // strongest value, every dot the band touches gets the band's peak, so a soft
+  // edge arrives as several dots of solid ink instead of one line.
+  {
+    const columns = (plane, threshold) => {
+      let count = 0;
+      for (let x = 0; x < W; x++) if (plane[Math.floor(H / 2) * W + x] > threshold) count++;
+      return count;
+    };
+
+    // Fades from black to white over eight pixels, centred on x=32.
+    const soft = new Float32Array(W * H);
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) soft[y * W + x] = Math.max(0, Math.min(255, ((x - 28) / 8) * 255));
+    }
+
+    // Blurred first, exactly as lineMap does before handing it over.
+    const smooth = gaussianBlur(soft, W, H, 1);
+    const wide = sobel(smooth, W, H);
+    const slim = thin(gradient(smooth, W, H), W, H);
+    ok('a soft edge answers as a band', columns(wide, peak(wide) * 0.1) >= 8,
+       `${columns(wide, peak(wide) * 0.1)} columns`);
+    check('thinning leaves a single column', columns(slim, peak(slim) * 0.1), 1);
+
+    // Weight has to survive: a faint edge must stay faint and a strong one
+    // strong, or the line map loses the variation the 2x4 cell renders with.
+    near('thinning keeps the crest at full strength', peak(slim), peak(wide), peak(wide));
+
+    // Where the surviving column sits: the middle of the fade, which is x=32.
+    // An even-width ridge has two equal crests and the tie-break keeps the
+    // lower one, so half a pixel is the most this can be out by.
+    let crest = -1;
+    for (let x = 0; x < W && crest < 0; x++) if (slim[Math.floor(H / 2) * W + x] > 0) crest = x;
+    near('the surviving column is the middle of the fade', crest, 31, 32);
+
+    // A perfectly linear ramp has no crest at all -- the gradient is the same
+    // across the whole slope -- so there is nothing to localise and the
+    // tie-break keeps the leading end. Recorded because it looks like an error
+    // and is not: real images arrive blurred, and lineMap blurs anyway.
+    let flatCrest = -1;
+    for (let x = 0; x < W && flatCrest < 0; x++) if (thin(gradient(soft, W, H), W, H)[Math.floor(H / 2) * W + x] > 0) flatCrest = x;
+    check('an exact ramp keeps its leading end', flatCrest, 29);
+
+    // The classic way to get this wrong is to quantise the direction to eight
+    // compass points, which breaks diagonals into dashes. Every row of a
+    // diagonal boundary must keep some ink.
+    const diagonal = new Float32Array(W * H);
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) diagonal[y * W + x] = x < 12 + y ? 0 : 255;
+    }
+    const slanted = thin(gradient(gaussianBlur(diagonal, W, H, 1), W, H), W, H);
+    // Only up to where the boundary leaves the frame, at y = W - 12.
+    const crossed = W - 12;
+    let rowsWithInk = 0;
+    for (let y = 0; y < crossed; y++) {
+      for (let x = 0; x < W; x++) {
+        if (slanted[y * W + x] > 0) { rowsWithInk++; break; }
+      }
+    }
+    check('a diagonal edge stays unbroken', rowsWithInk, crossed);
+
+    check('thinning is silent on a flat plane', peak(thin(gradient(flat(100), W, H), W, H)), 0);
+
+    // And it is wired in: sobel through lineMap comes back thinned.
+    const stepped = new Float32Array(W * H);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) stepped[y * W + x] = x < W / 2 ? 0 : 255;
+    const mapped = lineMap(stepped, W, H, { mode: 'sobel', radius: 1 });
+    ok('lineMap thins its sobel', columns(mapped, peak(mapped) * 0.1) <= 2,
+       `${columns(mapped, peak(mapped) * 0.1)} columns`);
+
+    // The structure gate is deliberately not thinned -- it asks how much slope
+    // is nearby, and a one-pixel crest would report nothing for the cells on
+    // either side of a feature.
+    ok('the structure map stays broad', columns(structureMap(soft, W, H), peak(wide) * 0.1) >= 8,
+       `${columns(structureMap(soft, W, H), peak(wide) * 0.1)} columns`);
+  }
 
   // --- mixing --------------------------------------------------------------
   check('mode none passes the plane straight through', applyEdges(step, W, H, { mode: 'none' }) === step, true);
