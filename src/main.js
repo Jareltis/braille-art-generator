@@ -4,10 +4,14 @@
 
 import { CELL_W, CELL_H, rowsForAspect } from './core/braille.js';
 import { DEFAULT_DITHER } from './core/dither.js';
+import { CONTENT_PRESETS } from './core/presets.js';
 import { fitWithin } from './core/pixels.js';
 import { createCanvas, drawScaled, putImageData, readImageData } from './ui/canvas.js';
 import { bindRange, clampInt, coalesce } from './ui/controls.js';
-import { copyText, downloadCanvas, downloadText, renderTextToCanvas } from './ui/export.js';
+import { brailleToSvg, copyText, downloadCanvas, downloadSvg, downloadText, renderTextToCanvas } from './ui/export.js';
+import {
+  PLATFORMS, calibrationOf, clearCalibration, forPlatform, messageLength, ruler, saveCalibration,
+} from './ui/platforms.js';
 import { createPipeline } from './ui/pipeline.js';
 
 const MAX_COLS = 400;
@@ -33,6 +37,18 @@ const dom = {
   invert: el('invert'),
   dither: el('dither'),
   edgeMode: el('edgeMode'),
+  preset: el('preset'),
+  presetHint: el('presetHint'),
+  platform: el('platform'),
+  platformState: el('platformState'),
+  calibrate: el('calibrate'),
+  calibratePanel: el('calibratePanel'),
+  rulerText: el('rulerText'),
+  copyRuler: el('copyRuler'),
+  calibratedWidth: el('calibratedWidth'),
+  saveCalibration: el('saveCalibration'),
+  resetCalibration: el('resetCalibration'),
+  downloadSvg: el('downloadSvg'),
   autoThreshold: el('autoThreshold'),
   generate: el('generate'),
   reset: el('resetEdits'),
@@ -55,6 +71,10 @@ let sourceUrl = null;         // object URL backing `source`
 let previewReady = false;
 let previewBackground = null; // background the preview source was composited over
 let artText = '';
+
+/** Set by presets rather than by a control of its own: only pixel art wants it
+ *  off, and the preset that needs it says so in its hint. */
+let smoothScaling = true;
 
 // Requests are answered out of order once they are asynchronous; a reply is
 // only applied while it is still the newest of its kind.
@@ -128,10 +148,12 @@ function syncEdgeControls() {
 }
 
 function rowsFor(cols) {
-  return Math.min(
-    MAX_ROWS,
-    rowsForAspect(cols, source.naturalWidth, source.naturalHeight, outputMetrics().cellAspect),
-  );
+  const onScreen = rowsForAspect(cols, source.naturalWidth, source.naturalHeight, outputMetrics().cellAspect);
+  // Every chat client sets its own line height, so art that looks right here can
+  // arrive stretched. The per-platform scale is the correction, and it is
+  // measured by the person sending it rather than guessed here.
+  const corrected = Math.round(onScreen * calibrationOf(dom.platform.value).scale);
+  return Math.min(MAX_ROWS, Math.max(1, corrected));
 }
 
 function resolveGrid() {
@@ -147,7 +169,7 @@ function resolveGrid() {
 async function buildPreviewSource() {
   const background = backgroundFor(isInverted());
   const { w, h } = fitWithin(source.naturalWidth, source.naturalHeight, PREVIEW_LIMIT.w, PREVIEW_LIMIT.h);
-  const scaled = drawScaled(source, w, h, background);
+  const scaled = drawScaled(source, w, h, background, { smooth: smoothScaling });
 
   dom.srcCanvas.width = w;
   dom.srcCanvas.height = h;
@@ -184,7 +206,7 @@ async function render() {
   // Sample the ORIGINAL straight to the grid size. Generation used to run off
   // the <=800x600 preview, so anything larger was upscaled from detail that had
   // already been thrown away.
-  const target = drawScaled(source, cols * CELL_W, rows * CELL_H, backgroundFor(isInverted()));
+  const target = drawScaled(source, cols * CELL_W, rows * CELL_H, backgroundFor(isInverted()), { smooth: smoothScaling });
 
   const token = ++generateToken;
   const { text, pixels } = await pipeline.generate(readImageData(target), readAdjustments(), readOptions());
@@ -194,8 +216,7 @@ async function render() {
   dom.output.textContent = text;
   applyFontSize();
   putImageData(dom.resCanvas, pixels);
-  dom.meta.textContent =
-    `${cols}\u00d7${rows} символов \u00b7 ${text.length.toLocaleString('ru-RU')} знаков с переносами`;
+  updateMeta(cols, rows, text);
 }
 
 function applyFontSize() {
@@ -277,11 +298,117 @@ async function autoThreshold() {
   const { cols, rows } = resolveGrid();
   // Measure the histogram of the pixels that will actually be encoded, not of
   // the preview -- downscaling changes the distribution.
-  const target = drawScaled(source, cols * CELL_W, rows * CELL_H, backgroundFor(isInverted()));
+  const target = drawScaled(source, cols * CELL_W, rows * CELL_H, backgroundFor(isInverted()), { smooth: smoothScaling });
   const threshold = await pipeline.otsu(readImageData(target), readAdjustments());
   controls.threshold.set(threshold);
   setStatus(`Порог подобран: ${threshold}.`, 'ok');
   changed({ affectsPreview: false });
+}
+
+/** The size line, plus how the art measures against the target's limit. */
+function updateMeta(cols, rows, text) {
+  const platform = dom.platform.value;
+  const { limit, label } = PLATFORMS[platform];
+
+  const parts = [
+    `${cols}×${rows} символов`,
+    `${text.length.toLocaleString('ru-RU')} знаков с переносами`,
+  ];
+
+  // Width is only half the problem: the message length limit is the wall that
+  // actually stops a paste, and it is easy to sail past without noticing.
+  let over = false;
+  if (Number.isFinite(limit)) {
+    const length = messageLength(text, platform);
+    over = length > limit;
+    parts.push(
+      `${label}: ${length.toLocaleString('ru-RU')} из ${limit.toLocaleString('ru-RU')}`
+      + (over ? ' — в одно сообщение не поместится' : ''),
+    );
+  }
+
+  dom.meta.textContent = parts.join(' · ');
+  dom.meta.classList.toggle('over', over);
+}
+
+function fillPresets() {
+  dom.preset.replaceChildren(new Option('— не менять —', ''));
+  for (const [key, preset] of Object.entries(CONTENT_PRESETS)) {
+    dom.preset.append(new Option(preset.label, key));
+  }
+}
+
+/**
+ * A preset writes every control it covers, so choosing one twice always lands
+ * in the same place regardless of what was adjusted in between.
+ */
+function applyPreset(key) {
+  const preset = CONTENT_PRESETS[key];
+  dom.presetHint.textContent = preset?.hint ?? '';
+  if (!preset) return;
+
+  const chosen = preset.settings;
+  dom.dither.value = chosen.method;
+  dom.edgeMode.value = chosen.edgeMode;
+  controls.threshold.set(chosen.threshold);
+  controls.edgeAmount.set(chosen.edgeAmount);
+  controls.edgeRadius.set(chosen.edgeRadius);
+  controls.brightness.set(chosen.brightness);
+  controls.contrast.set(chosen.contrast);
+  controls.saturation.set(chosen.saturation);
+  controls.sharpness.set(chosen.sharpness);
+  smoothScaling = chosen.smooth;
+
+  syncEdgeControls();
+  changed();
+}
+
+function fillPlatforms() {
+  dom.platform.replaceChildren(
+    ...Object.entries(PLATFORMS).map(([key, platform]) => new Option(platform.label, key)),
+  );
+}
+
+/** Show what has been measured for the chosen target, and apply it. */
+function syncPlatform() {
+  const key = dom.platform.value;
+  const { width, scale } = calibrationOf(key);
+  const measurable = key !== 'none';
+
+  dom.calibrate.disabled = !measurable;
+  if (!measurable) dom.calibratePanel.hidden = true;
+
+  if (!measurable) {
+    dom.platformState.textContent = '';
+  } else if (width) {
+    dom.platformState.textContent =
+      `Измерено: ${width} символов, вертикальный масштаб ${scale.toFixed(2)}.`;
+    dom.cols.value = width;
+  } else {
+    dom.platformState.textContent =
+      'Ширина не измерена. Здесь нет заранее вбитых чисел: она зависит от устройства, '
+      + 'масштаба и настроек шрифта в самом клиенте, так что снять её можно только у себя.';
+  }
+
+  dom.calibratedWidth.value = width ?? clampInt(dom.cols.value, 1, MAX_COLS, 80);
+  controls.calibratedScale.set(scale);
+  syncRows();
+}
+
+function exportSvg() {
+  const style = getComputedStyle(dom.output);
+  const { fontFamily, fontSize, lineHeight } = outputMetrics();
+  downloadSvg(
+    brailleToSvg(artText, {
+      fontFamily,
+      fontSize,
+      lineHeight,
+      foreground: style.color,
+      background: style.backgroundColor,
+    }),
+    'braille.svg',
+  );
+  setStatus('SVG сохранён.', 'ok');
 }
 
 function init() {
@@ -292,6 +419,52 @@ function init() {
   controls.sharpness = bindRange(el('sharpness'), el('sharpnessVal'), { decimals: 1, onChange: changed });
   controls.edgeAmount = bindRange(el('edgeAmount'), el('edgeAmountVal'), { onChange: () => changed({ affectsPreview: false }) });
   controls.edgeRadius = bindRange(el('edgeRadius'), el('edgeRadiusVal'), { decimals: 1, onChange: () => changed({ affectsPreview: false }) });
+
+  controls.calibratedScale = bindRange(el('calibratedScale'), el('calibratedScaleVal'), { decimals: 2 });
+
+  fillPresets();
+  fillPlatforms();
+
+  dom.preset.addEventListener('change', () => applyPreset(dom.preset.value));
+  dom.platform.addEventListener('change', () => {
+    syncPlatform();
+    changed({ affectsPreview: false });
+  });
+
+  dom.calibrate.addEventListener('click', () => {
+    dom.calibratePanel.hidden = !dom.calibratePanel.hidden;
+    if (!dom.calibratePanel.hidden) dom.rulerText.textContent = ruler();
+  });
+
+  dom.copyRuler.addEventListener('click', async () => {
+    try {
+      await copyText(forPlatform(ruler(), dom.platform.value));
+      setStatus('Линейка скопирована — отправьте её себе и посчитайте деления до переноса.', 'ok');
+    } catch (error) {
+      fail(error);
+    }
+  });
+
+  dom.saveCalibration.addEventListener('click', () => {
+    saveCalibration(dom.platform.value, {
+      width: clampInt(dom.calibratedWidth.value, 4, MAX_COLS, 40),
+      scale: controls.calibratedScale.value,
+    });
+    syncPlatform();
+    setStatus('Измерения сохранены — они запомнятся для этой площадки.', 'ok');
+    changed({ affectsPreview: false });
+  });
+
+  dom.resetCalibration.addEventListener('click', () => {
+    clearCalibration(dom.platform.value);
+    syncPlatform();
+    setStatus('Измерения сброшены.', 'info');
+    changed({ affectsPreview: false });
+  });
+
+  dom.downloadSvg.addEventListener('click', () => {
+    if (requireArt()) exportSvg();
+  });
 
   dom.file.addEventListener('change', () => {
     const file = dom.file.files?.[0];
@@ -333,8 +506,13 @@ function init() {
   dom.copy.addEventListener('click', async () => {
     if (!requireArt()) return;
     try {
-      await copyText(artText);
-      setStatus('Скопировано в буфер обмена.', 'ok');
+      await copyText(forPlatform(artText, dom.platform.value));
+      setStatus(
+        PLATFORMS[dom.platform.value].codeBlock
+          ? 'Скопировано вместе с обёрткой в код-блок.'
+          : 'Скопировано в буфер обмена.',
+        'ok',
+      );
     } catch (error) {
       fail(error);
     }
@@ -362,6 +540,7 @@ function init() {
 
   applyFontSize();
   syncEdgeControls();
+  syncPlatform();
   syncRows();
   setStatus(
     pipeline.offThread

@@ -24,6 +24,7 @@
     }
 
     *, *::before, *::after { box-sizing: border-box; }
+    [hidden] { display: none !important; }
 
     html, body {
       min-height: 100%;
@@ -97,7 +98,17 @@
     #status[data-kind="warn"] { color: var(--warn); }
     #status[data-kind="error"] { color: var(--error); }
 
-    .hint { margin: 10px 0 0; color: var(--muted); font-size: 12px; }
+    .hint { margin: 6px 0 0; color: var(--muted); font-size: 12px; }
+    .panel-inset {
+      margin-top: 10px; padding: 12px;
+      background: rgba(0, 0, 0, 0.22); border: 1px solid var(--line); border-radius: 8px;
+    }
+    .ruler {
+      margin: 8px 0; padding: 8px; overflow-x: auto; white-space: pre;
+      background: var(--art-bg); border-radius: 6px;
+      font-family: "Cascadia Mono", "DejaVu Sans Mono", monospace; font-size: 13px; line-height: 1;
+    }
+    #meta.over { color: var(--warn); }
 
     /* ---- previews ---- */
     .stack { display: flex; flex-direction: column; gap: 16px; }
@@ -142,6 +153,14 @@
             <input id="file" type="file" accept="image/*">
           </div>
 
+          <div class="field">
+            <label for="preset">Тип изображения</label>
+            <select id="preset"></select>
+            <p class="hint" id="presetHint"></p>
+          </div>
+
+          <hr>
+
           <div class="field row">
             <div>
               <label for="outWidth">Ширина, символов</label>
@@ -156,6 +175,51 @@
           <div class="field check">
             <input id="keepAspect" type="checkbox" checked>
             <label for="keepAspect">Сохранять пропорции (высота считается сама)</label>
+          </div>
+
+          <div class="field">
+            <label for="platform">Куда отправлять</label>
+            <select id="platform"></select>
+            <p class="hint" id="platformState"></p>
+          </div>
+
+          <div class="field">
+            <button id="calibrate" type="button">Откалибровать под свой чат</button>
+
+            <div class="panel-inset" id="calibratePanel" hidden>
+              <p class="hint">
+                Отправьте линейку себе в чат и посмотрите, сколько делений
+                <b>⣿</b> помещается в строку до переноса. Каждое деление — 10 символов.
+                Меряем именно символами Брайля: у цифр в том же шрифте другая ширина.
+              </p>
+              <div class="ruler" id="rulerText"></div>
+              <div class="buttons">
+                <button id="copyRuler" type="button">Копировать линейку</button>
+              </div>
+
+              <div class="row" style="margin-top:12px">
+                <div>
+                  <label for="calibratedWidth">Ширина, символов</label>
+                  <input id="calibratedWidth" type="number" min="4" max="400" value="40">
+                </div>
+                <div>
+                  <label for="calibratedScale">Вертикальный масштаб</label>
+                  <div class="slider">
+                    <input id="calibratedScale" type="range" min="0.5" max="2" step="0.05" value="1">
+                    <span class="readout" id="calibratedScaleVal">1.00</span>
+                  </div>
+                </div>
+              </div>
+              <p class="hint">
+                Масштаб трогайте, если арт в чате выглядит вытянутым или сплюснутым:
+                межстрочный интервал у клиентов разный.
+              </p>
+
+              <div class="buttons" style="margin-top:12px">
+                <button id="saveCalibration" class="primary" type="button">Сохранить</button>
+                <button id="resetCalibration" type="button">Сбросить</button>
+              </div>
+            </div>
           </div>
 
           <hr>
@@ -261,6 +325,7 @@
             <button id="copy" type="button">Копировать</button>
             <button id="downloadTxt" type="button">Скачать .txt</button>
             <button id="downloadPng" type="button">Скачать PNG</button>
+            <button id="downloadSvg" type="button">Скачать SVG</button>
             <button id="resetEdits" type="button">Сбросить коррекцию</button>
           </div>
 

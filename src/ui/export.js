@@ -85,3 +85,46 @@ export async function copyText(text) {
   }
   await navigator.clipboard.writeText(text);
 }
+
+const XML_ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' };
+const escapeXml = (s) => s.replace(/[&<>"']/g, (c) => XML_ESCAPES[c]);
+
+/**
+ * The art as SVG: one <text> per line, not one shape per dot.
+ *
+ * A 400x400 grid holds up to 1.28 million dots; drawn individually that is a
+ * file nobody can open. As text it is a few kilobytes and stays selectable and
+ * editable. The cost is that it renders in whatever monospace font the viewer
+ * has, so the font stack is written out in full.
+ */
+export function brailleToSvg(text, { fontFamily, fontSize, lineHeight, foreground, background }) {
+  const lines = text.split('\n');
+  const rowHeight = fontSize * lineHeight;
+
+  const probe = createCanvas(1, 1).getContext('2d');
+  probe.font = `${fontSize}px ${fontFamily}`;
+  let width = 0;
+  for (const line of lines) width = Math.max(width, probe.measureText(line).width);
+  width = Math.max(1, Math.ceil(width));
+  const height = Math.max(1, Math.ceil(lines.length * rowHeight));
+
+  const body = lines
+    .map((line, i) => `<text x="0" y="${(i * rowHeight).toFixed(2)}" xml:space="preserve">${escapeXml(line)}</text>`)
+    .join('\n  ');
+
+  return [
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`,
+    `  <rect width="100%" height="100%" fill="${escapeXml(background)}"/>`,
+    `  <g font-family="${escapeXml(fontFamily)}" font-size="${fontSize}" fill="${escapeXml(foreground)}" dominant-baseline="text-before-edge">`,
+    `  ${body}`,
+    '  </g>',
+    '</svg>',
+    '',
+  ].join('\n');
+}
+
+export function downloadSvg(svg, filename) {
+  const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }));
+  triggerDownload(url, filename);
+  URL.revokeObjectURL(url);
+}

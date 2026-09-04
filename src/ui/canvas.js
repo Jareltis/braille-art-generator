@@ -18,8 +18,22 @@ export function context2d(canvas) {
  *
  * The background is laid down first, so transparent pixels composite onto it
  * instead of reading as black.
+ *
+ * `smooth: false` skips both the halving chain and interpolation. Pixel art
+ * needs that: averaging neighbouring pixels is exactly what destroys a grid
+ * that was drawn one pixel at a time.
  */
-export function drawScaled(source, w, h, background) {
+export function drawScaled(source, w, h, background, { smooth = true } = {}) {
+  if (!smooth) {
+    const out = createCanvas(w, h);
+    const ctx = context2d(out);
+    ctx.fillStyle = background;
+    ctx.fillRect(0, 0, w, h);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(source, 0, 0, w, h);
+    return out;
+  }
+
   let current = source;
   let cw = source.naturalWidth || source.width;
   let ch = source.naturalHeight || source.height;

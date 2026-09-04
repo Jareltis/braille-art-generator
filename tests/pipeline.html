@@ -10,6 +10,12 @@ import { otsuThreshold } from '../src/core/otsu.js';
 import { applyAdjustments } from '../src/core/adjust.js';
 import { gaussianBlur } from '../src/core/blur.js';
 import { sobel, xdog, applyEdges } from '../src/core/edges.js';
+import { CONTENT_PRESETS } from '../src/core/presets.js';
+import { EDGE_MODES } from '../src/core/edges.js';
+import { brailleToSvg } from '../src/ui/export.js';
+import {
+  PLATFORMS, calibrationOf, clearCalibration, forPlatform, messageLength, ruler, saveCalibration,
+} from '../src/ui/platforms.js';
 import { createPipeline } from '../src/ui/pipeline.js';
 
 const out = (t) => {
@@ -133,6 +139,76 @@ async function run() {
   ok('a line uses far fewer cells than a filled half', inked(linedText) < inked(plainText) / 2,
      `${inked(linedText)} vs ${inked(plainText)} inked cells`);
   log.push(`INFO  xdog row: ${linedText.split(NEWLINE)[8].slice(10, 34)}`);
+
+  // --- presets -------------------------------------------------------------
+  // A preset must write every control it covers, or picking one twice lands
+  // somewhere different depending on what was fiddled with in between.
+  const REQUIRED = ['method', 'threshold', 'edgeMode', 'edgeAmount', 'edgeRadius',
+    'brightness', 'contrast', 'saturation', 'sharpness', 'smooth'];
+  let presetsComplete = true;
+  let presetsValid = true;
+  for (const [name, preset] of Object.entries(CONTENT_PRESETS)) {
+    for (const key of REQUIRED) {
+      if (!(key in preset.settings)) { presetsComplete = false; log.push(`      ${name} is missing ${key}`); }
+    }
+    const s = preset.settings;
+    if (!(s.method in DITHER_METHODS)) presetsValid = false;
+    if (!EDGE_MODES.includes(s.edgeMode)) presetsValid = false;
+    if (s.threshold < 0 || s.threshold > 255) presetsValid = false;
+    if (s.sharpness < 0 || s.sharpness > 5) presetsValid = false;
+    if (Math.abs(s.contrast) > 100 || Math.abs(s.brightness) > 100) presetsValid = false;
+    if (!preset.label || !preset.hint) presetsValid = false;
+  }
+  check('every preset sets every control', presetsComplete, true);
+  check('every preset value is in range', presetsValid, true);
+  check('line-art preset actually turns lines on', CONTENT_PRESETS.lineart.settings.edgeMode, 'xdog');
+  check('pixel-art preset turns interpolation off', CONTENT_PRESETS.pixel.settings.smooth, false);
+  check('photo preset dithers', CONTENT_PRESETS.photo.settings.method, 'floyd-steinberg');
+
+  // --- platform arithmetic -------------------------------------------------
+  const sample = 'AB';
+  check('plain paste costs what it says', messageLength(sample, 'none'), 2);
+  // three backticks, a newline, the art, a newline, three backticks
+  check('a code block costs eight more', messageLength(sample, 'discord'), 10);
+  check('wrapping produces four lines for a two-line art',
+    forPlatform('a' + String.fromCharCode(10) + 'b', 'discord').split(String.fromCharCode(10)).length, 4);
+  check('no wrapping where the target takes none', forPlatform(sample, 'none'), sample);
+  check('discord limit is the documented one', PLATFORMS.discord.limit, 2000);
+  check('telegram limit is the documented one', PLATFORMS.telegram.limit, 4096);
+  ok('no platform ships a guessed width',
+    Object.values(PLATFORMS).every((p) => !('defaultWidth' in p) && !('width' in p)));
+
+  // --- the ruler measures braille, not digits ------------------------------
+  const marks = ruler(50);
+  check('ruler is the requested length', marks.length, 50);
+  check('ruler is made of braille cells', /^[⠀-⣿]+$/.test(marks), true);
+  check('ruler marks every tenth cell', [...marks].filter((c) => c === String.fromCharCode(0x28FF)).length, 5);
+
+  // --- calibration round-trip ----------------------------------------------
+  clearCalibration('discord');
+  check('unmeasured platform reports no width', calibrationOf('discord').width, null);
+  check('unmeasured platform defaults to scale 1', calibrationOf('discord').scale, 1);
+  saveCalibration('discord', { width: 37, scale: 1.25 });
+  check('measured width comes back', calibrationOf('discord').width, 37);
+  check('measured scale comes back', calibrationOf('discord').scale, 1.25);
+  clearCalibration('discord');
+  check('clearing forgets the width', calibrationOf('discord').width, null);
+
+  // --- SVG export ----------------------------------------------------------
+  const NL = String.fromCharCode(10);
+  const svg = brailleToSvg('⣿⣿⣿' + NL + '⣿', {
+    fontFamily: 'monospace', fontSize: 16, lineHeight: 1,
+    foreground: 'rgb(230, 255, 243)', background: 'rgb(0, 18, 10)',
+  });
+  const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
+  check('svg parses as XML', doc.querySelector('parsererror'), null);
+  check('svg has one text element per line', doc.querySelectorAll('text').length, 2);
+  check('svg keeps whitespace', doc.querySelector('text').getAttribute('xml:space'), 'preserve');
+  ok('svg is sized off the widest line, not line 0',
+     Number(doc.documentElement.getAttribute('width')) > 16,
+     `${doc.documentElement.getAttribute('width')}px wide`);
+  check('svg height covers both rows', doc.documentElement.getAttribute('height'), '32');
+  ok('svg stays small: it draws lines, not a shape per dot', svg.length < 1000, `${svg.length} bytes`);
 
   // --- worker must agree with the main thread exactly ----------------------
   const pipe = createPipeline();

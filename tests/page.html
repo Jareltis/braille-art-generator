@@ -121,6 +121,84 @@ async function run() {
   ok('generator preview is the cell grid', $('resCanvas').width === Number($('outWidth').value) * 2,
      `${$('resCanvas').width}x${$('resCanvas').height}`);
 
+  // --- presets -------------------------------------------------------------
+  ok('preset list is populated from the module', $('preset').options.length >= 5,
+     `${$('preset').options.length} options`);
+  check('no preset is forced on first load', $('preset').value, '');
+
+  const beforePreset = $('output').textContent;
+  $('preset').value = 'lineart';
+  $('preset').dispatchEvent(new Event('change', { bubbles: true }));
+  ok('choosing a preset explains itself', $('presetHint').textContent.length > 0, $('presetHint').textContent);
+  check('preset switched the detector on', $('edgeMode').value, 'xdog');
+  check('preset switched dithering off', $('dither').value, 'threshold');
+  check('preset moved the threshold', $('threshold').value, '40');
+  ok('preset re-renders live', await until(() => $('output').textContent !== beforePreset));
+
+  // Re-applying must land in the same place no matter what was touched between.
+  $('contrast').value = '80';
+  $('contrast').dispatchEvent(new Event('input', { bubbles: true }));
+  await until(() => $('contrast').value === '80');
+  $('preset').value = 'lineart';
+  $('preset').dispatchEvent(new Event('change', { bubbles: true }));
+  check('re-applying a preset resets what it covers', $('contrast').value, '0');
+
+  // --- platforms -----------------------------------------------------------
+  ok('platform list is populated from the module', $('platform').options.length >= 4,
+     `${$('platform').options.length} options`);
+  check('calibration is off until a target is chosen', $('calibrate').disabled, true);
+
+  $('platform').value = 'discord';
+  $('platform').dispatchEvent(new Event('change', { bubbles: true }));
+  check('choosing a target enables calibration', $('calibrate').disabled, false);
+  ok('an unmeasured target says so rather than inventing a width',
+     /не измерена/.test($('platformState').textContent));
+  // toLocaleString groups digits with a non-breaking space, so flatten before matching.
+  const metaFlat = () => $('meta').textContent.split(String.fromCharCode(160)).join(' ');
+  ok('the message limit shows up in the meta line',
+     await until(() => metaFlat().includes('Discord: ') && metaFlat().includes('из 2 000')),
+     metaFlat());
+
+  // --- calibration ---------------------------------------------------------
+  check('calibration panel starts closed', $('calibratePanel').hidden, true);
+  $('calibrate').click();
+  check('calibration panel opens', $('calibratePanel').hidden, false);
+  ok('a ruler is offered', $('rulerText').textContent.length > 50, `${$('rulerText').textContent.length} cells`);
+  ok('the ruler is braille, not digits', /^[⠀-⣿]+$/.test($('rulerText').textContent));
+
+  $('calibratedWidth').value = '36';
+  $('calibratedScale').value = '1.2';
+  $('calibratedScale').dispatchEvent(new Event('input', { bubbles: true }));
+  $('saveCalibration').click();
+
+  check('a measured width is applied to the output', $('outWidth').value, '36');
+  ok('the measurement is reported back', /Измерено: 36/.test($('platformState').textContent),
+     $('platformState').textContent);
+  ok('the art follows the measured width',
+     await until(() => $('output').textContent.split(String.fromCharCode(10))[0].length === 36),
+     `${$('output').textContent.split(String.fromCharCode(10))[0].length} wide`);
+
+  // A vertical scale above 1 must produce more rows than the same width at 1.
+  const tallRows = $('output').textContent.split(String.fromCharCode(10)).length;
+  $('resetCalibration').click();
+  $('outWidth').value = '36';
+  $('outWidth').dispatchEvent(new Event('input', { bubbles: true }));
+  const plainRows = await until(() => $('output').textContent.split(String.fromCharCode(10)).length !== tallRows)
+    ? $('output').textContent.split(String.fromCharCode(10)).length : tallRows;
+  ok('vertical scale changes the row count', tallRows > plainRows, `${tallRows} scaled vs ${plainRows} plain`);
+  ok('resetting forgets the measurement', /не измерена/.test($('platformState').textContent));
+
+  // --- SVG -----------------------------------------------------------------
+  let svgFailed = null;
+  frame.contentWindow.addEventListener('error', (e) => { svgFailed = e.message; });
+  $('downloadSvg').click();
+  await wait(300);
+  check('SVG export does not throw', svgFailed, null);
+  ok('SVG export reports success', /SVG/.test($('status').textContent), $('status').textContent);
+
+  $('platform').value = 'none';
+  $('platform').dispatchEvent(new Event('change', { bubbles: true }));
+
   const failed = log.filter((l) => l.startsWith('FAIL')).length;
   out(`${log.join('\n')}\n${failed ? `\n${failed} FAILED` : '\nAll e2e checks passed.'}`);
 }
