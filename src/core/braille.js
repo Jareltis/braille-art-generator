@@ -137,6 +137,39 @@ export function imageDataToBraille(imageData, options = {}) {
 }
 
 /**
+ * Drop rows and columns of empty cells from the edges.
+ *
+ * Centring an image inside a grid leaves a border of blanks, and a blank cell
+ * costs a character like any other. The message limit is counted in characters,
+ * not in picture, so trimming is the cheapest way to make art fit -- it removes
+ * nothing anyone can see.
+ *
+ * A column only goes if it is empty in every row, so nothing shifts sideways.
+ */
+export function trimBlank(text) {
+  const blank = String.fromCharCode(BRAILLE_BLANK);
+  const lines = text.split('\n');
+
+  let top = 0;
+  let bottom = lines.length - 1;
+  while (top <= bottom && [...lines[top]].every((cell) => cell === blank)) top++;
+  while (bottom >= top && [...lines[bottom]].every((cell) => cell === blank)) bottom--;
+  if (top > bottom) return '';
+
+  const kept = lines.slice(top, bottom + 1);
+  const width = Math.max(...kept.map((line) => line.length));
+
+  let left = 0;
+  let right = width - 1;
+  const columnIsBlank = (column) => kept.every((line) => (line[column] ?? blank) === blank);
+  while (left <= right && columnIsBlank(left)) left++;
+  while (right >= left && columnIsBlank(right)) right--;
+  if (left > right) return '';
+
+  return kept.map((line) => line.slice(left, right + 1)).join('\n');
+}
+
+/**
  * How many rows keep the source proportions on screen.
  *
  * `cellAspect` is a glyph's rendered advance width divided by its line height.

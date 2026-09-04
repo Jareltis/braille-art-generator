@@ -2,7 +2,7 @@
 // Wiring: reads the controls, drives the pipeline, paints the previews.
 // All pixel work lives in ./core; this and ./ui are the only files touching the DOM.
 
-import { CELL_W, CELL_H, rowsForAspect } from './core/braille.js';
+import { CELL_W, CELL_H, rowsForAspect, trimBlank } from './core/braille.js';
 import { DEFAULT_DITHER } from './core/dither.js';
 import { CONTENT_PRESETS } from './core/presets.js';
 import { fitWithin } from './core/pixels.js';
@@ -10,7 +10,8 @@ import { createCanvas, drawScaled, putImageData, readImageData } from './ui/canv
 import { bindRange, clampInt, coalesce } from './ui/controls.js';
 import { brailleToSvg, copyText, downloadCanvas, downloadSvg, downloadText, renderTextToCanvas } from './ui/export.js';
 import {
-  PLATFORMS, calibrationOf, clearCalibration, forPlatform, messageLength, ruler, saveCalibration,
+  PLATFORMS, calibrationOf, clearCalibration, forPlatform, messageLength, partsFit, ruler,
+  saveCalibration, splitForPlatform,
 } from './ui/platforms.js';
 import { clearSettings, loadSettings, saveSettings } from './ui/settings.js';
 import { createCropper } from './ui/crop.js';
@@ -40,6 +41,8 @@ const dom = {
   cropper: el('cropper'),
   cropToggle: el('cropToggle'),
   cropReset: el('cropReset'),
+  trimBlank: el('trimBlank'),
+  fitLimit: el('fitLimit'),
   dotEdit: el('dotEdit'),
   dotUndo: el('dotUndo'),
   dotHint: el('dotHint'),
@@ -108,9 +111,16 @@ let dotEditor = null;
 let previewToken = 0;
 let generateToken = 0;
 
+/**
+ * Bumped by every message, so a render can tell whether anything more
+ * interesting was said while it was working.
+ */
+let statusStamp = 0;
+
 function setStatus(message, kind = 'info') {
   dom.status.textContent = message;
   dom.status.dataset.kind = kind;
+  statusStamp++;
 }
 
 const isInverted = () => dom.invert.value === '1';
@@ -261,14 +271,15 @@ async function render() {
   const { text, pixels } = await pipeline.generate(readImageData(target), readAdjustments(), readOptions());
   if (token !== generateToken) return;
 
-  artText = text;
-  dom.output.textContent = text;
+  artText = dom.trimBlank.checked ? trimBlank(text) : text;
+  nextPart = 0;
+  dom.output.textContent = artText;
   dotEditor?.forget();
   dom.dotUndo.disabled = true;
   applyFontSize();
   putImageData(dom.resCanvas, pixels);
   dom.gridMeta.textContent = `${cols * CELL_W}×${rows * CELL_H}`;
-  updateMeta(text);
+  updateMeta(artText, { cols, rows });
 }
 
 function applyFontSize() {
@@ -289,9 +300,20 @@ function syncRows() {
 const fail = (error) => setStatus(String(error?.message ?? error), 'error');
 
 const schedulePreview = coalesce(() => { renderPreview().catch(fail); });
-const scheduleRender = coalesce(() => {
-  render().then(() => setStatus('Готово.', 'ok')).catch(fail);
+/**
+ * "Done." is only worth saying when there is nothing better to say. Anything
+ * that reports a result and redraws -- picking a threshold, fitting to a limit
+ * -- used to have its message wiped a fraction of a second later by the render
+ * it had itself triggered.
+ */
+const renderThen = coalesce((stamp) => {
+  render()
+    .then(() => {
+      if (statusStamp === stamp) setStatus('Готово.', 'ok');
+    })
+    .catch(fail);
 });
+const scheduleRender = () => renderThen(statusStamp);
 
 const isLive = () => {
   const { cols, rows } = resolveGrid();
@@ -369,15 +391,16 @@ async function autoThreshold() {
 }
 
 /** The size line, plus how the art measures against the target's limit. */
-function updateMeta(text) {
+function updateMeta(text, sampled = null) {
   const lines = text.split('\n');
   const rows = lines.length;
   const cols = lines[0]?.length ?? 0;
   const platform = dom.platform.value;
   const { limit, label } = PLATFORMS[platform];
 
+  const trimmed = sampled && (sampled.cols !== cols || sampled.rows !== rows);
   const parts = [
-    `${cols}×${rows} символов`,
+    trimmed ? `${sampled.cols}×${sampled.rows} → ${cols}×${rows} после обрезки` : `${cols}×${rows} символов`,
     `${text.length.toLocaleString('ru-RU')} знаков с переносами`,
   ];
 
@@ -456,6 +479,7 @@ function syncPlatform() {
       + 'масштаба и настроек шрифта в самом клиенте, так что снять её можно только у себя.';
   }
 
+  dom.fitLimit.disabled = !Number.isFinite(PLATFORMS[key].limit);
   dom.calibratedWidth.value = width ?? clampInt(dom.cols.value, 1, MAX_COLS, 80);
   controls.calibratedScale.set(scale);
   syncRows();
@@ -519,6 +543,7 @@ function collectSettings() {
     mode: dom.app.dataset.mode,
     keepAspect: dom.keepAspect.checked,
     textBold: dom.textBold.checked,
+    trimBlank: dom.trimBlank.checked,
     smooth: smoothScaling,
   };
   for (const id of PERSISTED_FIELDS) values[id] = el(id).value;
@@ -545,6 +570,7 @@ function applySettings(values) {
   }
   if (typeof values.keepAspect === 'boolean') dom.keepAspect.checked = values.keepAspect;
   if (typeof values.textBold === 'boolean') dom.textBold.checked = values.textBold;
+  if (typeof values.trimBlank === 'boolean') dom.trimBlank.checked = values.trimBlank;
   if (typeof values.smooth === 'boolean') smoothScaling = values.smooth;
 
   setLayout(dom.layout.value);
@@ -568,6 +594,7 @@ function resetEverything() {
     }
   }
   dom.keepAspect.checked = true;
+  dom.trimBlank.checked = false;
   smoothScaling = true;
   dom.presetHint.textContent = '';
   setLayout(LAYOUTS[0]);
@@ -755,6 +782,106 @@ function setSourceKind(kind) {
   }
 }
 
+/* ------------------------------------------------------------------------ *
+ * Making it fit
+ *
+ * Knowing the art is over the limit is not much use on its own. These are the
+ * three ways out: drop what is not picture, sample smaller, or send it in
+ * pieces.
+ * ------------------------------------------------------------------------ */
+
+/** Render at a given width without touching the page, for searching. */
+async function artAtWidth(cols) {
+  const rows = dom.keepAspect.checked ? rowsFor(cols) : clampInt(dom.rows.value, 1, MAX_ROWS, 30);
+  const target = drawScaled(
+    source, cols * CELL_W, rows * CELL_H, backgroundFor(isInverted()),
+    { smooth: smoothScaling, crop: cropRect },
+  );
+  const { text } = await pipeline.generate(readImageData(target), readAdjustments(), readOptions());
+  return dom.trimBlank.checked ? trimBlank(text) : text;
+}
+
+/**
+ * The widest sampling that still fits one message.
+ *
+ * Binary search rather than stepping down: the relationship is monotonic enough
+ * and a probe costs a full render, so nine of them beats a hundred.
+ */
+async function fitToLimit() {
+  if (!source) {
+    setStatus('Сначала загрузите изображение.', 'warn');
+    return;
+  }
+  const platform = dom.platform.value;
+  const { limit, label } = PLATFORMS[platform];
+  if (!Number.isFinite(limit)) {
+    setStatus('У этой площадки нет лимита на длину сообщения.', 'warn');
+    return;
+  }
+
+  setStatus(`Подбираю ширину под ${label}…`);
+  let low = 8;
+  let high = MAX_COLS;
+  let widest = null;
+
+  while (low <= high) {
+    const middle = Math.floor((low + high) / 2);
+    const candidate = await artAtWidth(middle);
+    if (messageLength(candidate, platform) <= limit) {
+      widest = middle;
+      low = middle + 1;
+    } else {
+      high = middle - 1;
+    }
+  }
+
+  if (widest === null) {
+    setStatus(`Даже минимальный размер не влезает в ${label}.`, 'warn');
+    return;
+  }
+  dom.cols.value = widest;
+  syncRows();
+  changed({ affectsPreview: false });
+  setStatus(`Ширина ${widest}: это максимум, который влезает в ${label}.`, 'ok');
+}
+
+/**
+ * Copying in pieces.
+ *
+ * The clipboard holds one thing, so an art that needs three messages is handed
+ * over one press at a time, and the status says where you are.
+ */
+let nextPart = 0;
+
+async function copyArt() {
+  const platform = dom.platform.value;
+  const parts = splitForPlatform(artText, platform);
+
+  if (parts.length === 1) {
+    await copyText(forPlatform(artText, platform));
+    setStatus(
+      PLATFORMS[platform].codeBlock
+        ? 'Скопировано вместе с обёрткой в код-блок.'
+        : 'Скопировано в буфер обмена.',
+      'ok',
+    );
+    return;
+  }
+
+  if (nextPart >= parts.length) nextPart = 0;
+  const index = nextPart;
+  await copyText(forPlatform(parts[index], platform));
+  nextPart = index + 1;
+
+  const oversized = !partsFit(parts, platform);
+  setStatus(
+    `Часть ${index + 1} из ${parts.length} скопирована`
+    + (nextPart < parts.length ? ' — нажмите ещё раз для следующей.' : '. Это последняя.')
+    + (oversized ? ' Одна строка длиннее лимита: разрезать её, не сломав арт, нельзя.' : ''),
+    oversized ? 'warn' : 'ok',
+  );
+}
+
 function init() {
   controls.threshold = bindRange(el('threshold'), el('thresholdVal'), { onChange: () => changed({ affectsPreview: false }) });
   controls.brightness = bindRange(el('brightness'), el('brightnessVal'), { onChange: changed });
@@ -844,6 +971,8 @@ function init() {
   });
 
   dom.cropReset.addEventListener('click', () => cropper.reset());
+  dom.trimBlank.addEventListener('change', () => changed({ affectsPreview: false }));
+  dom.fitLimit.addEventListener('click', () => { fitToLimit().catch(fail); });
 
   dotEditor = createDotEditor(dom.output, {
     metrics: outputMetrics,
@@ -931,13 +1060,7 @@ function init() {
   dom.copy.addEventListener('click', async () => {
     if (!requireArt()) return;
     try {
-      await copyText(forPlatform(artText, dom.platform.value));
-      setStatus(
-        PLATFORMS[dom.platform.value].codeBlock
-          ? 'Скопировано вместе с обёрткой в код-блок.'
-          : 'Скопировано в буфер обмена.',
-        'ok',
-      );
+      await copyArt();
     } catch (error) {
       fail(error);
     }

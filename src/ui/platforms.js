@@ -74,6 +74,42 @@ export function forPlatform(text, platform) {
   return PLATFORMS[platform]?.codeBlock ? `${FENCE}\n${text}\n${FENCE}` : text;
 }
 
+/**
+ * Cut the art into pieces that each fit one message.
+ *
+ * Splitting happens at row boundaries only: anywhere else and the halves stop
+ * lining up when they arrive as separate messages. Each piece carries its own
+ * code fence if the target uses one, so the wrapper is paid for per piece.
+ *
+ * A single row wider than the whole limit cannot be divided any further and is
+ * returned as it is -- the caller can see it is still over and say so.
+ */
+export function splitForPlatform(text, platform) {
+  const spec = PLATFORMS[platform];
+  if (!spec || !Number.isFinite(spec.limit)) return [text];
+
+  const lines = text.split('\n');
+  const parts = [];
+  let current = [];
+
+  for (const line of lines) {
+    if (current.length > 0 && messageLength([...current, line].join('\n'), platform) > spec.limit) {
+      parts.push(current.join('\n'));
+      current = [];
+    }
+    current.push(line);
+  }
+  if (current.length > 0) parts.push(current.join('\n'));
+  return parts;
+}
+
+/** Whether every piece would actually be accepted. */
+export function partsFit(parts, platform) {
+  const spec = PLATFORMS[platform];
+  if (!spec || !Number.isFinite(spec.limit)) return true;
+  return parts.every((part) => messageLength(part, platform) <= spec.limit);
+}
+
 const MARK_TEN = '\u28FF';  // full cell, every tenth
 const MARK_FIVE = '\u2836'; // half cell, every fifth
 const MARK_ONE = '\u2804';  // single dot

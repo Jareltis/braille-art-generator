@@ -4,7 +4,7 @@
 <body>
 <pre id="r">running</pre>
 <script type="module">
-import { binarize, imageDataToBraille, toLuminance, tonePlane } from '../src/core/braille.js';
+import { binarize, imageDataToBraille, toLuminance, tonePlane, trimBlank } from '../src/core/braille.js';
 import { DITHER_METHODS, DEFAULT_DITHER } from '../src/core/dither.js';
 import { BLUE_NOISE_SIZE, blueNoiseMatrix } from '../src/core/bluenoise.js';
 import { otsuThreshold } from '../src/core/otsu.js';
@@ -19,7 +19,8 @@ import { FULL_FRAME, isWholeImage } from '../src/ui/crop.js';
 import { DEFAULT_TEXT_FONT, TEXT_FONTS, renderText } from '../src/ui/text.js';
 import { brailleToSvg } from '../src/ui/export.js';
 import {
-  PLATFORMS, calibrationOf, clearCalibration, forPlatform, messageLength, ruler, saveCalibration,
+  PLATFORMS, calibrationOf, clearCalibration, forPlatform, messageLength, partsFit, ruler,
+  saveCalibration, splitForPlatform,
 } from '../src/ui/platforms.js';
 import { createPipeline } from '../src/ui/pipeline.js';
 
@@ -365,6 +366,50 @@ async function run() {
   check('telegram limit is the documented one', PLATFORMS.telegram.limit, 4096);
   ok('no platform ships a guessed width',
     Object.values(PLATFORMS).every((p) => !('defaultWidth' in p) && !('width' in p)));
+
+  {
+    // --- trimming blank margins ---------------------------------------------
+    const BLANK_CELL = String.fromCharCode(0x2800);
+    const FULL_CELL = String.fromCharCode(0x28FF);
+    const NEWLINE = String.fromCharCode(10);
+    const rows2d = (grid) => grid.map((row) => [...row].map((c) => (c === '#' ? FULL_CELL : BLANK_CELL)).join('')).join(NEWLINE);
+
+    const bordered = rows2d(['....', '..#.', '.##.', '....']);
+    check('margins go', trimBlank(bordered), rows2d(['.#', '##']));
+    check('trimming saves characters', bordered.length - trimBlank(bordered).length, 14);
+    check('an empty frame trims to nothing', trimBlank(rows2d(['..', '..'])), '');
+    check('a full frame is left alone', trimBlank(rows2d(['##', '##'])), rows2d(['##', '##']));
+
+    // A column only goes when it is empty in every row, or the picture shears.
+    const gap = rows2d(['#..#', '#..#']);
+    check('an interior gap is kept', trimBlank(gap), gap);
+    check('one lit cell survives', trimBlank(rows2d(['...', '.#.', '...'])), FULL_CELL);
+
+    // --- splitting into messages --------------------------------------------
+    const wide = Array.from({ length: 40 }, () => FULL_CELL.repeat(80)).join(NEWLINE);
+    check('a short art is one message', splitForPlatform(FULL_CELL.repeat(10), 'discord').length, 1);
+    check('no limit means no splitting', splitForPlatform(wide, 'none').length, 1);
+
+    const pieces = splitForPlatform(wide, 'discord');
+    ok('an oversized art is divided', pieces.length > 1, `${pieces.length} messages`);
+    ok('every piece is inside the limit', partsFit(pieces, 'discord'),
+       pieces.map((p) => messageLength(p, 'discord')).join(', '));
+    check('nothing is lost or duplicated',
+      pieces.join(NEWLINE).split(NEWLINE).length, wide.split(NEWLINE).length);
+
+    // Splitting anywhere but a row boundary would leave the halves misaligned
+    // when they arrive as separate messages.
+    const originalRows = wide.split(NEWLINE);
+    ok('pieces are made of whole rows',
+       pieces.every((piece) => piece.split(NEWLINE).every((row) => originalRows.includes(row))));
+
+    // A row wider than the whole limit cannot be divided further; the caller has
+    // to be able to see that rather than be handed a silent failure.
+    const monstrous = FULL_CELL.repeat(3000);
+    check('an undividable row comes back whole', splitForPlatform(monstrous, 'discord').length, 1);
+    check('and is reported as not fitting', partsFit(splitForPlatform(monstrous, 'discord'), 'discord'), false);
+
+  }
 
   // --- the ruler measures braille, not digits ------------------------------
   const marks = ruler(50);

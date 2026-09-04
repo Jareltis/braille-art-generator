@@ -582,6 +582,67 @@ async function run() {
   ok('and it draws itself without a file', await until(() => inkedCount() > 30),
      `${inkedCount()} inked cells`);
 
+  {
+    // --- making it fit ------------------------------------------------------
+    // Lettering is used as the source: it is drawn with padding, so there are
+    // guaranteed blank margins for trimming to find.
+    $('sourceKind').value = 'text';
+    $('sourceKind').dispatchEvent(new Event('change', { bubbles: true }));
+    $('textInput').value = 'AB';
+    $('textInput').dispatchEvent(new Event('input', { bubbles: true }));
+    $('outWidth').value = '80';
+    $('outWidth').dispatchEvent(new Event('input', { bubbles: true }));
+
+    const lines = () => $('output').textContent.split(String.fromCharCode(10));
+    await until(() => lines()[0].length === 80);
+
+    check('trimming is off unless asked for', $('trimBlank').checked, false);
+    const untrimmedWidth = lines()[0].length;
+    const untrimmedRows = lines().length;
+
+    $('trimBlank').dispatchEvent(new Event('change', { bubbles: true }));
+    $('trimBlank').checked = true;
+    $('trimBlank').dispatchEvent(new Event('change', { bubbles: true }));
+
+    ok('turning it on shrinks the art',
+       await until(() => lines()[0].length < untrimmedWidth || lines().length < untrimmedRows),
+       `${untrimmedWidth}×${untrimmedRows} -> ${lines()[0].length}×${lines().length}`);
+    ok('and the meta says what happened', /после обрезки/.test($('meta').textContent), $('meta').textContent);
+
+    $('trimBlank').checked = false;
+    $('trimBlank').dispatchEvent(new Event('change', { bubbles: true }));
+    ok('turning it off restores the full frame',
+       await until(() => lines()[0].length === untrimmedWidth));
+
+    // --- fitting to a message limit ----------------------------------------
+    check('there is nothing to fit without a target', $('fitLimit').disabled, true);
+
+    $('platform').value = 'discord';
+    $('platform').dispatchEvent(new Event('change', { bubbles: true }));
+    check('choosing a target enables it', $('fitLimit').disabled, false);
+
+    $('outWidth').value = '300';
+    $('outWidth').dispatchEvent(new Event('input', { bubbles: true }));
+    await until(() => lines()[0].length === 300);
+    const oversized = $('output').textContent.length;
+    ok('300 wide is far past what Discord takes', oversized > 2000, `${oversized} characters`);
+
+    $('fitLimit').click();
+    ok('the search finishes', await until(() => /максимум|не влезает/.test($('status').textContent), 30000),
+       $('status').textContent);
+
+    const fittedWidth = Number($('outWidth').value);
+    ok('it settled on a narrower width', fittedWidth < 300, `${fittedWidth} columns`);
+    await until(() => lines()[0].length === fittedWidth);
+    // eight characters for the code fence the copy button adds
+    const fitted = $('output').textContent.length + 8;
+    ok('and the result actually fits', fitted <= 2000, `${fitted} of 2000`);
+    ok('while using most of the room', fitted > 1200, `${fitted} of 2000`);
+
+    $('platform').value = 'none';
+    $('platform').dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
   const failed = log.filter((l) => l.startsWith('FAIL')).length;
   out(`${log.join('\n')}\n${failed ? `\n${failed} FAILED` : '\nAll e2e checks passed.'}`);
 }
