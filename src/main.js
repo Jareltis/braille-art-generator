@@ -362,7 +362,7 @@ async function autoThreshold() {
   // Measure the histogram of the pixels that will actually be encoded, not of
   // the preview -- downscaling changes the distribution.
   const target = drawScaled(source, cols * CELL_W, rows * CELL_H, backgroundFor(isInverted()), { smooth: smoothScaling, crop: cropRect });
-  const threshold = await pipeline.otsu(readImageData(target), readAdjustments());
+  const threshold = await pipeline.otsu(readImageData(target), readAdjustments(), readOptions());
   controls.threshold.set(threshold);
   setStatus(`Порог подобран: ${threshold}.`, 'ok');
   changed({ affectsPreview: false });

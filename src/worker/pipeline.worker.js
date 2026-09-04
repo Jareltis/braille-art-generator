@@ -5,8 +5,9 @@
 // free of document was for.
 
 import { applyAdjustments } from '../core/adjust.js';
-import { imageDataToBraille, toLuma } from '../core/braille.js';
+import { imageDataToBraille, tonePlane } from '../core/braille.js';
 import { otsuThreshold } from '../core/otsu.js';
+import { linearToThreshold } from '../core/gamma.js';
 import { pack, transferOf, unpack } from './protocol.js';
 
 /** The adjusted-preview source, kept here so dragging a slider sends only the
@@ -32,9 +33,13 @@ const handlers = {
     return { payload: { text, image: out }, transfer: transferOf(out) };
   },
 
-  otsu({ image, params }) {
+  otsu({ image, params, options }) {
     const pixels = applyAdjustments(unpack(image), params);
-    return { payload: { threshold: otsuThreshold(toLuma(pixels)) } };
+    // Measured on the plane the encoder will actually threshold, so the answer
+    // suits line mode as well as tone, and reported back in the slider's units.
+    const { plane, linear } = tonePlane(pixels, options);
+    const chosen = otsuThreshold(plane);
+    return { payload: { threshold: Math.round(linear ? linearToThreshold(chosen) : chosen) } };
   },
 };
 

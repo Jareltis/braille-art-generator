@@ -2,8 +2,9 @@
 // One interface over "in a worker" and "right here".
 
 import { applyAdjustments } from '../core/adjust.js';
-import { imageDataToBraille, toLuma } from '../core/braille.js';
+import { imageDataToBraille, tonePlane } from '../core/braille.js';
 import { otsuThreshold } from '../core/otsu.js';
+import { linearToThreshold } from '../core/gamma.js';
 import { pack, transferOf, unpack } from '../worker/protocol.js';
 
 function workerPipeline(worker) {
@@ -46,9 +47,9 @@ function workerPipeline(worker) {
       const result = await send('generate', { image, params, options }, transferOf(image));
       return { text: result.text, pixels: unpack(result.image) };
     },
-    async otsu(imageData, params) {
+    async otsu(imageData, params, options) {
       const image = pack(imageData);
-      const { threshold } = await send('otsu', { image, params }, transferOf(image));
+      const { threshold } = await send('otsu', { image, params, options }, transferOf(image));
       return threshold;
     },
   };
@@ -68,8 +69,11 @@ function inlinePipeline() {
       const pixels = applyAdjustments(imageData, params);
       return { text: imageDataToBraille(pixels, options), pixels };
     },
-    async otsu(imageData, params) {
-      return otsuThreshold(toLuma(applyAdjustments(imageData, params)));
+    async otsu(imageData, params, options) {
+      // Same measurement and the same crossing back as the worker does.
+      const { plane, linear } = tonePlane(applyAdjustments(imageData, params), options);
+      const chosen = otsuThreshold(plane);
+      return Math.round(linear ? linearToThreshold(chosen) : chosen);
     },
   };
 }

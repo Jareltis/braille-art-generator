@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // The encoder. No DOM, no canvas: ImageData in, text out.
 
-import { luma } from './pixels.js';
+import { lightness, luminance, thresholdToLinear } from './gamma.js';
 import { DITHER_METHODS, DEFAULT_DITHER } from './dither.js';
 import { applyEdges } from './edges.js';
 
@@ -32,15 +32,47 @@ export const DOT_BITS = Object.freeze([
   Object.freeze([3, 4, 5, 7]), // dots 4, 5, 6, 8
 ]);
 
-/** ImageData to one luma sample per pixel, 0..255. */
-export function toLuma(imageData) {
+function samplePlane(imageData, convert) {
   const { data } = imageData;
   const plane = new Float32Array(imageData.width * imageData.height);
   for (let p = 0, i = 0; p < plane.length; p++, i += 4) {
-    plane[p] = luma(data[i], data[i + 1], data[i + 2]);
+    plane[p] = convert(data[i], data[i + 1], data[i + 2]);
   }
   return plane;
 }
+
+/**
+ * Linear light, which is what dot coverage reproduces: half the dots lit emits
+ * half the light, so the fraction that renders a tone is its linear luminance.
+ */
+export const toLuminance = (imageData) => samplePlane(imageData, luminance);
+
+/** Perceptual lightness, which is where edge detection belongs -- see ./gamma.js. */
+export const toLightness = (imageData) => samplePlane(imageData, lightness);
+
+/**
+ * The plane the encoder will actually threshold, and the units it is in.
+ *
+ * Tone and line want different spaces, and the choice decides how the threshold
+ * control has to be read, so both are settled in one place rather than at each
+ * call site.
+ */
+export function tonePlane(imageData, options = {}) {
+  const edge = options.edge;
+  const drawingLines = edge && edge.mode && edge.mode !== 'none' && (edge.amount ?? 1) > 0;
+
+  if (!drawingLines) {
+    return { plane: toLuminance(imageData), linear: true };
+  }
+  // Line strength is not a light measurement, so no gamma applies to it, and
+  // the tone it is mixed with is perceptual for the same reason.
+  const lines = applyEdges(toLightness(imageData), imageData.width, imageData.height, edge);
+  return { plane: lines, linear: false };
+}
+
+/** The threshold control is in sRGB; a linear plane needs it converted. */
+export const thresholdFor = (threshold, linear) =>
+  (linear ? thresholdToLinear(threshold) : threshold);
 
 /**
  * Luma plane to one bit per pixel, 1 meaning "dot raised".
@@ -96,10 +128,9 @@ export function imageDataToBraille(imageData, options = {}) {
       `image must be a multiple of ${CELL_W}x${CELL_H}, got ${width}x${height}`,
     );
   }
-  // Tone first, then optionally line: applyEdges hands back a plane in the same
-  // units, so binarize does not care which one it is looking at.
-  const plane = applyEdges(toLuma(imageData), width, height, options.edge);
-  return bitsToBraille(binarize(plane, width, height, options), cols, rows);
+  const { plane, linear } = tonePlane(imageData, options);
+  const threshold = thresholdFor(options.threshold ?? 128, linear);
+  return bitsToBraille(binarize(plane, width, height, { ...options, threshold }), cols, rows);
 }
 
 /**

@@ -4,9 +4,10 @@
 <body>
 <pre id="r">running</pre>
 <script type="module">
-import { binarize, imageDataToBraille, toLuma } from '../src/core/braille.js';
+import { binarize, imageDataToBraille, toLuminance, tonePlane } from '../src/core/braille.js';
 import { DITHER_METHODS, DEFAULT_DITHER } from '../src/core/dither.js';
 import { otsuThreshold } from '../src/core/otsu.js';
+import { lightness, linearToThreshold, luminance, thresholdToLinear } from '../src/core/gamma.js';
 import { applyAdjustments } from '../src/core/adjust.js';
 import { gaussianBlur } from '../src/core/blur.js';
 import { sobel, xdog, applyEdges } from '../src/core/edges.js';
@@ -142,6 +143,67 @@ async function run() {
   ok('a line uses far fewer cells than a filled half', inked(linedText) < inked(plainText) / 2,
      `${inked(linedText)} vs ${inked(plainText)} inked cells`);
   log.push(`INFO  xdog row: ${linedText.split(NEWLINE)[8].slice(10, 34)}`);
+
+  // --- gamma ---------------------------------------------------------------
+  const grey = (v) => {
+    const image = new ImageData(W, H);
+    for (let i = 0; i < image.data.length; i += 4) {
+      image.data[i] = image.data[i + 1] = image.data[i + 2] = v;
+      image.data[i + 3] = 255;
+    }
+    return image;
+  };
+
+  check('white is full luminance', Math.round(luminance(255, 255, 255)), 255);
+  check('black is none', luminance(0, 0, 0), 0);
+  // BT.709 on linear values. The old code applied BT.601 to gamma-encoded ones,
+  // which put pure blue at 29 of 255 and pure green at 150.
+  check('pure blue is as dark as it really is', Math.round(luminance(0, 0, 255)), 18);
+  check('pure green is as light as it really is', Math.round(luminance(0, 255, 0)), 182);
+  check('the threshold survives a round trip', Math.round(linearToThreshold(thresholdToLinear(128))), 128);
+
+  // The point of the whole exercise: a dithered flat tone must come out at the
+  // coverage that reproduces it. Half the dots lit emits half the light, so the
+  // fraction has to match linear luminance -- 0.216 for sRGB mid-grey, not the
+  // 0.5 that diffusing error over gamma-encoded values used to give.
+  const midPlane = tonePlane(grey(128), {}).plane;
+  const midCoverage = coverage(DITHER_METHODS['floyd-steinberg'](midPlane, W, H, thresholdToLinear(128)));
+  near('mid-grey is dithered at its true coverage', midCoverage, 0.19, 0.24);
+  ok('which is far from the old gamma-blind 0.5', Math.abs(midCoverage - 0.5) > 0.25,
+     `${midCoverage.toFixed(3)} against 0.500`);
+
+  const darkCoverage = coverage(DITHER_METHODS['floyd-steinberg'](tonePlane(grey(64), {}).plane, W, H, thresholdToLinear(128)));
+  near('a quarter-tone likewise', darkCoverage, 0.03, 0.07);
+
+  // Lightness is the perceptual scale: even steps of sRGB give even steps of L*,
+  // while linear luminance bends hard. This is why edges are detected in one and
+  // dots are counted in the other.
+  const steps = [0, 64, 128, 192, 255];
+  const lightnessSteps = steps.map((v) => lightness(v, v, v));
+  const luminanceSteps = steps.map((v) => luminance(v, v, v));
+  const evenness = (values) => {
+    const gaps = values.slice(1).map((v, i) => v - values[i]);
+    return Math.max(...gaps) / Math.min(...gaps);
+  };
+  ok('lightness rises evenly', evenness(lightnessSteps) < 1.5, `ratio ${evenness(lightnessSteps).toFixed(2)}`);
+  ok('linear luminance does not', evenness(luminanceSteps) > 3, `ratio ${evenness(luminanceSteps).toFixed(2)}`);
+
+  // A smooth ramp has no edges in it. Detecting in linear light made XDoG answer
+  // to the gamma curve and ink the entire image; in lightness it stays quiet.
+  const ramped = new ImageData(W, H);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const i = (y * W + x) * 4;
+      const v = Math.round((x / (W - 1)) * 255);
+      ramped.data[i] = ramped.data[i + 1] = ramped.data[i + 2] = v;
+      ramped.data[i + 3] = 255;
+    }
+  }
+  const rampLines = tonePlane(ramped, { edge: { mode: 'xdog', amount: 1, radius: 1 } });
+  check('a line plane is not measured in light', rampLines.linear, false);
+  const rampInk = coverage(binarize(rampLines.plane, W, H, { threshold: 40, method: 'threshold' }));
+  ok('a smooth ramp reads as having no edges', rampInk < 0.05,
+     `${(rampInk * 100).toFixed(1)}% of the frame lit`);
 
   // --- presets -------------------------------------------------------------
   // A preset must write every control it covers, or picking one twice lands
@@ -376,7 +438,12 @@ async function run() {
   check('worker returns the pixels it encoded', fromWorker.pixels.width, W);
   log.push(`INFO  sample row: ${fromWorker.text.split('\n')[8].slice(0, 24)}`);
 
-  const expectedOtsu = otsuThreshold(toLuma(applyAdjustments(makeImage(), params)));
+  // The pipeline reports in the slider's units, so the reference has to make
+  // the same crossing back out of linear light.
+  const reference = tonePlane(applyAdjustments(makeImage(), params), options);
+  const expectedOtsu = Math.round(reference.linear
+    ? linearToThreshold(otsuThreshold(reference.plane))
+    : otsuThreshold(reference.plane));
   check('worker otsu matches main thread', await pipe.otsu(makeImage(), params), expectedOtsu);
 
   // --- preview round-trip through the worker -------------------------------

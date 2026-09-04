@@ -21,6 +21,7 @@ const ASSETS = [
   './src/core/braille.js',
   './src/core/dither.js',
   './src/core/edges.js',
+  './src/core/gamma.js',
   './src/core/otsu.js',
   './src/core/pixels.js',
   './src/core/presets.js',
