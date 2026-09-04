@@ -30,6 +30,7 @@ const ASSETS = [
   './src/core/otsu.js',
   './src/core/pixels.js',
   './src/core/presets.js',
+  './src/core/sample.js',
   './src/ui/camera.js',
   './src/ui/canvas.js',
   './src/ui/draw.js',

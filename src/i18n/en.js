@@ -201,6 +201,9 @@ export const en = {
     'status.linkNoText': 'Link copied. The lettering was too long to fit in it.',
     'status.linkApplied': 'Settings taken from the link.',
 
+    'detail.label': 'Detail',
+    'detail.hint': 'Where a real feature crosses a cell, it decides the dot instead of the average. Flat and noisy areas keep their tone exactly.',
+
     // --- meta ---
     'meta.size': '{cols}×{rows} cells',
     'meta.trimmed': '{fromCols}×{fromRows} → {cols}×{rows} after trimming',

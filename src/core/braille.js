@@ -5,7 +5,8 @@ import { lightness, luminance, thresholdToLinear } from './gamma.js';
 import { CELL_H, CELL_W } from './pixels.js';
 import { cellColours } from './colour.js';
 import { DITHER_METHODS, DEFAULT_DITHER } from './dither.js';
-import { applyEdges } from './edges.js';
+import { lineMap, mixLines, structureMap } from './edges.js';
+import { reduceMax, reduceStats, withDetail } from './sample.js';
 
 /**
  * U+2800 BRAILLE PATTERN BLANK. An empty cell is still a braille glyph rather
@@ -54,21 +55,43 @@ export const toLightness = (imageData) => samplePlane(imageData, lightness);
 /**
  * The plane the encoder will actually threshold, and the units it is in.
  *
+ * The image handed in may be larger than the grid -- that is the point. Lines
+ * are found and detail is judged where the structure still exists, and only
+ * then reduced to one value per dot. Reducing first and asking afterwards is
+ * what made a one-pixel line vanish outright.
+ *
  * Tone and line want different spaces, and the choice decides how the threshold
- * control has to be read, so both are settled in one place rather than at each
- * call site.
+ * control has to be read, so both are settled in one place.
  */
 export function tonePlane(imageData, options = {}) {
+  const { width, height } = imageData;
+  const cols = options.grid?.cols ?? width / CELL_W;
+  const rows = options.grid?.rows ?? height / CELL_H;
+  const gridW = cols * CELL_W;
+  const gridH = rows * CELL_H;
+
   const edge = options.edge;
-  const drawingLines = edge && edge.mode && edge.mode !== 'none' && (edge.amount ?? 1) > 0;
+  const drawingLines = Boolean(edge && edge.mode && edge.mode !== 'none' && (edge.amount ?? 1) > 0);
+  const strength = Number(options.detail ?? 0);
+
+  const blend = (plane) => {
+    const stats = reduceStats(plane, width, height, gridW, gridH);
+    if (!(strength > 0)) return stats.mean;
+    const structure = reduceMax(structureMap(plane, width, height), width, height, gridW, gridH);
+    return withDetail(stats, structure, strength);
+  };
 
   if (!drawingLines) {
-    return { plane: toLuminance(imageData), linear: true };
+    return { plane: blend(toLuminance(imageData)), linear: true };
   }
+
   // Line strength is not a light measurement, so no gamma applies to it, and
   // the tone it is mixed with is perceptual for the same reason.
-  const lines = applyEdges(toLightness(imageData), imageData.width, imageData.height, edge);
-  return { plane: lines, linear: false };
+  const lightness = toLightness(imageData);
+  const lines = reduceMax(
+    lineMap(lightness, width, height, edge), width, height, gridW, gridH,
+  );
+  return { plane: mixLines(blend(lightness), lines, edge.amount ?? 1), linear: false };
 }
 
 /** The threshold control is in sRGB; a linear plane needs it converted. */
@@ -121,12 +144,11 @@ export function bitsToBraille(bits, cols, rows) {
  * grid unambiguous and stops silent cropping of a trailing partial row.
  */
 export function encode(imageData, options = {}) {
-  const { width, height } = imageData;
-  const cols = width / CELL_W;
-  const rows = height / CELL_H;
+  const cols = options.grid?.cols ?? imageData.width / CELL_W;
+  const rows = options.grid?.rows ?? imageData.height / CELL_H;
   if (!Number.isInteger(cols) || !Number.isInteger(rows)) {
     throw new RangeError(
-      `image must be a multiple of ${CELL_W}x${CELL_H}, got ${width}x${height}`,
+      `image must be a multiple of ${CELL_W}x${CELL_H}, got ${imageData.width}x${imageData.height}`,
     );
   }
   const { plane, linear } = tonePlane(imageData, options);
@@ -134,10 +156,13 @@ export function encode(imageData, options = {}) {
   // Where the control sits when centred, so a method that picks its own
   // threshold knows what "no adjustment" means in the plane's units.
   const neutral = thresholdFor(128, linear);
-  const bits = binarize(plane, width, height, { ...options, threshold, neutral });
+  const bits = binarize(plane, cols * CELL_W, rows * CELL_H, { ...options, threshold, neutral });
 
   return {
     text: bitsToBraille(bits, cols, rows),
+    // The very values the dots were decided from, at grid size: that is what
+    // the sampled-pixels pane should be showing.
+    plane,
     // Colour takes no part in choosing the dots; it only tints them afterwards.
     colours: options.colour ? cellColours(imageData, bits, cols, rows) : null,
     cols,

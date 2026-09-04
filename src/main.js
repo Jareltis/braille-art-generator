@@ -34,6 +34,17 @@ const MAX_ROWS = 400;
 const PREVIEW_LIMIT = { w: 900, h: 700 };
 
 /**
+ * How much of the picture the encoder is allowed to look at.
+ *
+ * Larger than the grid, because structure only exists above it, and bounded,
+ * because every one of these pixels is walked in script rather than by the
+ * browser. On ordinary sizes the budget never binds: an 80-column art asks for
+ * 640x368.
+ */
+const DETAIL_SCALE = 4;
+const DETAIL_BUDGET = 2_000_000;
+
+/**
  * Above this many cells the art stops following the controls by itself and
  * waits for the button. Dithering is a serial pass over every pixel, so the
  * largest grids are past the point where a slider can stay responsive even off
@@ -198,6 +209,7 @@ const readOptions = () => ({
   invert: isInverted(),
   method: dom.dither.value || DEFAULT_DITHER,
   colour: dom.colour.checked,
+  detail: controls.detail.value / 100,
   edge: {
     mode: dom.edgeMode.value,
     amount: controls.edgeAmount.value / 100,
@@ -231,6 +243,20 @@ function rowsFor(cols) {
   // measured by the person sending it rather than guessed here.
   const corrected = Math.round(onScreen * calibrationOf(dom.platform.value).scale);
   return Math.min(MAX_ROWS, Math.max(1, corrected));
+}
+
+function detailSize(cols, rows) {
+  const gridW = cols * CELL_W;
+  const gridH = rows * CELL_H;
+  let w = Math.max(gridW, Math.min(gridW * DETAIL_SCALE, sourceW()));
+  let h = Math.max(gridH, Math.min(gridH * DETAIL_SCALE, sourceH()));
+
+  const fit = Math.sqrt(DETAIL_BUDGET / (w * h));
+  if (fit < 1) {
+    w = Math.max(gridW, Math.round(w * fit));
+    h = Math.max(gridH, Math.round(h * fit));
+  }
+  return { w, h };
 }
 
 function resolveGrid() {
@@ -291,11 +317,12 @@ async function render() {
   // Sample the ORIGINAL straight to the grid size. Generation used to run off
   // the <=800x600 preview, so anything larger was upscaled from detail that had
   // already been thrown away.
-  const target = drawScaled(source, cols * CELL_W, rows * CELL_H, backgroundFor(isInverted()), { smooth: smoothScaling, crop: cropRect });
+  const detail = detailSize(cols, rows);
+  const target = drawScaled(source, detail.w, detail.h, backgroundFor(isInverted()), { smooth: smoothScaling, crop: cropRect });
 
   const token = ++generateToken;
   const { text, pixels, colours, cols: gridCols } = await pipeline.generate(
-    readImageData(target), readAdjustments(), readOptions(),
+    readImageData(target), readAdjustments(), { ...readOptions(), grid: { cols, rows } },
   );
   if (token !== generateToken) return;
 
@@ -426,8 +453,9 @@ async function autoThreshold() {
   const { cols, rows } = resolveGrid();
   // Measure the histogram of the pixels that will actually be encoded, not of
   // the preview -- downscaling changes the distribution.
-  const target = drawScaled(source, cols * CELL_W, rows * CELL_H, backgroundFor(isInverted()), { smooth: smoothScaling, crop: cropRect });
-  const threshold = await pipeline.otsu(readImageData(target), readAdjustments(), readOptions());
+  const detail = detailSize(cols, rows);
+  const target = drawScaled(source, detail.w, detail.h, backgroundFor(isInverted()), { smooth: smoothScaling, crop: cropRect });
+  const threshold = await pipeline.otsu(readImageData(target), readAdjustments(), { ...readOptions(), grid: { cols, rows } });
   controls.threshold.set(threshold);
   setStatus(t('threshold.picked', { value: threshold }), 'ok');
   changed({ affectsPreview: false });
@@ -484,6 +512,7 @@ function applyPreset(key) {
   const chosen = preset.settings;
   dom.dither.value = chosen.method;
   dom.edgeMode.value = chosen.edgeMode;
+  controls.detail.set(chosen.detail);
   controls.threshold.set(chosen.threshold);
   controls.edgeAmount.set(chosen.edgeAmount);
   controls.edgeRadius.set(chosen.edgeRadius);
@@ -564,7 +593,7 @@ function setLayout(name) {
  * Persistence
  * ------------------------------------------------------------------------ */
 const PERSISTED_RANGES = [
-  'threshold', 'brightness', 'contrast', 'saturation', 'sharpness', 'edgeAmount', 'edgeRadius',
+  'detail', 'threshold', 'brightness', 'contrast', 'saturation', 'sharpness', 'edgeAmount', 'edgeRadius',
 ];
 const PERSISTED_FIELDS = [
   'preset', 'platform', 'dither', 'invert', 'edgeMode', 'outWidth', 'outHeight', 'fontSize', 'layout',
@@ -898,11 +927,14 @@ function setSourceKind(kind) {
 /** Render at a given width without touching the page, for searching. */
 async function artAtWidth(cols) {
   const rows = dom.keepAspect.checked ? rowsFor(cols) : clampInt(dom.rows.value, 1, MAX_ROWS, 30);
+  const detail = detailSize(cols, rows);
   const target = drawScaled(
-    source, cols * CELL_W, rows * CELL_H, backgroundFor(isInverted()),
+    source, detail.w, detail.h, backgroundFor(isInverted()),
     { smooth: smoothScaling, crop: cropRect },
   );
-  const { text } = await pipeline.generate(readImageData(target), readAdjustments(), readOptions());
+  const { text } = await pipeline.generate(
+    readImageData(target), readAdjustments(), { ...readOptions(), grid: { cols, rows } },
+  );
   return dom.trimBlank.checked ? trimBlank(text) : text;
 }
 
@@ -1081,6 +1113,7 @@ function init() {
   controls.contrast = bindRange(el('contrast'), el('contrastVal'), { onChange: changed });
   controls.saturation = bindRange(el('saturation'), el('saturationVal'), { onChange: changed });
   controls.sharpness = bindRange(el('sharpness'), el('sharpnessVal'), { decimals: 1, onChange: changed });
+  controls.detail = bindRange(el('detail'), el('detailVal'), { onChange: () => changed({ affectsPreview: false }) });
   controls.edgeAmount = bindRange(el('edgeAmount'), el('edgeAmountVal'), { onChange: () => changed({ affectsPreview: false }) });
   controls.edgeRadius = bindRange(el('edgeRadius'), el('edgeRadiusVal'), { decimals: 1, onChange: () => changed({ affectsPreview: false }) });
 

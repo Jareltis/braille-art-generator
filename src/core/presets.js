@@ -11,6 +11,7 @@
 export const CONTENT_PRESETS = Object.freeze({
   photo: {
     settings: {
+      detail: 35,
       method: 'floyd-steinberg',
       threshold: 128,
       edgeMode: 'none',
@@ -26,6 +27,7 @@ export const CONTENT_PRESETS = Object.freeze({
 
   lineart: {
     settings: {
+      detail: 70,
       method: 'threshold',
       threshold: 40,
       edgeMode: 'xdog',
@@ -41,6 +43,7 @@ export const CONTENT_PRESETS = Object.freeze({
 
   logo: {
     settings: {
+      detail: 60,
       method: 'threshold',
       threshold: 128,
       edgeMode: 'none',
@@ -56,6 +59,7 @@ export const CONTENT_PRESETS = Object.freeze({
 
   pixel: {
     settings: {
+      detail: 0,
       method: 'threshold',
       threshold: 128,
       edgeMode: 'none',

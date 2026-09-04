@@ -84,21 +84,47 @@ export function xdog(plane, width, height, sigma) {
  * 1 is pure line, and in between the two are blended before dithering, so a
  * drawing can keep its shading and still gain defined edges.
  */
-export function applyEdges(plane, width, height, { mode = 'none', amount = 1, radius = 1 } = {}) {
-  if (mode === 'none' || !(amount > 0)) return plane;
+/**
+ * How much organised structure sits at each point.
+ *
+ * Gradient after a light blur, which is what separates a real feature from
+ * noise: measured on a one-pixel line the response is about 66 and on noise
+ * 24-30, against 115 for a genuine boundary.
+ */
+export const structureMap = (plane, width, height) => sobel(gaussianBlur(plane, width, height, 1), width, height);
+
+/**
+ * The line map alone, at whatever resolution it is handed.
+ *
+ * Separate from the mixing because the two now happen in different places:
+ * lines are found on the detailed raster, where the structure still exists, and
+ * mixed with tone afterwards, at the size of the cell grid.
+ */
+export function lineMap(plane, width, height, { mode = 'none', radius = 1 } = {}) {
+  if (mode === 'none') return null;
   if (!EDGE_MODES.includes(mode)) throw new RangeError(`unknown edge mode: ${mode}`);
 
   // Both detectors amplify noise, so smooth first. For xdog this same radius is
   // the stroke width; for sobel it is purely denoising.
-  const lines = mode === 'sobel'
+  return mode === 'sobel'
     ? sobel(gaussianBlur(plane, width, height, radius), width, height)
     : xdog(plane, width, height, radius);
+}
 
+/** Blend a line map into a tone plane. Both must be the same size. */
+export function mixLines(tone, lines, amount) {
+  if (!lines || !(amount > 0)) return tone;
   if (amount >= 1) return lines;
 
-  const out = new Float32Array(plane.length);
-  for (let i = 0; i < plane.length; i++) {
-    out[i] = plane[i] * (1 - amount) + lines[i] * amount;
+  const out = new Float32Array(tone.length);
+  for (let i = 0; i < tone.length; i++) {
+    out[i] = tone[i] * (1 - amount) + lines[i] * amount;
   }
   return out;
+}
+
+/** Detect and mix at one resolution. Kept for callers that have only one. */
+export function applyEdges(plane, width, height, { mode = 'none', amount = 1, radius = 1 } = {}) {
+  if (mode === 'none' || !(amount > 0)) return plane;
+  return mixLines(plane, lineMap(plane, width, height, { mode, radius }), amount);
 }

@@ -22,43 +22,49 @@ import { CELL_H, CELL_W } from './pixels.js';
  * would see mixed, it is systematically too bright.
  */
 export function cellColours(imageData, bits, cols, rows) {
-  const { width, data } = imageData;
-  const colours = new Uint8ClampedArray(cols * rows * 3);
+  const { width, height, data } = imageData;
+  const dotsW = cols * CELL_W;
+  const dotsH = rows * CELL_H;
 
-  for (let cy = 0; cy < rows; cy++) {
-    for (let cx = 0; cx < cols; cx++) {
-      let r = 0;
-      let g = 0;
-      let b = 0;
-      let lit = 0;
-      let rAll = 0;
-      let gAll = 0;
-      let bAll = 0;
+  const lit = new Float64Array(cols * rows * 3);
+  const litCount = new Uint32Array(cols * rows);
+  const all = new Float64Array(cols * rows * 3);
+  const allCount = new Uint32Array(cols * rows);
 
-      for (let dy = 0; dy < CELL_H; dy++) {
-        for (let dx = 0; dx < CELL_W; dx++) {
-          const x = cx * CELL_W + dx;
-          const y = cy * CELL_H + dy;
-          const pixel = (y * width + x) * 4;
-          const lr = srgbToLinear(data[pixel]);
-          const lg = srgbToLinear(data[pixel + 1]);
-          const lb = srgbToLinear(data[pixel + 2]);
+  // The raster may be larger than the grid, so a pixel is placed by the same
+  // partition the reduction uses rather than by a fixed block size.
+  const dotColumn = new Uint32Array(width);
+  for (let x = 0; x < width; x++) dotColumn[x] = Math.min(dotsW - 1, Math.floor((x * dotsW) / width));
 
-          rAll += lr; gAll += lg; bAll += lb;
-          if (bits[y * width + x]) {
-            r += lr; g += lg; b += lb;
-            lit++;
-          }
-        }
+  for (let y = 0; y < height; y++) {
+    const dotRow = Math.min(dotsH - 1, Math.floor((y * dotsH) / height));
+    const cellRow = ((dotRow / CELL_H) | 0) * cols;
+    for (let x = 0; x < width; x++) {
+      const pixel = (y * width + x) * 4;
+      const r = srgbToLinear(data[pixel]);
+      const g = srgbToLinear(data[pixel + 1]);
+      const b = srgbToLinear(data[pixel + 2]);
+      const cell = cellRow + ((dotColumn[x] / CELL_W) | 0);
+      const at = cell * 3;
+
+      all[at] += r; all[at + 1] += g; all[at + 2] += b;
+      allCount[cell] += 1;
+
+      if (bits[dotRow * dotsW + dotColumn[x]]) {
+        lit[at] += r; lit[at + 1] += g; lit[at + 2] += b;
+        litCount[cell] += 1;
       }
-
-      const count = lit || CELL_W * CELL_H;
-      const source = lit ? [r, g, b] : [rAll, gAll, bAll];
-      const at = (cy * cols + cx) * 3;
-      colours[at] = linearToSrgb(source[0] / count);
-      colours[at + 1] = linearToSrgb(source[1] / count);
-      colours[at + 2] = linearToSrgb(source[2] / count);
     }
+  }
+
+  const colours = new Uint8ClampedArray(cols * rows * 3);
+  for (let cell = 0; cell < cols * rows; cell++) {
+    const at = cell * 3;
+    const source = litCount[cell] ? lit : all;
+    const count = litCount[cell] || allCount[cell] || 1;
+    colours[at] = linearToSrgb(source[at] / count);
+    colours[at + 1] = linearToSrgb(source[at + 1] / count);
+    colours[at + 2] = linearToSrgb(source[at + 2] / count);
   }
   return colours;
 }

@@ -28,8 +28,18 @@ const handlers = {
 
   generate({ image, params, options }) {
     const pixels = applyAdjustments(unpack(image), params);
-    const { text, colours, cols, rows } = encode(pixels, options);
-    const out = pack(pixels);
+    const { text, colours, cols, rows, plane } = encode(pixels, options);
+
+    // Grey from the plane the dots were actually judged from, rather than the
+    // raster it came from: at this size the two are no longer the same thing.
+    const preview = new ImageData(cols * 2, rows * 4);
+    for (let i = 0, at = 0; i < plane.length; i++, at += 4) {
+      const value = plane[i] < 0 ? 0 : plane[i] > 255 ? 255 : plane[i];
+      preview.data[at] = preview.data[at + 1] = preview.data[at + 2] = value;
+      preview.data[at + 3] = 255;
+    }
+
+    const out = pack(preview);
     const transfer = transferOf(out);
     if (colours) transfer.push(colours.buffer);
     return { payload: { text, colours, cols, rows, image: out }, transfer };

@@ -22,6 +22,7 @@ only ever hands out static files.
 
 | | |
 |---|---|
+| **Detail** | thin structure survives the reduction instead of being averaged away |
 | **Dithering** | Floyd–Steinberg, Atkinson, blue noise, Bayer 4×4 |
 | **Thresholds** | global, automatic by Otsu, and local adaptive (Sauvola) |
 | **Edge detection** | XDoG for drawn strokes, Sobel for gradients, a slider between fill and lines |
@@ -78,6 +79,44 @@ a matter of copying the folder to GitHub Pages or any static host.
 ---
 
 ## How it works
+
+### Deciding a dot from the picture, not from a thumbnail
+
+The order used to be: shrink the image to the grid, then decide each dot from
+what survived. That throws the evidence away before the question is asked. A
+one-pixel line in a photograph becomes a tenth of a level of grey and the
+threshold never sees it — measured on a test frame, **none of it survived at
+all**.
+
+Now the encoder is handed a raster several times the grid, and reduction and
+decision happen together: every source pixel under a dot is visited, and what
+the dot learns is not only the average but the extremes. Visiting them costs
+nothing extra — the average already had to touch every one.
+
+Which of them speaks is decided per dot by how much structure is there,
+measured as the gradient response after a light blur. That number separates a
+real feature from noise: on a cell holding a one-pixel line it reads about 66,
+on one holding only noise 24–30, and on a genuine boundary 115. A factor of
+roughly 2.4 is enough to lean on but not enough to switch on, so the **Detail**
+control blends rather than switches.
+
+The result, measured:
+
+| | flat field | noise ±50 | one-pixel line |
+|---|---|---|---|
+| shrink first (the old way) | — | — | **0% survives** |
+| detail 0 | ±0.4 pp | +2.2 pp | 3% |
+| **detail 35 (default)** | **±0.4 pp** | +4.4 pp | **100%** |
+| detail 70 | ±0.4 pp | +6.7 pp | 100% |
+
+An even field is untouched at any setting — the structure gate sees nothing and
+the average stands. The price shows only on heavy noise, about two percentage
+points of coverage, and it buys the thin structure back whole.
+
+Lines are found on that same detailed raster and reduced to the grid by taking
+the strongest value rather than the average: a stroke one pixel wide is the
+whole point of the map it came from, and averaging is precisely what would
+erase it again.
 
 ### The methods
 

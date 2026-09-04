@@ -15,6 +15,7 @@ import { sobel, xdog, applyEdges } from '../src/core/edges.js';
 import { CONTENT_PRESETS } from '../src/core/presets.js';
 import { EDGE_MODES } from '../src/core/edges.js';
 import { createCanvas, drawScaled, readImageData } from '../src/ui/canvas.js';
+import { STRUCTURE_FULL, reduceMax, reduceStats, withDetail } from '../src/core/sample.js';
 import { FULL_FRAME, isWholeImage } from '../src/ui/crop.js';
 import { DEFAULT_TEXT_FONT, TEXT_FONTS, renderText } from '../src/ui/text.js';
 import { FALLBACK, LOCALES, formatNumber, setLocale, t } from '../src/i18n/index.js';
@@ -704,6 +705,89 @@ async function run() {
     check('and the caller can say so', textFits(wordy), false);
     check('while ordinary lettering fits', textFits({ textInput: 'HELLO' }), true);
     ok('the rest of the settings still travel', toHash(wordy).includes('w=80'));
+  }
+
+  {
+    // --- reducing with the evidence still present ---------------------------
+    // Four source pixels per cell, values 0 10 20 30 in the first, 100.. in the
+    // second: the partition must be exact and the extremes must survive it.
+    const plane = Float32Array.from([0, 10, 100, 110, 20, 30, 120, 130]);
+    const stats = reduceStats(plane, 4, 2, 2, 1);
+    check('the mean is the mean', `${stats.mean[0]},${stats.mean[1]}`, '15,115');
+    check('the darkest survives', `${stats.low[0]},${stats.low[1]}`, '0,100');
+    check('the lightest survives', `${stats.high[0]},${stats.high[1]}`, '30,130');
+
+    // Every source pixel must land in exactly one cell, whatever the ratio.
+    const odd = new Float32Array(7 * 5).fill(1);
+    const counted = reduceStats(odd, 7, 5, 3, 2);
+    ok('an awkward ratio still partitions cleanly',
+       [...counted.mean].every((v) => Math.abs(v - 1) < 1e-6), [...counted.mean].join(','));
+
+    // A line is the point of the map it comes from, so it is taken at its peak.
+    const sparse = new Float32Array(16);
+    sparse[5] = 200;
+    check('the strongest value carries', reduceMax(sparse, 4, 4, 2, 2)[0], 200);
+    check('and does not spill into a neighbour', reduceMax(sparse, 4, 4, 2, 2)[1], 0);
+
+    // --- blending by how much structure is there ---------------------------
+    const one = { mean: Float32Array.from([100]), low: Float32Array.from([0]), high: Float32Array.from([255]) };
+    check('no strength leaves the mean alone', withDetail(one, Float32Array.from([999]), 0)[0], 100);
+    check('no structure leaves the mean alone', withDetail(one, Float32Array.from([0]), 1)[0], 100);
+    // 255 is 155 away from 100, while 0 is only 100 away: the lighter extreme wins
+    check('it reaches for the farther extreme',
+      Math.round(withDetail(one, Float32Array.from([STRUCTURE_FULL]), 1)[0]), 255);
+    ok('and reaches part way at part strength',
+       Math.abs(withDetail(one, Float32Array.from([STRUCTURE_FULL]), 0.5)[0] - 177.5) < 0.1,
+       `${withDetail(one, Float32Array.from([STRUCTURE_FULL]), 0.5)[0]}`);
+
+    // --- what all of it is for ---------------------------------------------
+    // A one-pixel line, eight source pixels to a dot. Averaging first loses it
+    // outright; judging from the detail keeps it.
+    const D = 320;
+    const cols = 20;
+    const rows = 10;
+    const detailed = new ImageData(D, D);
+    const lineCells = new Set();
+    for (let i = 0; i < D; i++) {
+      for (const [x, y] of [[i, 100], [160, i]]) {
+        const at = (y * D + x) * 4;
+        detailed.data[at] = detailed.data[at + 1] = detailed.data[at + 2] = 255;
+        lineCells.add(`${Math.floor((y * rows) / D)},${Math.floor((x * cols) / D)}`);
+      }
+    }
+    for (let i = 3; i < detailed.data.length; i += 4) detailed.data[i] = 255;
+
+    const litOnLine = (text) => {
+      const lines = text.split(String.fromCharCode(10));
+      let hit = 0;
+      for (let r = 0; r < lines.length; r++) {
+        for (let c = 0; c < lines[r].length; c++) {
+          if (lines[r].charCodeAt(c) !== 0x2800 && lineCells.has(`${r},${c}`)) hit++;
+        }
+      }
+      return hit / lineCells.size;
+    };
+
+    const grid = { cols, rows };
+    const flat = encode(detailed, { threshold: 128, method: 'threshold', detail: 0, grid });
+    const kept = encode(detailed, { threshold: 128, method: 'threshold', detail: 0.35, grid });
+
+    ok('averaging alone loses a one-pixel line', litOnLine(flat.text) < 0.1,
+       `${(litOnLine(flat.text) * 100).toFixed(0)}% of its cells`);
+    ok('judging from the detail keeps it', litOnLine(kept.text) > 0.9,
+       `${(litOnLine(kept.text) * 100).toFixed(0)}% of its cells`);
+
+    // And it must not cost anything where there is nothing to keep.
+    const even = new ImageData(D, D);
+    for (let i = 0; i < D * D; i++) {
+      even.data[i * 4] = even.data[i * 4 + 1] = even.data[i * 4 + 2] = 160;
+      even.data[i * 4 + 3] = 255;
+    }
+    const dots = (text) => [...text.split(String.fromCharCode(10)).join('')]
+      .reduce((n, ch) => { let m = ch.charCodeAt(0) - 0x2800; while (m) { n += m & 1; m >>= 1; } return n; }, 0);
+    const plainTone = dots(encode(even, { threshold: 128, method: 'floyd-steinberg', detail: 0, grid }).text);
+    const detailTone = dots(encode(even, { threshold: 128, method: 'floyd-steinberg', detail: 0.7, grid }).text);
+    check('an even field is untouched by any amount of detail', detailTone, plainTone);
   }
 
   // --- offline shell -------------------------------------------------------
