@@ -42,6 +42,7 @@ const ASSETS = [
   './src/ui/crop.js',
   './src/ui/export.js',
   './src/ui/link.js',
+  './src/ui/pace.js',
   './src/ui/pipeline.js',
   './src/ui/platforms.js',
   './src/ui/settings.js',

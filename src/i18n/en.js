@@ -203,7 +203,7 @@ export const en = {
     'status.done': 'Done.',
     'status.needImage': 'Load an image first.',
     'status.needArt': 'Generate the art first.',
-    'status.tooBigForLive': 'Too large to follow the controls — press Recalculate.',
+    'status.tooBigForLive': 'A redraw here is too slow to follow the controls — press Recalculate.',
     'status.copied': 'Copied to the clipboard.',
     'status.copiedFenced': 'Copied, wrapped in a code block.',
     'status.clipboardUnavailable': 'The clipboard needs http(s) — this page was opened as a file.',

@@ -48,6 +48,7 @@ import {
   saveCalibration, splitForPlatform,
 } from '../src/ui/platforms.js';
 import { createPipeline } from '../src/ui/pipeline.js';
+import { LIVE_BUDGET_MS, LIVE_RESUME_MS, keepsUp } from '../src/ui/pace.js';
 
 const out = (t) => {
   document.getElementById('r').textContent = t;
@@ -1444,6 +1445,35 @@ async function run() {
        !ansi.includes('38;2;') && /\[\d\dm/.test(ansi), JSON.stringify(ansi.slice(0, 24)));
     ok('and full colour still gets the full codes',
        brailleToAnsi(art, snapped, 2, 'full').includes('38;2;'), 'truecolor');
+  }
+
+  // --- whether the art can still follow the sliders ------------------------
+  // This was a cell count picked on one machine. The same grid is half a second
+  // on a laptop and several on a phone, so the answer now comes from what the
+  // last redraw actually cost.
+  {
+    check('with nothing measured yet, it tries', keepsUp(1000000, null), true);
+    check('and a nonsense measurement does not stop it', keepsUp(5000, { ms: 100, cells: 0 }), true);
+
+    // 30 000 cells at 300ms is 10us a cell: a fifth of that size is well inside
+    // the budget, four times it is well outside.
+    const measured = { ms: 300, cells: 30000 };
+    check('a smaller grid keeps up', keepsUp(6000, measured), true);
+    check('a much larger one does not', keepsUp(120000, measured), false);
+
+    // The gap between stopping and starting again: a grid that costs exactly
+    // the budget must not start and stop on alternate keystrokes.
+    const onTheLine = { ms: LIVE_BUDGET_MS, cells: 1000 };
+    check('at the budget it still follows', keepsUp(1000, onTheLine, true), true);
+    check('but having stopped, it does not resume there', keepsUp(1000, onTheLine, false), false);
+    const wellUnder = { ms: LIVE_RESUME_MS - 50, cells: 1000 };
+    check('it resumes once redraws are comfortably quick', keepsUp(1000, wellUnder, false), true);
+
+    // Shrinking the grid should let it follow again without waiting for another
+    // redraw to prove it, which is the point of scaling the measurement.
+    const slow = { ms: 2000, cells: 160000 };
+    check('after shrinking, the estimate says yes', keepsUp(8000, slow, false), true);
+    check('and at the old size it still says no', keepsUp(160000, slow, false), false);
   }
 
   const failed = log.filter((l) => l.startsWith('FAIL')).length;

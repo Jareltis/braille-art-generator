@@ -15,6 +15,7 @@ import { DRAWS_PER_FAMILY, VARIANT_FAMILIES } from './core/variants.js';
 import { fitWithin } from './core/pixels.js';
 import { createCanvas, drawScaled, putImageData, readImageData } from './ui/canvas.js';
 import { bindRange, clampInt, coalesce } from './ui/controls.js';
+import { keepsUp } from './ui/pace.js';
 import {
   brailleToAnsi, brailleToHtml, brailleToSvg, copyText, downloadCanvas, downloadHtml, downloadSvg,
   downloadText, renderTextToCanvas,
@@ -48,12 +49,14 @@ const DETAIL_SCALE = 4;
 const DETAIL_BUDGET = 2_000_000;
 
 /**
- * Above this many cells the art stops following the controls by itself and
- * waits for the button. Dithering is a serial pass over every pixel, so the
- * largest grids are past the point where a slider can stay responsive even off
- * the main thread.
+ * What the last redraw cost, and how much of it there was.
+ *
+ * The art follows the sliders while a redraw stays quick, and the only honest
+ * way to know that is to have timed one -- see ui/pace.js for why a cell count
+ * was the wrong unit.
  */
-const LIVE_CELL_LIMIT = 200 * 200;
+let lastRender = null;
+let following = true;
 
 const el = (id) => document.getElementById(id);
 
@@ -384,24 +387,52 @@ const fail = (error) => setStatus(
 );
 
 const schedulePreview = coalesce(() => { renderPreview().catch(fail); });
+
 /**
- * "Done." is only worth saying when there is nothing better to say. Anything
+ * One redraw at a time, and always the newest one.
+ *
+ * Coalescing by animation frame is not enough on its own: it merges the events
+ * of a single frame, then the next frame starts another redraw regardless of
+ * whether the last has finished. Dragging a slider over a large grid therefore
+ * queued a redraw every frame, each of which the worker dutifully computed and
+ * the page then threw away as stale -- the art arrived long after the hand had
+ * stopped. Now a request that finds one already running only leaves a note, and
+ * the settings are read afresh when that note is picked up.
+ *
+ * "Done." is only worth saying when there is nothing better to say: anything
  * that reports a result and redraws -- picking a threshold, fitting to a limit
- * -- used to have its message wiped a fraction of a second later by the render
+ * -- used to have its message wiped a fraction of a second later by the redraw
  * it had itself triggered.
  */
-const renderThen = coalesce((stamp) => {
-  render()
-    .then(() => {
+let rendering = false;
+let renderWanted = false;
+
+async function keepRendering() {
+  rendering = true;
+  try {
+    do {
+      renderWanted = false;
+      const stamp = statusStamp;
+      const { cols, rows } = resolveGrid();
+      const started = performance.now();
+      await render();
+      lastRender = { ms: performance.now() - started, cells: cols * rows };
+      following = keepsUp(lastRender.cells, lastRender, following);
       if (statusStamp === stamp) setStatus(t('status.done'), 'ok');
-    })
-    .catch(fail);
-});
-const scheduleRender = () => renderThen(statusStamp);
+    } while (renderWanted);
+  } finally {
+    rendering = false;
+  }
+}
+
+const scheduleRender = () => {
+  if (rendering) { renderWanted = true; return; }
+  keepRendering().catch(fail);
+};
 
 const isLive = () => {
   const { cols, rows } = resolveGrid();
-  return cols * rows <= LIVE_CELL_LIMIT;
+  return keepsUp(cols * rows, lastRender, following);
 };
 
 /**

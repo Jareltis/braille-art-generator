@@ -396,6 +396,47 @@ async function run() {
        $('presetHint').textContent);
   }
 
+  mark('a burst of changes settles on the last one');
+  // --- a burst of changes settles on the last one --------------------------
+  // Coalescing by animation frame merges the events of one frame and then lets
+  // the next frame start another redraw whether or not the last has finished.
+  // Dragging therefore queued one redraw per frame, each computed in full and
+  // then thrown away as stale, and the art landed long after the hand stopped.
+  // What has to be true either way is that the picture on screen belongs to the
+  // last setting, so that is what is checked.
+  {
+    const settle = async () => {
+      await until(() => $('status').textContent.includes('Готово'), 10000);
+      await wait(120);
+      return $('output').textContent;
+    };
+
+    $('contrast').value = '60';
+    $('contrast').dispatchEvent(new Event('input', { bubbles: true }));
+    const alone = await settle();
+
+    // Walk it away and back in a hurry, ending where it started.
+    $('contrast').value = '0';
+    $('contrast').dispatchEvent(new Event('input', { bubbles: true }));
+    await settle();
+
+    const started = Date.now();
+    for (let step = 0; step <= 25; step++) {
+      $('contrast').value = String(step === 25 ? 60 : step * 2);
+      $('contrast').dispatchEvent(new Event('input', { bubbles: true }));
+      await wait(12);
+    }
+    const afterBurst = await settle();
+    mark(`the burst settled in ${Date.now() - started}ms`);
+
+    check('the art on screen is the last setting, not a stale one', afterBurst === alone, true);
+    check('and the panel agrees', $('contrast').value, '60');
+
+    $('contrast').value = '0';
+    $('contrast').dispatchEvent(new Event('input', { bubbles: true }));
+    await settle();
+  }
+
   mark('colour can be cut to a palette');
   // --- colour can be cut to a palette --------------------------------------
   // One control, one code path: whatever the palette is, the cells are snapped

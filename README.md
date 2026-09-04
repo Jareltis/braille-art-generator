@@ -248,6 +248,28 @@ across the whole screen.
 None of this is a second interface: it is the same markup with a different
 order, which is the same rule the Simple and Advanced modes follow.
 
+### Keeping up with the sliders
+
+The art redraws as the controls move, up to the point where a redraw stops
+feeling like one. That point used to be a cell count — two hundred by two
+hundred — picked on one machine, which is the wrong unit for the question: the
+same grid is under half a second on a laptop and several seconds on a phone. It
+now comes from what the last redraw actually cost, scaled to the size being
+asked for. Dithering walks every dot once, so cost against cell count is close
+enough to a straight line, and the estimate only has to be right about which
+side of half a second it lands on. There is a gap between the point where it
+stops following and the point where it starts again, or a grid sitting exactly
+on the line would start and stop on alternate keystrokes.
+
+Redraws are also serialised, which matters more than the pacing. Coalescing by
+animation frame merges the events of a single frame and then lets the next frame
+start another redraw whether or not the last has finished — so dragging a slider
+queued one redraw per frame, each of which the worker computed in full and the
+page then discarded as stale. A request that finds one already running now
+leaves a note instead, and the settings are read afresh when that note is picked
+up. Measured on a landscape photograph: 380ms for a 200×150 grid, 640ms for
+300×225.
+
 ### Stepping back
 
 Three things rewrite the whole panel in one go: picking a preset, letting it
@@ -559,6 +581,7 @@ src/
     pipeline.js       one interface over worker and inline
     canvas.js         scaling, cropping, reading and writing pixels
     export.js         .txt, clipboard, PNG, SVG, HTML, ANSI
+    pace.js           whether a redraw still keeps up with the sliders
     platforms.js      message limits and width calibration
     settings.js       remembering the panel
     crop.js           the selection rectangle
