@@ -59,6 +59,8 @@ const dom = {
   dotEdit: el('dotEdit'),
   dotUndo: el('dotUndo'),
   dotHint: el('dotHint'),
+  dotCursor: el('dotCursor'),
+  padCursor: el('padCursor'),
   sourceKind: el('sourceKind'),
   textInput: el('textInput'),
   textFont: el('textFont'),
@@ -691,8 +693,13 @@ function inspect(canvasId) {
   const preview = el(canvasId);
   if (!preview.width || !preview.height) return;
 
+  const opener = document.activeElement;
   const overlay = document.createElement('div');
   overlay.className = 'inspect';
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-modal', 'true');
+  overlay.setAttribute('aria-label', t('inspect.label'));
+  overlay.tabIndex = -1;
 
   const full = createCanvas(preview.width, preview.height);
   full.getContext('2d').drawImage(preview, 0, 0);
@@ -704,6 +711,8 @@ function inspect(canvasId) {
   const close = () => {
     overlay.remove();
     document.removeEventListener('keydown', onKey);
+    // Put the caller back where it was, or the next Tab starts from the body.
+    if (opener instanceof HTMLElement) opener.focus();
   };
   const onKey = (event) => {
     if (event.key === 'Escape') close();
@@ -713,6 +722,7 @@ function inspect(canvasId) {
   overlay.addEventListener('click', close);
   document.addEventListener('keydown', onKey);
   document.body.append(overlay);
+  overlay.focus();
 }
 
 /**
@@ -751,9 +761,7 @@ function setEditing(on) {
   dom.app.classList.toggle('editing', on);
   dom.dotEdit.setAttribute('aria-pressed', String(on));
   dom.dotUndo.disabled = !on || !dotEditor.canUndo();
-  dom.dotHint.textContent = on
-    ? t('dots.hint')
-    : '';
+  dom.dotHint.textContent = on ? `${t('dots.hint')} ${t('dots.keys')}` : '';
 }
 
 /* ------------------------------------------------------------------------ *
@@ -795,7 +803,7 @@ function retranslate() {
   dom.textFont.value = chosen.font;
 
   dom.presetHint.textContent = CONTENT_PRESETS[chosen.preset] ? t(`preset.${chosen.preset}.hint`) : '';
-  dom.dotHint.textContent = dotEditor?.isEnabled() ? t('dots.hint') : '';
+  dom.dotHint.textContent = dotEditor?.isEnabled() ? `${t('dots.hint')} ${t('dots.keys')}` : '';
   syncPlatform();
   if (artText) updateMeta(artText);
   setStatus(artText ? t('status.done') : t('status.start'), 'info');
@@ -847,6 +855,7 @@ function setSourceKind(kind) {
   }
   if (next === 'draw') {
     useSketchSource();
+    sketchPad.refresh();
     return;
   }
   if (next === 'camera') {
@@ -1094,7 +1103,7 @@ function init() {
     // The pad is the source, so every stroke invalidates what was sampled.
     previewReady = false;
     scheduleSketch();
-  });
+  }, dom.padCursor);
 
   controls.brushSize = bindRange(el('brushSize'), el('brushSizeVal'), {
     onChange: () => sketchPad.setBrush(controls.brushSize.value),
@@ -1192,7 +1201,7 @@ function init() {
     const on = !cropper.isActive();
     cropper.setActive(on);
     dom.cropToggle.setAttribute('aria-pressed', String(on));
-    if (on) setStatus(t('crop.prompt'), 'info');
+    if (on) setStatus(`${t('crop.prompt')} ${t('crop.keys')}`, 'info');
   });
 
   dom.cropReset.addEventListener('click', () => cropper.reset());
@@ -1203,6 +1212,7 @@ function init() {
     metrics: outputMetrics,
     getText: () => artText,
     setText: replaceArt,
+    cursor: dom.dotCursor,
   });
 
   dom.dotEdit.addEventListener('click', () => {
@@ -1228,6 +1238,10 @@ function init() {
       inspect(shot.dataset.inspect);
     });
     shot.addEventListener('keydown', (event) => {
+      // Only when the figure itself has focus. Enter and Space belong to
+      // whatever is inside it -- the sketch pad uses Enter for the pen -- and
+      // acting on a bubbled key opened the enlarged view behind the drawing.
+      if (event.target !== shot) return;
       if (event.key !== 'Enter' && event.key !== ' ') return;
       event.preventDefault();
       inspect(shot.dataset.inspect);

@@ -191,6 +191,15 @@ export const ru = {
     'status.ansiSaved': 'ANSI сохранён. Смотреть так: cat braille.ans',
     'status.ansiNoColour': 'ANSI сохранён без цвета — включите «Цвет».',
 
+    // --- keyboard and assistive access ---
+    'a11y.skip': 'Перейти к результату',
+    'crop.overlayLabel': 'Рамка обрезки: стрелки двигают, Shift меняет размер, Alt точнее, Esc — весь кадр',
+    'crop.keys': 'Стрелки двигают рамку, Shift со стрелками меняет размер, Alt — мельче шаг, Esc возвращает весь кадр.',
+    'draw.canvasLabel': 'Холст для рисования: стрелки двигают перо, Enter опускает и поднимает его',
+    'draw.keys': 'Стрелки двигают перо, Shift — шире шаг, Enter опускает и поднимает перо.',
+    'dots.keys': 'С клавиатуры: стрелки двигают курсор по точкам, Shift — по ячейкам, Space ставит и снимает точку, Ctrl+Z отменяет.',
+    'inspect.label': 'Увеличенный просмотр',
+
     // --- meta ---
     'meta.size': '{cols}×{rows} символов',
     'meta.trimmed': '{fromCols}×{fromRows} → {cols}×{rows} после обрезки',

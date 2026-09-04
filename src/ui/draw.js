@@ -10,7 +10,7 @@ const HEIGHT = 480;
 const BACKGROUND = '#000000';
 const INK = '#ffffff';
 
-export function createSketchPad(canvas, onChange) {
+export function createSketchPad(canvas, onChange, cursor) {
   canvas.width = WIDTH;
   canvas.height = HEIGHT;
 
@@ -22,6 +22,12 @@ export function createSketchPad(canvas, onChange) {
   let erasing = false;
   let drawing = false;
   let last = null;
+
+  // Where the keyboard is. Freehand is a pointer gesture by nature, but leaving
+  // a whole source reachable only by mouse is not an option, so arrows move a
+  // point and Enter puts the pen down.
+  const pen = { x: WIDTH / 2, y: HEIGHT / 2 };
+  let penDown = false;
 
   function clear() {
     ctx.fillStyle = BACKGROUND;
@@ -59,6 +65,58 @@ export function createSketchPad(canvas, onChange) {
     ctx.stroke();
   }
 
+  /** Show the keyboard point over the canvas, in element pixels. */
+  function paintCursor() {
+    if (!cursor) return;
+    const box = canvas.getBoundingClientRect();
+    const host = (cursor.offsetParent ?? canvas).getBoundingClientRect();
+    const ratio = WIDTH / HEIGHT;
+    const shown = box.width / box.height > ratio
+      ? { w: box.height * ratio, h: box.height }
+      : { w: box.width, h: box.width / ratio };
+    const scale = shown.w / WIDTH;
+
+    cursor.hidden = false;
+    cursor.dataset.pen = penDown ? 'down' : 'up';
+    cursor.style.width = `${Math.max(6, brush * scale)}px`;
+    cursor.style.height = `${Math.max(6, brush * scale)}px`;
+    cursor.style.left = `${box.left - host.left + (box.width - shown.w) / 2 + pen.x * scale - Math.max(6, brush * scale) / 2}px`;
+    cursor.style.top = `${box.top - host.top + (box.height - shown.h) / 2 + pen.y * scale - Math.max(6, brush * scale) / 2}px`;
+  }
+
+  function onKeyDown(event) {
+    const step = event.shiftKey ? brush : Math.max(2, Math.round(brush / 3));
+    const from = { ...pen };
+
+    switch (event.key) {
+      case 'ArrowLeft': pen.x = Math.max(0, pen.x - step); break;
+      case 'ArrowRight': pen.x = Math.min(WIDTH, pen.x + step); break;
+      case 'ArrowUp': pen.y = Math.max(0, pen.y - step); break;
+      case 'ArrowDown': pen.y = Math.min(HEIGHT, pen.y + step); break;
+      case 'Enter':
+      case ' ':
+        event.preventDefault();
+        penDown = !penDown;
+        if (penDown) {
+          stroke(pen, pen);
+          onChange();
+        }
+        paintCursor();
+        return;
+      default:
+        return;
+    }
+    event.preventDefault();
+    if (penDown) {
+      stroke(from, pen);
+      onChange();
+    }
+    paintCursor();
+  }
+
+  canvas.addEventListener('keydown', onKeyDown);
+  window.addEventListener('resize', paintCursor);
+
   canvas.addEventListener('pointerdown', (event) => {
     if (event.button !== 0) return;
     event.preventDefault();
@@ -89,11 +147,17 @@ export function createSketchPad(canvas, onChange) {
 
   return {
     canvas,
-    setBrush(size) { brush = size; },
+    refresh: paintCursor,
+    setBrush(size) {
+      brush = size;
+      paintCursor();
+    },
     setErasing(on) { erasing = on; },
     isErasing: () => erasing,
     clear() {
       clear();
+      penDown = false;
+      paintCursor();
       onChange();
     },
   };

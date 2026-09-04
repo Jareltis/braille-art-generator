@@ -38,6 +38,7 @@ only ever hands out static files.
 | **Two modes** | simple keeps five controls; advanced reveals everything |
 | **One screen** | original, adjusted image, sampled pixels and the art are all visible at once |
 | **Layouts** | 2×2 by default, strip on top, art-first, single row |
+| **Keyboard** | cropping, dot editing and drawing all work without a pointer |
 | **Languages** | English and Russian, chosen from the browser and remembered |
 | **Offline** | installs as an app and works with no network |
 | **No backend** | not one network request after the page has loaded |
@@ -206,6 +207,28 @@ While editing is on the art stops following the controls. That is the bargain:
 either it tracks the parameters or it is yours to touch up. Silently discarding
 a minute of work because a slider moved would be worse than refusing to
 recalculate.
+
+### Keyboard
+
+Three surfaces would otherwise belong to the pointer alone, which for a project
+named after braille would be a poor joke.
+
+**Cropping.** Arrows move the selection, Shift with arrows resizes it from the
+far corner, Alt makes either step finer, Escape gives back the whole frame. The
+layer only takes focus while it is active, so Tab never stops on an invisible
+one.
+
+**Dots.** Arrows move a visible cursor by one dot, Shift by a whole cell, Space
+sets and clears, Ctrl+Z undoes. Dots rather than cells are the unit: moving a
+cell at a time would leave four of every eight positions unreachable. The
+pointer moves the same cursor, so the two never disagree about where "here" is.
+
+**Drawing.** Arrows move the pen, Shift takes a wider step, Enter puts it down
+and lifts it. Freehand is a pointer gesture by nature, but a whole source
+reachable only by mouse is not an option.
+
+A skip link leads straight to the art. The enlarged view is a real dialog:
+focus moves into it and returns to whatever opened it.
 
 ### The interface
 

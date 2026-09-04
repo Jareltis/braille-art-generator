@@ -192,6 +192,15 @@ export const en = {
     'status.ansiSaved': 'ANSI saved. View it with: cat braille.ans',
     'status.ansiNoColour': 'ANSI saved without colour — turn on Colour first.',
 
+    // --- keyboard and assistive access ---
+    'a11y.skip': 'Skip to the art',
+    'crop.overlayLabel': 'Crop selection: arrows move, Shift resizes, Alt is finer, Esc takes the whole frame',
+    'crop.keys': 'Arrows move the selection, Shift with arrows resizes it, Alt makes the step finer, Esc gives back the whole frame.',
+    'draw.canvasLabel': 'Drawing canvas: arrows move the pen, Enter puts it down and lifts it',
+    'draw.keys': 'Arrows move the pen, Shift takes a wider step, Enter puts it down and lifts it.',
+    'dots.keys': 'From the keyboard: arrows move by dot, Shift by cell, Space sets and clears, Ctrl+Z undoes.',
+    'inspect.label': 'Enlarged view',
+
     // --- meta ---
     'meta.size': '{cols}×{rows} cells',
     'meta.trimmed': '{fromCols}×{fromRows} → {cols}×{rows} after trimming',

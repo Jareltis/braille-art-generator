@@ -818,6 +818,131 @@ async function run() {
     check('and applied on load', label('threshold'), 'Threshold');
   }
 
+  {
+    // --- reachable without a pointer ---------------------------------------
+    const BLANK = String.fromCharCode(0x2800);
+    const NL = String.fromCharCode(10);
+    const inkCount = () => [...$('output').textContent.split(NL).join('')].filter((c) => c !== BLANK).length;
+    const press = (target, key, options = {}) => {
+      target.dispatchEvent(new win.KeyboardEvent('keydown', {
+        key, bubbles: true, cancelable: true, ...options,
+      }));
+    };
+
+    const skip = frame.contentDocument.querySelector('.skip');
+    ok('there is a way past the panel', skip !== null && skip.getAttribute('href') === '#output',
+       skip?.getAttribute('href'));
+    ok('and it says where it goes', (skip?.textContent ?? '').length > 0, skip?.textContent);
+
+    // Start from a known image.
+    const known = new win.DataTransfer();
+    known.items.add(await makeFile(320, 160, 'keys.png'));
+    $('sourceKind').value = 'image';
+    $('sourceKind').dispatchEvent(new Event('change', { bubbles: true }));
+    win.dispatchEvent(new win.DragEvent('drop', { dataTransfer: known, bubbles: true, cancelable: true }));
+    await until(() => $('srcMeta').textContent === '320×160');
+    await until(() => inkCount() > 0);
+
+    // --- cropping -----------------------------------------------------------
+    $('cropToggle').click();
+    check('the crop layer can be focused', frame.contentDocument.activeElement, $('cropper'));
+    ok('and it explains its keys', /Shift/.test($('cropper').getAttribute('aria-label')),
+       $('cropper').getAttribute('aria-label'));
+
+    const rowsWhole = $('output').textContent.split(NL).length;
+    for (let i = 0; i < 8; i++) press($('cropper'), 'ArrowLeft', { shiftKey: true });
+    ok('shift with arrows resizes the selection',
+       await until(() => $('output').textContent.split(NL).length !== rowsWhole),
+       `${rowsWhole} rows then ${$('output').textContent.split(NL).length}`);
+
+    press($('cropper'), 'Escape');
+    ok('escape gives the whole frame back',
+       await until(() => $('output').textContent.split(NL).length === rowsWhole));
+    $('cropToggle').click();
+    check('the layer stops taking focus when off', $('cropper').hasAttribute('tabindex'), false);
+
+    // --- editing dots -------------------------------------------------------
+    $('dotEdit').click();
+    check('the art takes focus for editing', frame.contentDocument.activeElement, $('output'));
+    check('a cursor appears', $('dotCursor').hidden, false);
+
+    const cursorAt = () => `${$('dotCursor').style.left},${$('dotCursor').style.top}`;
+    const start = cursorAt();
+    press($('output'), 'ArrowRight');
+    ok('arrows move it', cursorAt() !== start, `${start} -> ${cursorAt()}`);
+    const afterRight = cursorAt();
+    press($('output'), 'ArrowDown');
+    ok('in both directions', cursorAt() !== afterRight, `${afterRight} -> ${cursorAt()}`);
+
+    const beforeToggle = $('output').textContent;
+    press($('output'), ' ');
+    await wait(80);
+    ok('space sets and clears a dot', $('output').textContent !== beforeToggle);
+    check('exactly one cell changes',
+      [...$('output').textContent].filter((c, i) => c !== beforeToggle[i]).length, 1);
+
+    press($('output'), 'z', { ctrlKey: true });
+    await wait(80);
+    check('and ctrl+z takes it back', $('output').textContent, beforeToggle);
+
+    // Shift should step a whole cell, which is two dots across.
+    const beforeShift = cursorAt();
+    press($('output'), 'ArrowRight');
+    const oneDot = Number.parseFloat($('dotCursor').style.left) - Number.parseFloat(beforeShift);
+    press($('output'), 'ArrowLeft');
+    press($('output'), 'ArrowRight', { shiftKey: true });
+    const oneCell = Number.parseFloat($('dotCursor').style.left) - Number.parseFloat(beforeShift);
+    ok('shift steps a whole cell', Math.abs(oneCell - oneDot * 2) < 0.6,
+       `${oneDot.toFixed(2)}px per dot, ${oneCell.toFixed(2)}px with shift`);
+
+    $('dotEdit').click();
+    check('the cursor goes away with the mode', $('dotCursor').hidden, true);
+
+    // --- drawing ------------------------------------------------------------
+    $('sourceKind').value = 'draw';
+    $('sourceKind').dispatchEvent(new Event('change', { bubbles: true }));
+    await until(() => inkCount() === 0);
+    ok('the pad can be focused', $('drawCanvas').tabIndex === 0);
+    ok('and explains its keys', /Enter/.test($('drawCanvas').getAttribute('aria-label')),
+       $('drawCanvas').getAttribute('aria-label'));
+
+    $('drawCanvas').focus();
+    press($('drawCanvas'), 'Enter');
+    check('enter puts the pen down', $('padCursor').dataset.pen, 'down');
+    for (let i = 0; i < 12; i++) press($('drawCanvas'), 'ArrowRight', { shiftKey: true });
+    ok('and arrows draw with it', await until(() => inkCount() > 0), `${inkCount()} inked cells`);
+
+    press($('drawCanvas'), 'Enter');
+    check('enter lifts it again', $('padCursor').dataset.pen, 'up');
+    const drawn = inkCount();
+    for (let i = 0; i < 6; i++) press($('drawCanvas'), 'ArrowDown', { shiftKey: true });
+    await wait(200);
+    check('a lifted pen leaves no trail', inkCount(), drawn);
+
+    // --- the enlarged view is a dialog --------------------------------------
+    $('sourceKind').value = 'image';
+    $('sourceKind').dispatchEvent(new Event('change', { bubbles: true }));
+    await until(() => inkCount() > 0);
+
+    const figure = $('srcCanvas').closest('[data-inspect]');
+    figure.focus();
+    figure.click();
+    const dialogs = frame.contentDocument.querySelectorAll('.inspect');
+    check('one click opens exactly one view', dialogs.length, 1);
+    const dialog = dialogs[0];
+    check('it announces itself as a dialog', dialog?.getAttribute('role'), 'dialog');
+    check('and as a modal one', dialog?.getAttribute('aria-modal'), 'true');
+    ok('it carries a name', (dialog?.getAttribute('aria-label') ?? '').length > 0);
+    const inDialog = frame.contentDocument.activeElement;
+    ok('focus moves into it', dialog === inDialog || dialog?.contains(inDialog),
+       `${inDialog?.tagName}.${inDialog?.className}`);
+
+    press(frame.contentDocument, 'Escape');
+    await wait(80);
+    check('escape closes it', frame.contentDocument.querySelector('.inspect'), null);
+    check('and focus comes back', frame.contentDocument.activeElement, figure);
+  }
+
   const failed = log.filter((l) => l.startsWith('FAIL')).length;
   out(`${log.join('\n')}\n${failed ? `\n${failed} FAILED` : '\nAll e2e checks passed.'}`);
 }

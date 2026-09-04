@@ -6,6 +6,8 @@
 // the full-resolution original at generation time.
 
 const MIN_FRACTION = 0.02;   // a selection smaller than this is a stray click
+const STEP = 0.02;           // one arrow press, as a fraction of the frame
+const FINE_STEP = 0.005;     // the same with Alt held
 const HANDLE_GRAB = 14;      // px of slop around a corner, for touch as much as mice
 
 const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
@@ -170,6 +172,53 @@ export function createCropper(overlay, canvas, onChange) {
     onChange(isWholeImage(rect) ? null : { ...rect });
   }
 
+  /**
+   * The same gestures, from the keyboard.
+   *
+   * Arrows move the selection, Shift resizes it from the far corner, Alt makes
+   * either finer, and Escape gives the whole frame back. Without this the crop
+   * is a mouse-only feature, which is to say no feature at all for some people.
+   */
+  function onKeyDown(event) {
+    if (!active) return;
+    const step = event.altKey ? FINE_STEP : STEP;
+    const move = { x: 0, y: 0 };
+
+    switch (event.key) {
+      case 'ArrowLeft': move.x = -step; break;
+      case 'ArrowRight': move.x = step; break;
+      case 'ArrowUp': move.y = -step; break;
+      case 'ArrowDown': move.y = step; break;
+      case 'Escape':
+        event.preventDefault();
+        rect = { ...FULL_FRAME };
+        paint();
+        onChange(null);
+        return;
+      default:
+        return;
+    }
+    event.preventDefault();
+
+    if (event.shiftKey) {
+      // Resize by the far corner, never below the size a drag would discard.
+      rect = {
+        ...rect,
+        w: clamp01(Math.max(MIN_FRACTION, Math.min(1 - rect.x, rect.w + move.x))),
+        h: clamp01(Math.max(MIN_FRACTION, Math.min(1 - rect.y, rect.h + move.y))),
+      };
+    } else {
+      rect = {
+        ...rect,
+        x: clamp01(Math.min(rect.x + move.x, 1 - rect.w)),
+        y: clamp01(Math.min(rect.y + move.y, 1 - rect.h)),
+      };
+    }
+    paint();
+    onChange(isWholeImage(rect) ? null : { ...rect });
+  }
+
+  overlay.addEventListener('keydown', onKeyDown);
   overlay.addEventListener('pointerdown', onPointerDown);
   overlay.addEventListener('pointermove', onPointerMove);
   overlay.addEventListener('pointerup', onPointerUp);
@@ -180,7 +229,15 @@ export function createCropper(overlay, canvas, onChange) {
     setActive(on) {
       active = on;
       overlay.hidden = !on;
-      if (on) paint();
+      // Focusable only while it does something, so tabbing does not stop on an
+      // invisible layer.
+      if (on) {
+        overlay.tabIndex = 0;
+        paint();
+        overlay.focus();
+      } else {
+        overlay.removeAttribute('tabindex');
+      }
     },
     isActive: () => active,
     get: () => (isWholeImage(rect) ? null : { ...rect }),

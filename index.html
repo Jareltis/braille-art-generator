@@ -282,7 +282,25 @@
     button[aria-pressed="true"] { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
     #resCanvas { image-rendering: pixelated; }
 
-    .shot-art { background: var(--art-bg); }
+    .shot-art { background: var(--art-bg); position: relative; }
+
+    /* where the keyboard is, on surfaces a pointer would otherwise own alone */
+    .dot-cursor, .pad-cursor {
+      position: absolute; z-index: 5; pointer-events: none;
+      border: 1px solid var(--accent);
+      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.65);
+    }
+    .pad-cursor { border-radius: 50%; }
+    .pad-cursor[data-pen="down"] { background: rgba(34, 197, 94, 0.35); }
+    #drawCanvas:focus-visible, .cropper:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+    /* reaching the art without walking the whole panel first */
+    .skip {
+      position: absolute; left: -9999px; top: 0; z-index: 40;
+      padding: 8px 14px; color: var(--accent-ink); background: var(--accent);
+      border-radius: 0 0 8px 0; font-size: 14px;
+    }
+    .skip:focus { left: 0; }
     /* while dots are being painted a drag must not select the text under it */
     .editing #output { cursor: crosshair; user-select: none; touch-action: none; }
     .editing .shot-art { outline: 1px solid var(--accent); outline-offset: -1px; }
@@ -354,6 +372,7 @@
   </style>
 </head>
 <body>
+  <a class="skip" href="#output" data-i18n="a11y.skip"></a>
   <div class="app" id="app" data-mode="simple" data-layout="grid" data-source="image">
 
     <header class="topbar">
@@ -664,8 +683,9 @@
             <div class="canvas-wrap">
               <canvas id="srcCanvas" width="360" height="240" data-when="image text camera"></canvas>
               <video id="camera" data-when="camera" playsinline muted></video>
-              <canvas id="drawCanvas" data-when="draw"></canvas>
-              <div class="cropper" id="cropper" hidden></div>
+              <canvas id="drawCanvas" data-when="draw" tabindex="0" data-i18n-label="draw.canvasLabel"></canvas>
+              <div class="pad-cursor" id="padCursor" data-when="draw" hidden></div>
+              <div class="cropper" id="cropper" hidden data-i18n-label="crop.overlayLabel"></div>
             </div>
           </figure>
 
@@ -681,7 +701,8 @@
 
           <figure class="shot shot-art">
             <figcaption><b data-i18n="pane.result"></b></figcaption>
-            <pre id="output" tabindex="0"></pre>
+            <pre id="output" tabindex="0" data-i18n-label="pane.result"></pre>
+            <div class="dot-cursor" id="dotCursor" hidden></div>
           </figure>
         </div>
 
