@@ -62,6 +62,11 @@
     .brand { font-size: 16px; font-weight: 600; letter-spacing: 0.2px; white-space: nowrap; }
     .brand span { color: var(--accent); }
     .topbar .grow { flex: 1 1 auto; min-width: 0; }
+    .barfield {
+      display: flex; align-items: center; gap: 7px;
+      margin: 0; color: var(--muted); font-size: 12.5px; white-space: nowrap;
+    }
+    .barfield select { width: auto; padding: 5px 8px; font-size: 13px; }
 
     #status {
       min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -155,28 +160,53 @@
   </style>
   <style>
     /* ------------------------------------------------------------------ *
-     * The stage. Three previews across the top, the art filling whatever
-     * height is left. Nothing here scrolls the page: the art scrolls inside
-     * its own box, and all four panes stay on screen together.
+     * The stage: four panes and a footer, inside the height the window has.
+     *
+     * Which arrangement is a view preference, so it lives on an attribute and
+     * each option is nothing but a different grid template. Every pane carries
+     * min-height/min-width 0, without which a grid child refuses to shrink
+     * below its content and shoves the page past the bottom of the screen.
      * ------------------------------------------------------------------ */
     .stage {
       display: grid;
-      grid-template-rows: var(--strip-h) minmax(0, 1fr) auto;
+      grid-template-rows: minmax(0, 1fr) auto;
       gap: 10px;
       min-height: 0;
     }
 
-    .strip {
-      display: grid;
+    .panes { display: grid; gap: 10px; min-height: 0; min-width: 0; }
+
+    /* 2x2. The default, because a preview box close to an image's own shape
+       wastes far less room than a wide strip does on anything but a panorama. */
+    [data-layout="grid"] .panes {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-rows: repeat(2, minmax(0, 1fr));
+    }
+
+    /* Previews across the top, art below. */
+    [data-layout="strip"] .panes {
       grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 10px;
-      min-height: 0;
+      grid-template-rows: var(--strip-h) minmax(0, 1fr);
+    }
+    [data-layout="strip"] .shot-art { grid-column: 1 / -1; }
+
+    /* Previews stacked at the side; everything else goes to the art. */
+    [data-layout="focus"] .panes {
+      grid-template-columns: minmax(0, 210px) minmax(0, 1fr);
+      grid-template-rows: repeat(3, minmax(0, 1fr));
+    }
+    [data-layout="focus"] .shot-art { grid-column: 2; grid-row: 1 / -1; }
+
+    /* One row, for very wide screens. */
+    [data-layout="row"] .panes {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-rows: minmax(0, 1fr);
     }
 
     .shot {
       display: grid;
       grid-template-rows: auto minmax(0, 1fr);
-      gap: 5px;
+      gap: 6px;
       margin: 0;
       min-width: 0;
       min-height: 0;
@@ -184,33 +214,30 @@
       background: var(--panel);
       border: 1px solid var(--line);
       border-radius: 10px;
-      cursor: zoom-in;
     }
-    .shot:hover { border-color: var(--line-strong); }
+    .shot[data-inspect] { cursor: zoom-in; }
+    .shot[data-inspect]:hover { border-color: var(--line-strong); }
     .shot figcaption {
       display: flex; justify-content: space-between; gap: 8px;
       color: var(--muted); font-size: 11px; letter-spacing: 0.3px;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
     .shot figcaption b { color: var(--ink); font-weight: 500; }
-    /* object-fit letterboxes the bitmap inside a fixed box, so wildly
-       different aspect ratios still line up as equal tiles */
+
+    /* object-fit letterboxes the bitmap inside its box, so panes of different
+       shapes still line up; the surround is kept close to the card colour so a
+       wide image in a tall box does not read as a slab of black. */
     .shot canvas {
       width: 100%; height: 100%; min-height: 0;
       object-fit: contain;
-      background: #000; border-radius: 6px;
+      background: rgba(0, 0, 0, 0.32);
+      border-radius: 6px;
     }
     #resCanvas { image-rendering: pixelated; }
 
-    .viewer {
-      min-height: 0;
-      display: grid;
-      background: var(--art-bg);
-      border: 1px solid var(--line);
-      border-radius: 12px;
-    }
+    .shot-art { background: var(--art-bg); }
     #output {
-      margin: 0; padding: 12px;
+      margin: 0;
       min-height: 0; overflow: auto;
       color: var(--ink); background: none;
       font-family: "Cascadia Mono", "DejaVu Sans Mono", "Segoe UI Symbol", monospace;
@@ -223,7 +250,7 @@
     }
     #output:empty::before {
       content: 'Перетащите изображение сюда, вставьте из буфера или выберите файл слева.';
-      display: block; padding: 24px 4px; color: var(--muted);
+      display: block; padding: 20px 4px; color: var(--muted);
       font-family: Inter, system-ui, sans-serif; font-size: 13px; white-space: normal;
     }
 
@@ -255,14 +282,20 @@
 
     /* ------------------------------------------------------------------ *
      * Narrow screens cannot hold four panes at once, so there the page is
-     * allowed to scroll and the previews become a swipeable row.
+     * allowed to scroll and every layout collapses to one column.
      * ------------------------------------------------------------------ */
     @media (max-width: 900px) {
       body { overflow: auto; }
       .app { height: auto; min-height: 100dvh; }
       .workspace { grid-template-columns: minmax(0, 1fr); }
       .sidebar { overflow: visible; max-height: none; }
-      .stage { grid-template-rows: var(--strip-h) auto auto; }
+      .panes,
+      [data-layout] .panes {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-rows: none;
+      }
+      [data-layout] .shot-art { grid-column: auto; grid-row: auto; }
+      .shot canvas { height: 200px; }
       #output { max-height: 60vh; }
     }
     @media (max-height: 560px) {
@@ -271,7 +304,7 @@
   </style>
 </head>
 <body>
-  <div class="app" id="app" data-mode="simple">
+  <div class="app" id="app" data-mode="simple" data-layout="grid">
 
     <header class="topbar">
       <div class="brand">Braille&nbsp;<span>Art</span>&nbsp;Generator</div>
@@ -279,6 +312,14 @@
         <button id="modeSimple" type="button" aria-pressed="true">Простой</button>
         <button id="modeAdvanced" type="button" aria-pressed="false">Расширенный</button>
       </div>
+      <label class="barfield" for="layout">Раскладка
+        <select id="layout">
+          <option value="grid">2 × 2</option>
+          <option value="strip">Полоса сверху</option>
+          <option value="focus">Акцент на арт</option>
+          <option value="row">В один ряд</option>
+        </select>
+      </label>
       <p id="status" class="grow" role="status" aria-live="polite"></p>
     </header>
 
@@ -486,7 +527,7 @@
       </aside>
 
       <section class="stage">
-        <div class="strip">
+        <div class="panes">
           <figure class="shot" tabindex="0" role="button" data-inspect="srcCanvas" aria-label="Увеличить: оригинал">
             <figcaption><b>Оригинал</b><span id="srcMeta"></span></figcaption>
             <canvas id="srcCanvas" width="360" height="240"></canvas>
@@ -501,10 +542,11 @@
             <figcaption><b>Пиксели сетки</b><span id="gridMeta"></span></figcaption>
             <canvas id="resCanvas" width="160" height="120"></canvas>
           </figure>
-        </div>
 
-        <div class="viewer">
-          <pre id="output" tabindex="0"></pre>
+          <figure class="shot shot-art">
+            <figcaption><b>Результат</b></figcaption>
+            <pre id="output" tabindex="0"></pre>
+          </figure>
         </div>
 
         <div class="stagefoot">

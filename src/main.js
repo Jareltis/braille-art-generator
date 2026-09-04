@@ -33,6 +33,7 @@ const dom = {
   app: el('app'),
   modeSimple: el('modeSimple'),
   modeAdvanced: el('modeAdvanced'),
+  layout: el('layout'),
   resetAll: el('resetAll'),
   srcMeta: el('srcMeta'),
   gridMeta: el('gridMeta'),
@@ -435,6 +436,18 @@ function setMode(mode) {
   dom.modeAdvanced.setAttribute('aria-pressed', String(next === 'advanced'));
 }
 
+const LAYOUTS = ['grid', 'strip', 'focus', 'row'];
+
+/**
+ * Where the four panes sit. A view preference, so it rides on an attribute and
+ * every option is only a different grid template in the stylesheet.
+ */
+function setLayout(name) {
+  const next = LAYOUTS.includes(name) ? name : LAYOUTS[0];
+  dom.layout.value = next;
+  dom.app.dataset.layout = next;
+}
+
 /* ------------------------------------------------------------------------ *
  * Persistence
  * ------------------------------------------------------------------------ */
@@ -442,7 +455,7 @@ const PERSISTED_RANGES = [
   'threshold', 'brightness', 'contrast', 'saturation', 'sharpness', 'edgeAmount', 'edgeRadius',
 ];
 const PERSISTED_FIELDS = [
-  'preset', 'platform', 'dither', 'invert', 'edgeMode', 'outWidth', 'outHeight', 'fontSize',
+  'preset', 'platform', 'dither', 'invert', 'edgeMode', 'outWidth', 'outHeight', 'fontSize', 'layout',
 ];
 
 function collectSettings() {
@@ -476,6 +489,7 @@ function applySettings(values) {
   if (typeof values.keepAspect === 'boolean') dom.keepAspect.checked = values.keepAspect;
   if (typeof values.smooth === 'boolean') smoothScaling = values.smooth;
 
+  setLayout(dom.layout.value);
   dom.presetHint.textContent = CONTENT_PRESETS[dom.preset.value]?.hint ?? '';
 }
 
@@ -489,6 +503,7 @@ function resetEverything() {
   dom.keepAspect.checked = true;
   smoothScaling = true;
   dom.presetHint.textContent = '';
+  setLayout(LAYOUTS[0]);
 
   syncEdgeControls();
   syncPlatform();
@@ -634,6 +649,10 @@ function init() {
   dom.modeSimple.addEventListener('click', () => { setMode('simple'); persist(); });
   dom.modeAdvanced.addEventListener('click', () => { setMode('advanced'); persist(); });
   dom.resetAll.addEventListener('click', resetEverything);
+  dom.layout.addEventListener('change', () => {
+    setLayout(dom.layout.value);
+    persist();
+  });
 
   for (const shot of document.querySelectorAll('[data-inspect]')) {
     shot.addEventListener('click', () => inspect(shot.dataset.inspect));

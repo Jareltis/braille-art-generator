@@ -222,9 +222,31 @@ async function run() {
   ok('the page itself does not scroll',
      $('output').ownerDocument.documentElement.scrollHeight <= frame.contentWindow.innerHeight + 1,
      `${$('output').ownerDocument.documentElement.scrollHeight}px of ${frame.contentWindow.innerHeight}px`);
-  ok('the art gets the largest share of the stage',
-     $('output').getBoundingClientRect().height > $('srcCanvas').getBoundingClientRect().height * 1.8,
-     `art ${Math.round($('output').getBoundingClientRect().height)}px vs preview ${Math.round($('srcCanvas').getBoundingClientRect().height)}px`);
+  const paneHeight = (id) => $(id).getBoundingClientRect().height;
+  const setLayout = async (name) => {
+    $('layout').value = name;
+    $('layout').dispatchEvent(new Event('change', { bubbles: true }));
+    await wait(150);
+  };
+
+  check('2x2 is the default arrangement', $('app').dataset.layout, 'grid');
+  ok('2x2 gives a preview real room instead of a thin strip',
+     paneHeight('srcCanvas') > 200, `${Math.round(paneHeight('srcCanvas'))}px tall`);
+  ok('2x2 shares the height evenly between art and previews',
+     Math.abs(paneHeight('output') - paneHeight('srcCanvas')) < paneHeight('output') * 0.4,
+     `art ${Math.round(paneHeight('output'))}px vs preview ${Math.round(paneHeight('srcCanvas'))}px`);
+
+  for (const name of ['grid', 'strip', 'focus', 'row']) {
+    await setLayout(name);
+    ok(`layout "${name}" keeps all four panes on screen`, fitsViewport(), paneSizes());
+  }
+
+  await setLayout('focus');
+  ok('the focus layout does hand the art the most room',
+     paneHeight('output') > paneHeight('srcCanvas') * 2,
+     `art ${Math.round(paneHeight('output'))}px vs preview ${Math.round(paneHeight('srcCanvas'))}px`);
+
+  await setLayout('grid');
   ok('the controls column scrolls on its own instead of the page',
      $('file').closest('.sidebar').scrollHeight >= $('file').closest('.sidebar').clientHeight);
 
@@ -269,6 +291,7 @@ async function run() {
   $('contrast').dispatchEvent(new Event('input', { bubbles: true }));
   $('dither').value = 'atkinson';
   $('dither').dispatchEvent(new Event('change', { bubbles: true }));
+  await setLayout('focus');
   await wait(400);
 
   const reloaded = new Promise((r) => frame.addEventListener('load', r, { once: true }));
@@ -279,6 +302,7 @@ async function run() {
   check('the mode is remembered', $('app').dataset.mode, 'advanced');
   check('a slider value is remembered', $('contrast').value, '33');
   check('a dropdown value is remembered', $('dither').value, 'atkinson');
+  check('the chosen layout is remembered', $('app').dataset.layout, 'focus');
 
   // --- dropping and pasting ------------------------------------------------
   const makeFile = async (w, h, name) => {
@@ -312,6 +336,7 @@ async function run() {
   await wait(200);
   check('reset returns the contrast to zero', $('contrast').value, '0');
   check('reset returns the method to the default', $('dither').value, 'floyd-steinberg');
+  check('reset returns the layout to 2x2', $('app').dataset.layout, 'grid');
 
   const failed = log.filter((l) => l.startsWith('FAIL')).length;
   out(`${log.join('\n')}\n${failed ? `\n${failed} FAILED` : '\nAll e2e checks passed.'}`);
