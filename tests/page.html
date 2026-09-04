@@ -3,7 +3,7 @@
 <head><meta charset="utf-8"><title>index.html e2e</title></head>
 <body>
 <pre id="r">running</pre>
-<iframe id="f" src="../index.html" style="width:1200px;height:900px;border:0"></iframe>
+<iframe id="f" style="width:1280px;height:900px;border:0"></iframe>
 <script type="module">
 const log = [];
 const out = (t) => {
@@ -25,9 +25,13 @@ async function until(fn, timeout = 15000) {
 
 async function run() {
   const frame = document.getElementById('f');
-  await new Promise((r) => frame.addEventListener('load', r, { once: true }));
-  const doc = frame.contentDocument;
-  const $ = (id) => doc.getElementById(id);
+  // The app remembers its settings now, and every test page shares this origin.
+  // Start each run from a clean slate, or one run's preset leaks into the next.
+  localStorage.clear();
+  const loaded = new Promise((r) => frame.addEventListener('load', r, { once: true }));
+  frame.src = '../index.html';
+  await loaded;
+  const $ = (id) => frame.contentDocument.getElementById(id);
 
   await until(() => $('status').textContent.length > 0);
   ok('page initialises', $('status').textContent.length > 0, $('status').textContent);
@@ -198,6 +202,116 @@ async function run() {
 
   $('platform').value = 'none';
   $('platform').dispatchEvent(new Event('change', { bubbles: true }));
+
+  // --- layout: the whole point of the redesign -----------------------------
+  const PANES = ['srcCanvas', 'editCanvas', 'resCanvas', 'output'];
+  const fitsViewport = () => {
+    const win = frame.contentWindow;
+    return PANES.every((id) => {
+      const r = $(id).getBoundingClientRect();
+      return r.width > 0 && r.height > 0
+        && r.top >= -1 && r.left >= -1
+        && r.bottom <= win.innerHeight + 1 && r.right <= win.innerWidth + 1;
+    });
+  };
+  const paneSizes = () => PANES
+    .map((id) => `${id.replace('Canvas', '')} ${Math.round($(id).getBoundingClientRect().height)}px`)
+    .join(', ');
+
+  ok('all four panes fit on screen at once', fitsViewport(), paneSizes());
+  ok('the page itself does not scroll',
+     $('output').ownerDocument.documentElement.scrollHeight <= frame.contentWindow.innerHeight + 1,
+     `${$('output').ownerDocument.documentElement.scrollHeight}px of ${frame.contentWindow.innerHeight}px`);
+  ok('the art gets the largest share of the stage',
+     $('output').getBoundingClientRect().height > $('srcCanvas').getBoundingClientRect().height * 1.8,
+     `art ${Math.round($('output').getBoundingClientRect().height)}px vs preview ${Math.round($('srcCanvas').getBoundingClientRect().height)}px`);
+  ok('the controls column scrolls on its own instead of the page',
+     $('file').closest('.sidebar').scrollHeight >= $('file').closest('.sidebar').clientHeight);
+
+  // A laptop with a short screen must not break the promise either.
+  frame.style.height = '620px';
+  await wait(250);
+  ok('four panes still fit a 620px-tall window', fitsViewport(), paneSizes());
+  frame.style.height = '900px';
+  await wait(250);
+
+  // --- simple vs advanced --------------------------------------------------
+  const shown = (id) => $(id).offsetParent !== null;
+  check('starts in simple mode', $('app').dataset.mode, 'simple');
+  check('simple mode hides the dithering picker', shown('dither'), false);
+  check('simple mode hides the edge detector', shown('edgeMode'), false);
+  check('simple mode hides tone correction', shown('contrast'), false);
+  check('simple mode keeps the file input', shown('file'), true);
+  check('simple mode keeps presets', shown('preset'), true);
+  check('simple mode keeps the threshold', shown('threshold'), true);
+  check('simple mode keeps the target picker', shown('platform'), true);
+  check('simple mode keeps copy', shown('copy'), true);
+
+  $('modeAdvanced').click();
+  check('advanced mode reveals dithering', shown('dither'), true);
+  check('advanced mode reveals tone correction', shown('contrast'), true);
+  check('advanced mode keeps the simple controls too', shown('threshold'), true);
+  check('the switch reports its state', $('modeAdvanced').getAttribute('aria-pressed'), 'true');
+  ok('all four panes still fit in advanced mode', fitsViewport(), paneSizes());
+
+  // --- inspect overlay -----------------------------------------------------
+  $('srcCanvas').closest('[data-inspect]').click();
+  const overlay = frame.contentDocument.querySelector('.inspect');
+  ok('clicking a preview opens it full size', overlay !== null);
+  ok('the overlay draws the real pixels',
+     overlay?.querySelector('canvas')?.width === $('srcCanvas').width,
+     `${overlay?.querySelector('canvas')?.width}px`);
+  overlay?.click();
+  check('clicking again closes it', frame.contentDocument.querySelector('.inspect'), null);
+
+  // --- settings survive a reload ------------------------------------------
+  $('contrast').value = '33';
+  $('contrast').dispatchEvent(new Event('input', { bubbles: true }));
+  $('dither').value = 'atkinson';
+  $('dither').dispatchEvent(new Event('change', { bubbles: true }));
+  await wait(400);
+
+  const reloaded = new Promise((r) => frame.addEventListener('load', r, { once: true }));
+  frame.src = '../index.html';
+  await reloaded;
+  await until(() => $('status').textContent.length > 0);
+
+  check('the mode is remembered', $('app').dataset.mode, 'advanced');
+  check('a slider value is remembered', $('contrast').value, '33');
+  check('a dropdown value is remembered', $('dither').value, 'atkinson');
+
+  // --- dropping and pasting ------------------------------------------------
+  const makeFile = async (w, h, name) => {
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const cx = c.getContext('2d');
+    cx.fillStyle = '#333'; cx.fillRect(0, 0, w, h);
+    cx.fillStyle = '#eee'; cx.fillRect(0, 0, w / 2, h);
+    const b = await new Promise((r) => c.toBlob(r, 'image/png'));
+    return new File([b], name, { type: 'image/png' });
+  };
+  const win = frame.contentWindow;
+
+  const dropped = new win.DataTransfer();
+  dropped.items.add(await makeFile(120, 60, 'dropped.png'));
+  win.dispatchEvent(new win.DragEvent('drop', { dataTransfer: dropped, bubbles: true, cancelable: true }));
+  ok('a dropped image loads', await until(() => $('srcMeta').textContent === '120×60'),
+     `srcMeta = ${$('srcMeta').textContent}`);
+
+  const pasted = new win.DataTransfer();
+  pasted.items.add(await makeFile(90, 30, 'pasted.png'));
+  win.dispatchEvent(new win.ClipboardEvent('paste', { clipboardData: pasted, bubbles: true, cancelable: true }));
+  ok('a pasted image loads', await until(() => $('srcMeta').textContent === '90×30'),
+     `srcMeta = ${$('srcMeta').textContent}`);
+
+  ok('the grid caption reports the sampled size', /\d+×\d+/.test($('gridMeta').textContent), $('gridMeta').textContent);
+
+  // --- reset ---------------------------------------------------------------
+  $('modeAdvanced').click();
+  $('resetAll').click();
+  await wait(200);
+  check('reset returns the contrast to zero', $('contrast').value, '0');
+  check('reset returns the method to the default', $('dither').value, 'floyd-steinberg');
 
   const failed = log.filter((l) => l.startsWith('FAIL')).length;
   out(`${log.join('\n')}\n${failed ? `\n${failed} FAILED` : '\nAll e2e checks passed.'}`);

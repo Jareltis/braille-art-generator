@@ -12,6 +12,7 @@ import { brailleToSvg, copyText, downloadCanvas, downloadSvg, downloadText, rend
 import {
   PLATFORMS, calibrationOf, clearCalibration, forPlatform, messageLength, ruler, saveCalibration,
 } from './ui/platforms.js';
+import { clearSettings, loadSettings, saveSettings } from './ui/settings.js';
 import { createPipeline } from './ui/pipeline.js';
 
 const MAX_COLS = 400;
@@ -29,6 +30,12 @@ const LIVE_CELL_LIMIT = 200 * 200;
 const el = (id) => document.getElementById(id);
 
 const dom = {
+  app: el('app'),
+  modeSimple: el('modeSimple'),
+  modeAdvanced: el('modeAdvanced'),
+  resetAll: el('resetAll'),
+  srcMeta: el('srcMeta'),
+  gridMeta: el('gridMeta'),
   file: el('file'),
   cols: el('outWidth'),
   rows: el('outHeight'),
@@ -216,6 +223,7 @@ async function render() {
   dom.output.textContent = text;
   applyFontSize();
   putImageData(dom.resCanvas, pixels);
+  dom.gridMeta.textContent = `${cols * CELL_W}×${rows * CELL_H}`;
   updateMeta(cols, rows, text);
 }
 
@@ -251,6 +259,7 @@ const isLive = () => {
  * is small enough to keep up.
  */
 function changed({ affectsPreview = true } = {}) {
+  persist();
   if (affectsPreview) schedulePreview();
   if (!source) return;
   if (isLive()) {
@@ -271,6 +280,7 @@ function loadFile(file) {
     sourceUrl = url;
     previewReady = false;
     syncRows();
+    dom.srcMeta.textContent = `${image.naturalWidth}×${image.naturalHeight}`;
     setStatus(`Загружено ${image.naturalWidth}\u00d7${image.naturalHeight} px, считаю\u2026`);
     schedulePreview();
     scheduleRender();
@@ -411,6 +421,159 @@ function exportSvg() {
   setStatus('SVG сохранён.', 'ok');
 }
 
+/* ------------------------------------------------------------------------ *
+ * Interface mode
+ *
+ * One DOM tree, one attribute. The mode only decides what CSS shows, so there
+ * is no second interface to keep in step and no control that can hold a
+ * different value depending on which mode last touched it.
+ * ------------------------------------------------------------------------ */
+function setMode(mode) {
+  const next = mode === 'advanced' ? 'advanced' : 'simple';
+  dom.app.dataset.mode = next;
+  dom.modeSimple.setAttribute('aria-pressed', String(next === 'simple'));
+  dom.modeAdvanced.setAttribute('aria-pressed', String(next === 'advanced'));
+}
+
+/* ------------------------------------------------------------------------ *
+ * Persistence
+ * ------------------------------------------------------------------------ */
+const PERSISTED_RANGES = [
+  'threshold', 'brightness', 'contrast', 'saturation', 'sharpness', 'edgeAmount', 'edgeRadius',
+];
+const PERSISTED_FIELDS = [
+  'preset', 'platform', 'dither', 'invert', 'edgeMode', 'outWidth', 'outHeight', 'fontSize',
+];
+
+function collectSettings() {
+  const values = {
+    mode: dom.app.dataset.mode,
+    keepAspect: dom.keepAspect.checked,
+    smooth: smoothScaling,
+  };
+  for (const id of PERSISTED_FIELDS) values[id] = el(id).value;
+  for (const name of PERSISTED_RANGES) values[name] = controls[name].value;
+  return values;
+}
+
+const persist = coalesce(() => saveSettings(collectSettings()));
+
+/** Restore a stored blob, ignoring anything unrecognised rather than trusting it. */
+function applySettings(values) {
+  setMode(values.mode);
+
+  for (const id of PERSISTED_FIELDS) {
+    const stored = values[id];
+    if (stored == null) continue;
+    const node = el(id);
+    // A select silently keeps its old value when handed an option it does not
+    // have, which is what should happen to a blob from an older version.
+    node.value = stored;
+  }
+  for (const name of PERSISTED_RANGES) {
+    if (Number.isFinite(Number(values[name]))) controls[name].set(values[name]);
+  }
+  if (typeof values.keepAspect === 'boolean') dom.keepAspect.checked = values.keepAspect;
+  if (typeof values.smooth === 'boolean') smoothScaling = values.smooth;
+
+  dom.presetHint.textContent = CONTENT_PRESETS[dom.preset.value]?.hint ?? '';
+}
+
+function resetEverything() {
+  clearSettings();
+  for (const control of Object.values(controls)) control.reset();
+  for (const id of PERSISTED_FIELDS) {
+    const node = el(id);
+    node.value = node.dataset.default ?? node.getAttribute('value') ?? node.options?.[0]?.value ?? '';
+  }
+  dom.keepAspect.checked = true;
+  smoothScaling = true;
+  dom.presetHint.textContent = '';
+
+  syncEdgeControls();
+  syncPlatform();
+  syncRows();
+  changed();
+  setStatus('Настройки сброшены.', 'info');
+}
+
+/* ------------------------------------------------------------------------ *
+ * Getting an image in
+ * ------------------------------------------------------------------------ */
+function firstImage(list) {
+  return [...(list ?? [])].find((item) => item && item.type && item.type.startsWith('image/'));
+}
+
+function acceptDroppedFiles() {
+  // dragenter/dragleave fire for every child element crossed, so the highlight
+  // is refcounted rather than toggled, or it flickers across the whole layout.
+  let depth = 0;
+  const highlight = (on) => document.body.classList.toggle('dropping', on);
+
+  window.addEventListener('dragenter', (event) => {
+    event.preventDefault();
+    depth += 1;
+    highlight(true);
+  });
+  window.addEventListener('dragover', (event) => event.preventDefault());
+  window.addEventListener('dragleave', () => {
+    depth = Math.max(0, depth - 1);
+    if (depth === 0) highlight(false);
+  });
+  window.addEventListener('drop', (event) => {
+    event.preventDefault();
+    depth = 0;
+    highlight(false);
+    const file = firstImage(event.dataTransfer?.files);
+    if (file) loadFile(file);
+    else setStatus('Это не изображение.', 'warn');
+  });
+}
+
+function acceptPastedImages() {
+  window.addEventListener('paste', (event) => {
+    const item = [...(event.clipboardData?.items ?? [])].find((i) => i.type.startsWith('image/'));
+    const file = item?.getAsFile();
+    if (!file) return;
+    event.preventDefault();
+    loadFile(file);
+  });
+}
+
+/* ------------------------------------------------------------------------ *
+ * Looking closer
+ *
+ * The three previews are small so all four panes fit one screen; this is how
+ * you actually examine one without giving up that layout.
+ * ------------------------------------------------------------------------ */
+function inspect(canvasId) {
+  const preview = el(canvasId);
+  if (!preview.width || !preview.height) return;
+
+  const overlay = document.createElement('div');
+  overlay.className = 'inspect';
+
+  const full = createCanvas(preview.width, preview.height);
+  full.getContext('2d').drawImage(preview, 0, 0);
+  if (canvasId === 'resCanvas') full.style.imageRendering = 'pixelated';
+
+  const caption = document.createElement('p');
+  caption.textContent = `${preview.width}×${preview.height} px · щёлкните или нажмите Esc, чтобы закрыть`;
+
+  const close = () => {
+    overlay.remove();
+    document.removeEventListener('keydown', onKey);
+  };
+  const onKey = (event) => {
+    if (event.key === 'Escape') close();
+  };
+
+  overlay.append(full, caption);
+  overlay.addEventListener('click', close);
+  document.addEventListener('keydown', onKey);
+  document.body.append(overlay);
+}
+
 function init() {
   controls.threshold = bindRange(el('threshold'), el('thresholdVal'), { onChange: () => changed({ affectsPreview: false }) });
   controls.brightness = bindRange(el('brightness'), el('brightnessVal'), { onChange: changed });
@@ -424,6 +587,8 @@ function init() {
 
   fillPresets();
   fillPlatforms();
+
+  applySettings(loadSettings());
 
   dom.preset.addEventListener('change', () => applyPreset(dom.preset.value));
   dom.platform.addEventListener('change', () => {
@@ -465,6 +630,22 @@ function init() {
   dom.downloadSvg.addEventListener('click', () => {
     if (requireArt()) exportSvg();
   });
+
+  dom.modeSimple.addEventListener('click', () => { setMode('simple'); persist(); });
+  dom.modeAdvanced.addEventListener('click', () => { setMode('advanced'); persist(); });
+  dom.resetAll.addEventListener('click', resetEverything);
+
+  for (const shot of document.querySelectorAll('[data-inspect]')) {
+    shot.addEventListener('click', () => inspect(shot.dataset.inspect));
+    shot.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      inspect(shot.dataset.inspect);
+    });
+  }
+
+  acceptDroppedFiles();
+  acceptPastedImages();
 
   dom.file.addEventListener('change', () => {
     const file = dom.file.files?.[0];

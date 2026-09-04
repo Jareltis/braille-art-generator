@@ -10,222 +10,401 @@
 
   <style>
     :root {
-      --bg: #083826;
-      --bg-far: #0e4d35;
-      --panel: rgba(255, 255, 255, 0.04);
-      --line: rgba(255, 255, 255, 0.09);
+      --bg: #072e20;
+      --bg-far: #0c412d;
+      --panel: rgba(255, 255, 255, 0.045);
+      --line: rgba(255, 255, 255, 0.10);
+      --line-strong: rgba(255, 255, 255, 0.18);
       --accent: #22c55e;
+      --accent-ink: #04240f;
       --muted: #a7e9c9;
       --ink: #e6fff3;
       --art-bg: #00120a;
       --warn: #fbbf24;
       --error: #fca5a5;
+      --strip-h: 132px;
       color-scheme: dark;
     }
 
     *, *::before, *::after { box-sizing: border-box; }
     [hidden] { display: none !important; }
 
-    html, body {
-      min-height: 100%;
+    html, body { height: 100%; }
+    body {
       margin: 0;
+      overflow: hidden;              /* the page itself never scrolls */
       color: var(--ink);
-      background: var(--bg) linear-gradient(180deg, var(--bg) 0%, var(--bg-far) 100%) fixed;
+      background: var(--bg) linear-gradient(160deg, var(--bg) 0%, var(--bg-far) 100%) fixed;
       font: 15px/1.5 Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     }
 
-    .wrap { max-width: 1300px; margin: 0 auto; padding: 16px; }
-    .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px; }
-
-    h1 { margin: 0 0 4px; font-size: 20px; }
-    .tagline { margin: 0 0 18px; color: var(--muted); font-size: 13px; }
-
-    .layout { display: grid; gap: 20px; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); align-items: start; }
-    @media (max-width: 900px) { .layout { grid-template-columns: minmax(0, 1fr); } }
-
-    /* ---- controls ---- */
-    .field { margin-bottom: 14px; }
-    .row { display: grid; gap: 10px; grid-template-columns: 1fr 1fr; }
-    label { display: block; margin-bottom: 4px; color: var(--muted); font-size: 13px; }
-
-    input[type="file"], input[type="number"], select {
-      width: 100%;
-      padding: 7px 9px;
-      color: inherit;
-      background: rgba(0, 0, 0, 0.25);
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      font: inherit;
-      font-size: 14px;
-    }
-    input[type="number"]:disabled { opacity: 0.5; cursor: not-allowed; }
-    input[type="file"]::file-selector-button {
-      margin-right: 10px; padding: 5px 10px; color: var(--ink);
-      background: rgba(255, 255, 255, 0.08); border: 1px solid var(--line);
-      border-radius: 6px; font: inherit; font-size: 13px; cursor: pointer;
+    /* ------------------------------------------------------------------ *
+     * The whole app is one viewport-tall grid: bar on top, work below.
+     * Every nested scroller needs min-height:0 or it refuses to shrink and
+     * pushes the page taller than the screen.
+     * ------------------------------------------------------------------ */
+    .app {
+      height: 100dvh;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      gap: 10px;
+      padding: 10px 12px 12px;
     }
 
-    .slider { display: flex; gap: 10px; align-items: center; }
-    input[type="range"] { flex: 1; min-width: 0; accent-color: var(--accent); }
-    .readout {
-      width: 52px; flex: none; text-align: center; color: var(--muted);
-      font-size: 13px; font-variant-numeric: tabular-nums;
+    .topbar {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--line);
     }
+    .brand { font-size: 16px; font-weight: 600; letter-spacing: 0.2px; white-space: nowrap; }
+    .brand span { color: var(--accent); }
+    .topbar .grow { flex: 1 1 auto; min-width: 0; }
 
-    .slider button { flex: none; padding: 5px 10px; font-size: 13px; }
-
-    .check { display: flex; gap: 8px; align-items: center; }
-    .check input { accent-color: var(--accent); width: 16px; height: 16px; }
-    .check label { margin: 0; }
-
-    hr { margin: 18px 0; border: 0; border-top: 1px solid var(--line); }
-
-    .buttons { display: flex; flex-wrap: wrap; gap: 8px; }
-    button {
-      padding: 8px 14px; color: var(--ink); background: transparent;
-      border: 1px solid var(--line); border-radius: 8px;
-      font: inherit; font-size: 14px; cursor: pointer;
+    #status {
+      min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      color: var(--muted); font-size: 13px;
     }
-    button:hover { background: rgba(255, 255, 255, 0.07); }
-    button.primary { color: #04240f; background: var(--accent); border-color: var(--accent); font-weight: 600; }
-    button.primary:hover { filter: brightness(1.08); }
-    button:focus-visible, input:focus-visible, select:focus-visible {
-      outline: 2px solid var(--accent); outline-offset: 2px;
-    }
-
-    #status { margin: 12px 0 0; font-size: 13px; color: var(--muted); min-height: 1.5em; }
     #status[data-kind="ok"] { color: var(--accent); }
     #status[data-kind="warn"] { color: var(--warn); }
     #status[data-kind="error"] { color: var(--error); }
 
-    .hint { margin: 6px 0 0; color: var(--muted); font-size: 12px; }
-    .panel-inset {
-      margin-top: 10px; padding: 12px;
-      background: rgba(0, 0, 0, 0.22); border: 1px solid var(--line); border-radius: 8px;
+    /* segmented mode switch */
+    .modes { display: flex; padding: 3px; background: rgba(0,0,0,0.28); border: 1px solid var(--line); border-radius: 9px; }
+    .modes button {
+      padding: 5px 13px; color: var(--muted); background: none; border: 0; border-radius: 6px;
+      font: inherit; font-size: 13px; cursor: pointer;
     }
+    .modes button[aria-pressed="true"] { color: var(--accent-ink); background: var(--accent); font-weight: 600; }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: clamp(290px, 25vw, 370px) minmax(0, 1fr);
+      gap: 12px;
+      min-height: 0;
+    }
+
+    /* ---- controls column: the only part of the chrome that scrolls ---- */
+    .sidebar {
+      min-height: 0;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      padding: 14px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      scrollbar-width: thin;
+    }
+    .sidebar::-webkit-scrollbar { width: 8px; }
+    .sidebar::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 4px; }
+
+    /* one DOM tree; the mode only decides what is on screen */
+    [data-mode="simple"] [data-advanced] { display: none !important; }
+
+    .field { margin-bottom: 13px; }
+    .field:last-child { margin-bottom: 0; }
+    .row { display: grid; gap: 10px; grid-template-columns: 1fr 1fr; }
+    label { display: block; margin-bottom: 4px; color: var(--muted); font-size: 12.5px; }
+
+    input[type="file"], input[type="number"], select {
+      width: 100%; padding: 7px 9px;
+      color: inherit; background: rgba(0, 0, 0, 0.26);
+      border: 1px solid var(--line); border-radius: 8px;
+      font: inherit; font-size: 14px;
+    }
+    input[type="number"]:disabled, select:disabled, button:disabled { opacity: 0.45; cursor: not-allowed; }
+    input[type="file"]::file-selector-button {
+      margin-right: 10px; padding: 5px 10px; color: var(--ink);
+      background: rgba(255,255,255,0.09); border: 1px solid var(--line);
+      border-radius: 6px; font: inherit; font-size: 13px; cursor: pointer;
+    }
+
+    .slider { display: flex; gap: 9px; align-items: center; }
+    input[type="range"] { flex: 1; min-width: 0; accent-color: var(--accent); }
+    .readout { width: 46px; flex: none; text-align: center; color: var(--muted); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+    .slider button { flex: none; padding: 4px 9px; font-size: 12.5px; }
+
+    .check { display: flex; gap: 8px; align-items: center; }
+    .check input { width: 16px; height: 16px; accent-color: var(--accent); }
+    .check label { margin: 0; }
+
+    hr { margin: 15px 0; border: 0; border-top: 1px solid var(--line); }
+    .group-title { margin: 0 0 9px; color: var(--ink); font-size: 12px; text-transform: uppercase; letter-spacing: 0.7px; opacity: 0.65; }
+
+    .buttons { display: flex; flex-wrap: wrap; gap: 7px; }
+    button {
+      padding: 7px 12px; color: var(--ink); background: transparent;
+      border: 1px solid var(--line-strong); border-radius: 8px;
+      font: inherit; font-size: 13.5px; cursor: pointer;
+    }
+    button:hover:not(:disabled) { background: rgba(255,255,255,0.08); }
+    button.primary { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); font-weight: 600; }
+    button:focus-visible, input:focus-visible, select:focus-visible, .shot:focus-visible {
+      outline: 2px solid var(--accent); outline-offset: 2px;
+    }
+
+    .hint { margin: 6px 0 0; color: var(--muted); font-size: 11.5px; line-height: 1.45; }
+    .panel-inset { margin-top: 10px; padding: 11px; background: rgba(0,0,0,0.24); border: 1px solid var(--line); border-radius: 8px; }
     .ruler {
       margin: 8px 0; padding: 8px; overflow-x: auto; white-space: pre;
       background: var(--art-bg); border-radius: 6px;
       font-family: "Cascadia Mono", "DejaVu Sans Mono", monospace; font-size: 13px; line-height: 1;
     }
-    #meta.over { color: var(--warn); }
-
-    /* ---- previews ---- */
-    .stack { display: flex; flex-direction: column; gap: 16px; }
-    figure { margin: 0; }
-    figcaption { margin-bottom: 6px; color: var(--muted); font-size: 13px; }
-    canvas {
-      display: block; max-width: 100%; height: auto;
-      background: #000; border: 1px solid var(--line); border-radius: 8px;
+  </style>
+  <style>
+    /* ------------------------------------------------------------------ *
+     * The stage. Three previews across the top, the art filling whatever
+     * height is left. Nothing here scrolls the page: the art scrolls inside
+     * its own box, and all four panes stay on screen together.
+     * ------------------------------------------------------------------ */
+    .stage {
+      display: grid;
+      grid-template-rows: var(--strip-h) minmax(0, 1fr) auto;
+      gap: 10px;
+      min-height: 0;
     }
-    /* the generator grid is tiny by design -- show the real pixels, not a blur */
-    #resCanvas { image-rendering: pixelated; width: 100%; }
 
+    .strip {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      min-height: 0;
+    }
+
+    .shot {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      gap: 5px;
+      margin: 0;
+      min-width: 0;
+      min-height: 0;
+      padding: 8px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      cursor: zoom-in;
+    }
+    .shot:hover { border-color: var(--line-strong); }
+    .shot figcaption {
+      display: flex; justify-content: space-between; gap: 8px;
+      color: var(--muted); font-size: 11px; letter-spacing: 0.3px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .shot figcaption b { color: var(--ink); font-weight: 500; }
+    /* object-fit letterboxes the bitmap inside a fixed box, so wildly
+       different aspect ratios still line up as equal tiles */
+    .shot canvas {
+      width: 100%; height: 100%; min-height: 0;
+      object-fit: contain;
+      background: #000; border-radius: 6px;
+    }
+    #resCanvas { image-rendering: pixelated; }
+
+    .viewer {
+      min-height: 0;
+      display: grid;
+      background: var(--art-bg);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+    }
     #output {
-      margin: 0; padding: 12px; overflow: auto;
-      max-height: 70vh; min-height: 160px;
-      color: var(--ink); background: var(--art-bg);
-      border: 1px solid var(--line); border-radius: 8px;
+      margin: 0; padding: 12px;
+      min-height: 0; overflow: auto;
+      color: var(--ink); background: none;
       font-family: "Cascadia Mono", "DejaVu Sans Mono", "Segoe UI Symbol", monospace;
-      /* line-height is a plain number so it resolves to px and the aspect-ratio
-         maths, the layout and the PNG export can all read the same value */
+      /* a plain number, so the aspect maths, the layout and the PNG and SVG
+         exports can all read one resolved value */
       line-height: 1;
       white-space: pre;
       tab-size: 1;
+      scrollbar-width: thin;
     }
-    #meta { margin: 8px 0 0; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+    #output:empty::before {
+      content: 'Перетащите изображение сюда, вставьте из буфера или выберите файл слева.';
+      display: block; padding: 24px 4px; color: var(--muted);
+      font-family: Inter, system-ui, sans-serif; font-size: 13px; white-space: normal;
+    }
 
-    footer { margin-top: 18px; color: var(--muted); font-size: 12px; }
-    footer a { color: var(--muted); }
+    .stagefoot { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+    #meta { margin: 0; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+    #meta.over { color: var(--warn); }
+    .stagefoot a { color: var(--muted); font-size: 12px; }
+
+    /* click a preview to see it at full size */
+    .inspect {
+      position: fixed; inset: 0; z-index: 20;
+      display: grid; place-items: center; gap: 10px;
+      padding: 24px;
+      background: rgba(2, 12, 8, 0.88);
+      cursor: zoom-out;
+    }
+    .inspect canvas { max-width: 100%; max-height: 85vh; object-fit: contain; border-radius: 8px; background: #000; }
+    .inspect p { margin: 0; color: var(--muted); font-size: 13px; }
+
+    /* drag and drop */
+    body.dropping::after {
+      content: 'Отпустите, чтобы загрузить';
+      position: fixed; inset: 10px; z-index: 30;
+      display: grid; place-items: center;
+      border: 2px dashed var(--accent); border-radius: 14px;
+      background: rgba(4, 36, 15, 0.55); color: var(--ink); font-size: 16px;
+      pointer-events: none;
+    }
+
+    /* ------------------------------------------------------------------ *
+     * Narrow screens cannot hold four panes at once, so there the page is
+     * allowed to scroll and the previews become a swipeable row.
+     * ------------------------------------------------------------------ */
+    @media (max-width: 900px) {
+      body { overflow: auto; }
+      .app { height: auto; min-height: 100dvh; }
+      .workspace { grid-template-columns: minmax(0, 1fr); }
+      .sidebar { overflow: visible; max-height: none; }
+      .stage { grid-template-rows: var(--strip-h) auto auto; }
+      #output { max-height: 60vh; }
+    }
+    @media (max-height: 560px) {
+      :root { --strip-h: 96px; }
+    }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <main class="panel">
-      <h1>Braille Art Generator</h1>
-      <p class="tagline">Каждый символ кодирует блок 2×4 пикселя. Всё считается в браузере — изображение никуда не отправляется.</p>
+  <div class="app" id="app" data-mode="simple">
 
-      <div class="layout">
-        <!-- ------------------------------ controls ------------------------------ -->
-        <section aria-label="Параметры">
-          <div class="field">
-            <label for="file">Изображение</label>
-            <input id="file" type="file" accept="image/*">
+    <header class="topbar">
+      <div class="brand">Braille&nbsp;<span>Art</span>&nbsp;Generator</div>
+      <div class="modes" role="group" aria-label="Режим интерфейса">
+        <button id="modeSimple" type="button" aria-pressed="true">Простой</button>
+        <button id="modeAdvanced" type="button" aria-pressed="false">Расширенный</button>
+      </div>
+      <p id="status" class="grow" role="status" aria-live="polite"></p>
+    </header>
+
+    <div class="workspace">
+      <aside class="sidebar">
+
+        <div class="field">
+          <label for="file">Изображение</label>
+          <input id="file" type="file" accept="image/*">
+        </div>
+
+        <div class="field">
+          <label for="preset">Тип изображения</label>
+          <select id="preset"></select>
+          <p class="hint" id="presetHint"></p>
+        </div>
+
+        <div class="field row">
+          <div>
+            <label for="outWidth">Ширина, символов</label>
+            <input id="outWidth" type="number" min="1" max="400" value="80">
           </div>
-
-          <div class="field">
-            <label for="preset">Тип изображения</label>
-            <select id="preset"></select>
-            <p class="hint" id="presetHint"></p>
+          <div data-advanced>
+            <label for="outHeight">Высота, символов</label>
+            <input id="outHeight" type="number" min="1" max="400" value="30">
           </div>
+        </div>
 
-          <hr>
+        <div class="field check" data-advanced>
+          <input id="keepAspect" type="checkbox" checked>
+          <label for="keepAspect">Сохранять пропорции</label>
+        </div>
+
+        <div class="field">
+          <label for="threshold">Порог</label>
+          <div class="slider">
+            <input id="threshold" type="range" min="0" max="255" value="128">
+            <span class="readout" id="thresholdVal">128</span>
+            <button id="autoThreshold" type="button" title="Подобрать методом Оцу">Авто</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="platform">Куда отправлять</label>
+          <select id="platform"></select>
+          <p class="hint" id="platformState"></p>
+        </div>
+
+        <div class="field">
+          <button id="calibrate" type="button">Откалибровать под свой чат</button>
+
+          <div class="panel-inset" id="calibratePanel" hidden>
+            <p class="hint">
+              Отправьте линейку себе в чат и посмотрите, сколько делений <b>⣿</b>
+              помещается в строку до переноса. Каждое деление — 10 символов.
+              Меряем именно Брайлем: у цифр в том же шрифте другая ширина.
+            </p>
+            <div class="ruler" id="rulerText"></div>
+            <div class="buttons">
+              <button id="copyRuler" type="button">Копировать линейку</button>
+            </div>
+
+            <div class="row" style="margin-top:11px">
+              <div>
+                <label for="calibratedWidth">Ширина</label>
+                <input id="calibratedWidth" type="number" min="4" max="400" value="40">
+              </div>
+              <div>
+                <label for="calibratedScale">Верт. масштаб</label>
+                <div class="slider">
+                  <input id="calibratedScale" type="range" min="0.5" max="2" step="0.05" value="1">
+                  <span class="readout" id="calibratedScaleVal">1.00</span>
+                </div>
+              </div>
+            </div>
+            <p class="hint">Масштаб — если арт в чате выглядит вытянутым или сплюснутым: межстрочный интервал у клиентов разный.</p>
+
+            <div class="buttons" style="margin-top:11px">
+              <button id="saveCalibration" class="primary" type="button">Сохранить</button>
+              <button id="resetCalibration" type="button">Сбросить</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="field">
+          <div class="buttons">
+            <button id="copy" class="primary" type="button">Копировать</button>
+            <button id="downloadTxt" type="button">.txt</button>
+            <button id="downloadPng" type="button">PNG</button>
+            <button id="downloadSvg" type="button" data-advanced>SVG</button>
+            <button id="generate" type="button">Пересчитать</button>
+          </div>
+        </div>
+
+        <hr data-advanced>
+
+        <div data-advanced>
+          <p class="group-title">Как считать точки</p>
 
           <div class="field row">
             <div>
-              <label for="outWidth">Ширина, символов</label>
-              <input id="outWidth" type="number" min="1" max="400" value="80">
+              <label for="dither">Метод</label>
+              <select id="dither">
+                <option value="floyd-steinberg">Флойд–Стейнберг</option>
+                <option value="atkinson">Аткинсон</option>
+                <option value="bayer4">Байер 4×4</option>
+                <option value="threshold">Простой порог</option>
+              </select>
             </div>
             <div>
-              <label for="outHeight">Высота, символов</label>
-              <input id="outHeight" type="number" min="1" max="400" value="30">
+              <label for="invert">Инверсия</label>
+              <select id="invert">
+                <option value="0">Нет</option>
+                <option value="1">Да</option>
+              </select>
             </div>
           </div>
+        </div>
 
-          <div class="field check">
-            <input id="keepAspect" type="checkbox" checked>
-            <label for="keepAspect">Сохранять пропорции (высота считается сама)</label>
-          </div>
+        <hr data-advanced>
 
-          <div class="field">
-            <label for="platform">Куда отправлять</label>
-            <select id="platform"></select>
-            <p class="hint" id="platformState"></p>
-          </div>
+        <div data-advanced>
+          <p class="group-title">Контуры</p>
 
           <div class="field">
-            <button id="calibrate" type="button">Откалибровать под свой чат</button>
-
-            <div class="panel-inset" id="calibratePanel" hidden>
-              <p class="hint">
-                Отправьте линейку себе в чат и посмотрите, сколько делений
-                <b>⣿</b> помещается в строку до переноса. Каждое деление — 10 символов.
-                Меряем именно символами Брайля: у цифр в том же шрифте другая ширина.
-              </p>
-              <div class="ruler" id="rulerText"></div>
-              <div class="buttons">
-                <button id="copyRuler" type="button">Копировать линейку</button>
-              </div>
-
-              <div class="row" style="margin-top:12px">
-                <div>
-                  <label for="calibratedWidth">Ширина, символов</label>
-                  <input id="calibratedWidth" type="number" min="4" max="400" value="40">
-                </div>
-                <div>
-                  <label for="calibratedScale">Вертикальный масштаб</label>
-                  <div class="slider">
-                    <input id="calibratedScale" type="range" min="0.5" max="2" step="0.05" value="1">
-                    <span class="readout" id="calibratedScaleVal">1.00</span>
-                  </div>
-                </div>
-              </div>
-              <p class="hint">
-                Масштаб трогайте, если арт в чате выглядит вытянутым или сплюснутым:
-                межстрочный интервал у клиентов разный.
-              </p>
-
-              <div class="buttons" style="margin-top:12px">
-                <button id="saveCalibration" class="primary" type="button">Сохранить</button>
-                <button id="resetCalibration" type="button">Сбросить</button>
-              </div>
-            </div>
-          </div>
-
-          <hr>
-
-          <div class="field">
-            <label for="edgeMode">Контуры</label>
+            <label for="edgeMode">Детектор</label>
             <select id="edgeMode">
               <option value="none">Нет — по яркости</option>
               <option value="xdog">XDoG — штриховая линия</option>
@@ -248,38 +427,12 @@
               <span class="readout" id="edgeRadiusVal">1.0</span>
             </div>
           </div>
+        </div>
 
-          <hr>
+        <hr data-advanced>
 
-          <div class="field row">
-            <div>
-              <label for="dither">Метод</label>
-              <select id="dither">
-                <option value="floyd-steinberg">Флойд–Стейнберг</option>
-                <option value="atkinson">Аткинсон</option>
-                <option value="bayer4">Байер 4×4</option>
-                <option value="threshold">Простой порог</option>
-              </select>
-            </div>
-            <div>
-              <label for="invert">Инверсия</label>
-              <select id="invert">
-                <option value="0">Нет</option>
-                <option value="1">Да</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="field">
-            <label for="threshold">Порог, 0–255</label>
-            <div class="slider">
-              <input id="threshold" type="range" min="0" max="255" value="128">
-              <span class="readout" id="thresholdVal">128</span>
-              <button id="autoThreshold" type="button" title="Подобрать порог методом Оцу">Авто</button>
-            </div>
-          </div>
-
-          <hr>
+        <div data-advanced>
+          <p class="group-title">Коррекция изображения</p>
 
           <div class="field">
             <label for="brightness">Яркость</label>
@@ -309,58 +462,57 @@
               <span class="readout" id="sharpnessVal">0.0</span>
             </div>
           </div>
+        </div>
 
-          <hr>
+        <hr data-advanced>
+
+        <div data-advanced>
+          <p class="group-title">Отображение</p>
 
           <div class="field row">
             <div>
-              <label for="fontSize">Кегль вывода, px</label>
+              <label for="fontSize">Кегль, px</label>
               <input id="fontSize" type="number" min="6" max="48" value="12">
             </div>
             <div></div>
           </div>
 
-          <div class="buttons">
-            <button id="generate" class="primary" type="button">Сгенерировать</button>
-            <button id="copy" type="button">Копировать</button>
-            <button id="downloadTxt" type="button">Скачать .txt</button>
-            <button id="downloadPng" type="button">Скачать PNG</button>
-            <button id="downloadSvg" type="button">Скачать SVG</button>
+          <div class="field buttons">
             <button id="resetEdits" type="button">Сбросить коррекцию</button>
+            <button id="resetAll" type="button">Сбросить всё</button>
           </div>
+        </div>
 
-          <p id="status" role="status" aria-live="polite"></p>
-        </section>
+      </aside>
 
-        <!-- ------------------------------ previews ------------------------------ -->
-        <section class="stack" aria-label="Предпросмотр и результат">
-          <figure>
-            <figcaption>Оригинал</figcaption>
+      <section class="stage">
+        <div class="strip">
+          <figure class="shot" tabindex="0" role="button" data-inspect="srcCanvas" aria-label="Увеличить: оригинал">
+            <figcaption><b>Оригинал</b><span id="srcMeta"></span></figcaption>
             <canvas id="srcCanvas" width="360" height="240"></canvas>
           </figure>
 
-          <figure>
-            <figcaption>После коррекции</figcaption>
+          <figure class="shot" tabindex="0" role="button" data-inspect="editCanvas" aria-label="Увеличить: после коррекции">
+            <figcaption><b>После коррекции</b></figcaption>
             <canvas id="editCanvas" width="360" height="240"></canvas>
           </figure>
 
-          <figure>
-            <figcaption>Пиксели, из которых считается арт</figcaption>
+          <figure class="shot" tabindex="0" role="button" data-inspect="resCanvas" aria-label="Увеличить: пиксели сетки">
+            <figcaption><b>Пиксели сетки</b><span id="gridMeta"></span></figcaption>
             <canvas id="resCanvas" width="160" height="120"></canvas>
           </figure>
+        </div>
 
-          <figure>
-            <figcaption>Результат</figcaption>
-            <pre id="output" tabindex="0"></pre>
-            <p id="meta"></p>
-          </figure>
-        </section>
-      </div>
+        <div class="viewer">
+          <pre id="output" tabindex="0"></pre>
+        </div>
 
-      <footer>
-        <a href="https://github.com/Jareltis/Braille_Art_Generator">Исходный код</a> · GPL-3.0-or-later
-      </footer>
-    </main>
+        <div class="stagefoot">
+          <p id="meta"></p>
+          <a href="https://github.com/Jareltis/Braille_Art_Generator">Исходный код · GPL-3.0-or-later</a>
+        </div>
+      </section>
+    </div>
   </div>
 
   <script type="module" src="src/main.js"></script>
