@@ -158,6 +158,35 @@
             <label for="keepAspect">Сохранять пропорции (высота считается сама)</label>
           </div>
 
+          <hr>
+
+          <div class="field">
+            <label for="edgeMode">Контуры</label>
+            <select id="edgeMode">
+              <option value="none">Нет — по яркости</option>
+              <option value="xdog">XDoG — штриховая линия</option>
+              <option value="sobel">Собель — градиент</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="edgeAmount">Заливка ↔ линии</label>
+            <div class="slider">
+              <input id="edgeAmount" type="range" min="0" max="100" value="100" disabled>
+              <span class="readout" id="edgeAmountVal">100</span>
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="edgeRadius">Толщина линий</label>
+            <div class="slider">
+              <input id="edgeRadius" type="range" min="0.3" max="3" step="0.1" value="1.0" disabled>
+              <span class="readout" id="edgeRadiusVal">1.0</span>
+            </div>
+          </div>
+
+          <hr>
+
           <div class="field row">
             <div>
               <label for="dither">Метод</label>

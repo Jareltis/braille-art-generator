@@ -73,6 +73,42 @@ async function run() {
   ok('switching method re-renders live', changed);
   log.push(`INFO  bayer4 row 8: ${$('output').textContent.split('\n')[8].slice(0, 30)}`);
 
+  // --- edge controls -------------------------------------------------------
+  const BLANK = String.fromCharCode(0x2800);
+  const NEWLINE = String.fromCharCode(10);
+  const inked = (text) => [...text.split(NEWLINE).join('')].filter((c) => c !== BLANK).length;
+
+  check('line controls start disabled', $('edgeAmount').disabled && $('edgeRadius').disabled, true);
+
+  const tonedInk = inked($('output').textContent);
+  const beforeEdges = $('output').textContent;
+  $('edgeMode').value = 'xdog';
+  $('edgeMode').dispatchEvent(new Event('change', { bubbles: true }));
+
+  check('choosing a detector enables the line controls',
+    !$('edgeAmount').disabled && !$('edgeRadius').disabled, true);
+
+  const redrew = await until(() => $('output').textContent !== beforeEdges);
+  ok('switching to xdog re-renders live', redrew);
+
+  const linedInk = inked($('output').textContent);
+  ok('lines use fewer cells than tone', linedInk < tonedInk, `${linedInk} vs ${tonedInk} inked cells`);
+  ok('lines are not empty', linedInk > 0, `${linedInk} inked cells`);
+
+  // Dragging the mix back toward fill must bring the tone back.
+  const pureLines = $('output').textContent;
+  $('edgeAmount').value = '40';
+  $('edgeAmount').dispatchEvent(new Event('input', { bubbles: true }));
+  const mixed = await until(() => $('output').textContent !== pureLines);
+  ok('the fill/line mix re-renders live', mixed);
+  ok('mixing brings tone back', inked($('output').textContent) > linedInk,
+     `${inked($('output').textContent)} inked cells at 40% lines`);
+
+  $('edgeMode').value = 'sobel';
+  $('edgeMode').dispatchEvent(new Event('change', { bubbles: true }));
+  const sobelDrew = await until(() => inked($('output').textContent) > 0);
+  ok('sobel also produces output', sobelDrew);
+
   // Auto threshold
   const beforeThreshold = $('threshold').value;
   $('autoThreshold').click();

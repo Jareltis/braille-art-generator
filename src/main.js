@@ -32,6 +32,7 @@ const dom = {
   fontSize: el('fontSize'),
   invert: el('invert'),
   dither: el('dither'),
+  edgeMode: el('edgeMode'),
   autoThreshold: el('autoThreshold'),
   generate: el('generate'),
   reset: el('resetEdits'),
@@ -112,7 +113,19 @@ const readOptions = () => ({
   threshold: controls.threshold.value,
   invert: isInverted(),
   method: dom.dither.value || DEFAULT_DITHER,
+  edge: {
+    mode: dom.edgeMode.value,
+    amount: controls.edgeAmount.value / 100,
+    radius: controls.edgeRadius.value,
+  },
 });
+
+/** The line controls mean nothing until a detector is chosen. */
+function syncEdgeControls() {
+  const off = dom.edgeMode.value === 'none';
+  controls.edgeAmount.input.disabled = off;
+  controls.edgeRadius.input.disabled = off;
+}
 
 function rowsFor(cols) {
   return Math.min(
@@ -277,6 +290,8 @@ function init() {
   controls.contrast = bindRange(el('contrast'), el('contrastVal'), { onChange: changed });
   controls.saturation = bindRange(el('saturation'), el('saturationVal'), { onChange: changed });
   controls.sharpness = bindRange(el('sharpness'), el('sharpnessVal'), { decimals: 1, onChange: changed });
+  controls.edgeAmount = bindRange(el('edgeAmount'), el('edgeAmountVal'), { onChange: () => changed({ affectsPreview: false }) });
+  controls.edgeRadius = bindRange(el('edgeRadius'), el('edgeRadiusVal'), { decimals: 1, onChange: () => changed({ affectsPreview: false }) });
 
   dom.file.addEventListener('change', () => {
     const file = dom.file.files?.[0];
@@ -287,6 +302,10 @@ function init() {
   dom.rows.addEventListener('input', () => changed({ affectsPreview: false }));
   dom.keepAspect.addEventListener('change', () => { syncRows(); changed({ affectsPreview: false }); });
   dom.dither.addEventListener('change', () => changed({ affectsPreview: false }));
+  dom.edgeMode.addEventListener('change', () => {
+    syncEdgeControls();
+    changed({ affectsPreview: false });
+  });
   dom.invert.addEventListener('change', () => changed());
   dom.fontSize.addEventListener('input', () => {
     applyFontSize();
@@ -342,6 +361,7 @@ function init() {
   });
 
   applyFontSize();
+  syncEdgeControls();
   syncRows();
   setStatus(
     pipeline.offThread

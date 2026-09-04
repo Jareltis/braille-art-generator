@@ -8,6 +8,8 @@ import { binarize, imageDataToBraille, toLuma } from '../src/core/braille.js';
 import { DITHER_METHODS, DEFAULT_DITHER } from '../src/core/dither.js';
 import { otsuThreshold } from '../src/core/otsu.js';
 import { applyAdjustments } from '../src/core/adjust.js';
+import { gaussianBlur } from '../src/core/blur.js';
+import { sobel, xdog, applyEdges } from '../src/core/edges.js';
 import { createPipeline } from '../src/ui/pipeline.js';
 
 const out = (t) => {
@@ -15,6 +17,7 @@ const out = (t) => {
   fetch('/result', { method: 'POST', body: t });
 };
 const log = [];
+const ok = (name, cond, detail = '') => log.push(`${cond ? 'PASS' : 'FAIL'}  ${name}${detail ? ': ' + detail : ''}`);
 const check = (name, got, want) => log.push(`${got === want ? 'PASS' : 'FAIL'}  ${name}: ${got}${got === want ? '' : ` (want ${want})`}`);
 const near = (name, got, lo, hi) => log.push(`${got >= lo && got <= hi ? 'PASS' : 'FAIL'}  ${name}: ${got.toFixed(3)} (want ${lo}..${hi})`);
 const coverage = (bits) => bits.reduce((a, b) => a + b, 0) / bits.length;
@@ -69,6 +72,68 @@ async function run() {
   near('otsu splits 50/200 between the modes', otsuThreshold(bimodal), 50, 199);
   check('otsu on a flat plane stays in range', otsuThreshold(flat(77)) >= 0, true);
 
+  // --- blur ----------------------------------------------------------------
+  // Clamped edges, not zero padding: a flat plane must stay exactly flat, or
+  // every border darkens and both detectors light up around the frame.
+  const maxDeviation = (plane, expected) => plane.reduce((m, v) => Math.max(m, Math.abs(v - expected)), 0);
+  near('gaussian blur leaves a flat plane flat', maxDeviation(gaussianBlur(flat(100), W, H, 2), 100), 0, 0.01);
+
+  // --- edge detectors ------------------------------------------------------
+  const peak = (plane) => plane.reduce((m, v) => Math.max(m, v), 0);
+  const midRow = (plane, x) => plane[Math.floor(H / 2) * W + x];
+
+  check('sobel is silent on a flat plane', peak(sobel(flat(100), W, H)), 0);
+  check('xdog is silent on a flat plane', peak(xdog(flat(100), W, H, 1)), 0);
+
+  // A vertical step: black on the left, white on the right.
+  const step = new Float32Array(W * H);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) step[y * W + x] = x < W / 2 ? 0 : 255;
+
+  const sob = sobel(step, W, H);
+  ok('sobel responds at the boundary', midRow(sob, W / 2 - 1) > 100, `${midRow(sob, W / 2 - 1).toFixed(0)} at the edge`);
+  check('sobel is silent far from the boundary', midRow(sob, 5), 0);
+
+  const ink = xdog(step, W, H, 1);
+  ok('xdog draws a stroke at the boundary', midRow(ink, W / 2 - 1) > 100, `${midRow(ink, W / 2 - 1).toFixed(0)} at the edge`);
+  check('xdog is silent far from the boundary', midRow(ink, 5), 0);
+  // One-sided by construction: ink lands on the dark side of an edge rather
+  // than straddling it, which is what makes it read as a drawn stroke.
+  ok('xdog stroke is one-sided', midRow(ink, W / 2 - 1) > midRow(ink, W / 2 + 1),
+     `dark side ${midRow(ink, W / 2 - 1).toFixed(0)} vs light side ${midRow(ink, W / 2 + 1).toFixed(0)}`);
+
+  // --- mixing --------------------------------------------------------------
+  check('mode none passes the plane straight through', applyEdges(step, W, H, { mode: 'none' }) === step, true);
+  check('amount 0 passes the plane straight through', applyEdges(step, W, H, { mode: 'xdog', amount: 0 }) === step, true);
+
+  const pureLines = applyEdges(step, W, H, { mode: 'xdog', amount: 1, radius: 1 });
+  const halfMix = applyEdges(step, W, H, { mode: 'xdog', amount: 0.5, radius: 1 });
+  const at = Math.floor(H / 2) * W + Math.floor(W / 2) + 4;
+  near('half mix sits between tone and line', halfMix[at],
+    Math.min(step[at], pureLines[at]), Math.max(step[at], pureLines[at]));
+  check('unknown edge mode rejected', (() => {
+    try { applyEdges(step, W, H, { mode: 'canny' }); return false; } catch (e) { return e instanceof RangeError; }
+  })(), true);
+
+  // --- edges change what gets encoded --------------------------------------
+  const edgeImage = new ImageData(W, H);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = (y * W + x) * 4, v = x < W / 2 ? 30 : 220;
+    edgeImage.data[i] = edgeImage.data[i + 1] = edgeImage.data[i + 2] = v;
+    edgeImage.data[i + 3] = 255;
+  }
+  const NEWLINE = String.fromCharCode(10);
+  const BLANK = String.fromCharCode(0x2800);
+  const inked = (text) => [...text.split(NEWLINE).join('')].filter((c) => c !== BLANK).length;
+
+  const plainText = imageDataToBraille(edgeImage, { threshold: 128, method: 'threshold' });
+  const linedText = imageDataToBraille(edgeImage, {
+    threshold: 60, method: 'threshold', edge: { mode: 'xdog', amount: 1, radius: 1 },
+  });
+  ok('edge mode changes the output', plainText !== linedText);
+  ok('a line uses far fewer cells than a filled half', inked(linedText) < inked(plainText) / 2,
+     `${inked(linedText)} vs ${inked(plainText)} inked cells`);
+  log.push(`INFO  xdog row: ${linedText.split(NEWLINE)[8].slice(10, 34)}`);
+
   // --- worker must agree with the main thread exactly ----------------------
   const pipe = createPipeline();
   check('worker is available', pipe.offThread, true);
@@ -103,7 +168,7 @@ async function run() {
   check('worker preview matches main thread', identical, true);
 
   const failed = log.filter((l) => l.startsWith('FAIL')).length;
-  out(`${log.join('\n')}\n${failed ? `\n${failed} FAILED` : '\nAll 0.2 checks passed.'}`);
+  out(`${log.join('\n')}\n${failed ? `\n${failed} FAILED` : '\nAll pipeline checks passed.'}`);
 }
 
 run().catch((err) => out(`THREW: ${err?.stack ?? err}\n\n--- progress ---\n${log.join('\n')}`));

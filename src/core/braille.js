@@ -3,6 +3,7 @@
 
 import { luma } from './pixels.js';
 import { DITHER_METHODS, DEFAULT_DITHER } from './dither.js';
+import { applyEdges } from './edges.js';
 
 /**
  * U+2800 BRAILLE PATTERN BLANK. An empty cell is still a braille glyph rather
@@ -95,7 +96,10 @@ export function imageDataToBraille(imageData, options = {}) {
       `image must be a multiple of ${CELL_W}x${CELL_H}, got ${width}x${height}`,
     );
   }
-  return bitsToBraille(binarize(toLuma(imageData), width, height, options), cols, rows);
+  // Tone first, then optionally line: applyEdges hands back a plane in the same
+  // units, so binarize does not care which one it is looking at.
+  const plane = applyEdges(toLuma(imageData), width, height, options.edge);
+  return bitsToBraille(binarize(plane, width, height, options), cols, rows);
 }
 
 /**
