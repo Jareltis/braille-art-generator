@@ -18,6 +18,7 @@ const ASSETS = [
   './src/main.js',
   './src/core/adjust.js',
   './src/core/blur.js',
+  './src/core/bluenoise.js',
   './src/core/braille.js',
   './src/core/dither.js',
   './src/core/edges.js',

@@ -80,11 +80,11 @@ export const thresholdFor = (threshold, linear) =>
  * The chosen method decides which pixels land on the bright side; inversion is
  * applied here afterwards, so no dithering method has to know about it.
  */
-export function binarize(plane, width, height, { threshold = 128, invert = false, method = DEFAULT_DITHER } = {}) {
+export function binarize(plane, width, height, { threshold = 128, neutral = threshold, invert = false, method = DEFAULT_DITHER } = {}) {
   const dither = DITHER_METHODS[method];
   if (!dither) throw new RangeError(`unknown dither method: ${method}`);
 
-  const bits = dither(plane, width, height, threshold);
+  const bits = dither(plane, width, height, threshold, neutral);
   if (invert) {
     for (let i = 0; i < bits.length; i++) bits[i] ^= 1;
   }
@@ -130,7 +130,10 @@ export function imageDataToBraille(imageData, options = {}) {
   }
   const { plane, linear } = tonePlane(imageData, options);
   const threshold = thresholdFor(options.threshold ?? 128, linear);
-  return bitsToBraille(binarize(plane, width, height, { ...options, threshold }), cols, rows);
+  // Where the control sits when centred, so a method that picks its own
+  // threshold knows what "no adjustment" means in the plane's units.
+  const neutral = thresholdFor(128, linear);
+  return bitsToBraille(binarize(plane, width, height, { ...options, threshold, neutral }), cols, rows);
 }
 
 /**

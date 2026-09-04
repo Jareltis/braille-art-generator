@@ -1,9 +1,16 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Ways of turning a continuous luma plane into one bit per pixel.
 //
-// Every method takes (plane, width, height, threshold) and returns a Uint8Array
-// where 1 means "bright side of the decision". Inversion is applied afterwards
-// by binarize(), so these stay independent of how the dots are finally used.
+// Every method takes (plane, width, height, threshold, neutral) and returns a
+// Uint8Array where 1 means "bright side of the decision". Inversion is applied
+// afterwards by binarize(), so these stay independent of how the dots are
+// finally used.
+//
+// `neutral` is where the threshold control sits when it is centred, in the same
+// units as the plane. Only the local method needs it: it chooses thresholds
+// itself, so the control can only shift what it chose.
+
+import { BLUE_NOISE_SIZE, blueNoiseMatrix } from './bluenoise.js';
 
 /** No diffusion at all: each pixel decided on its own. Best for logos and text. */
 function hardThreshold(plane, width, height, threshold) {
@@ -105,11 +112,101 @@ function bayer4(plane, width, height, threshold) {
   return bits;
 }
 
+/**
+ * Sauvola's local threshold.
+ *
+ * A single number cannot serve a photograph lit from one side: whatever it is,
+ * one end of the frame is crushed. This picks a threshold per pixel from the
+ * mean and spread of its neighbourhood
+ *
+ *     T = m * (1 + K * (s / R - 1))
+ *
+ * so a dim corner is judged against dim surroundings. The variance term is what
+ * keeps flat areas from dissolving into noise: where there is no local contrast,
+ * s is small, T drops below m and the region stays whole.
+ *
+ * Both moments come from integral images, so the window costs four lookups
+ * regardless of its size -- scanning it per pixel would be quadratic in radius.
+ */
+function sauvola(plane, width, height, threshold, neutral = threshold) {
+  const K = 0.2;
+  const R = 128;                 // the range local spread is measured against
+  const radius = Math.max(3, Math.round(Math.min(width, height) / 16));
+  const stride = width + 1;
+
+  const sum = new Float64Array(stride * (height + 1));
+  const sumSquares = new Float64Array(stride * (height + 1));
+
+  for (let y = 0; y < height; y++) {
+    let rowSum = 0;
+    let rowSquares = 0;
+    for (let x = 0; x < width; x++) {
+      const value = plane[y * width + x];
+      rowSum += value;
+      rowSquares += value * value;
+      const here = (y + 1) * stride + (x + 1);
+      sum[here] = sum[here - stride] + rowSum;
+      sumSquares[here] = sumSquares[here - stride] + rowSquares;
+    }
+  }
+
+  // The control cannot set the threshold here, so it shifts it instead.
+  const shift = threshold - neutral;
+  const bits = new Uint8Array(plane.length);
+
+  for (let y = 0; y < height; y++) {
+    const top = Math.max(0, y - radius);
+    const bottom = Math.min(height - 1, y + radius);
+    for (let x = 0; x < width; x++) {
+      const left = Math.max(0, x - radius);
+      const right = Math.min(width - 1, x + radius);
+      const area = (right - left + 1) * (bottom - top + 1);
+
+      const a = top * stride + left;
+      const b = top * stride + right + 1;
+      const c = (bottom + 1) * stride + left;
+      const d = (bottom + 1) * stride + right + 1;
+
+      const mean = (sum[d] - sum[b] - sum[c] + sum[a]) / area;
+      const spread = Math.sqrt(Math.max(0, (sumSquares[d] - sumSquares[b] - sumSquares[c] + sumSquares[a]) / area - mean * mean));
+      const local = mean * (1 + K * (spread / R - 1));
+
+      bits[y * width + x] = plane[y * width + x] > local + shift ? 1 : 0;
+    }
+  }
+  return bits;
+}
+
+/**
+ * Blue-noise ordered dithering.
+ *
+ * Same shape as bayer4 -- a tile of thresholds indexed by position, so nothing
+ * travels between pixels and the result never shifts when the image is re-cropped.
+ * The difference is the tile: void-and-cluster spreads its thresholds so that no
+ * scale carries a repeating structure, which removes the crosshatch a Bayer
+ * matrix leaves without giving up the position-only property.
+ */
+function blueNoise(plane, width, height, threshold) {
+  const matrix = blueNoiseMatrix();
+  const bits = new Uint8Array(plane.length);
+  for (let y = 0; y < height; y++) {
+    const row = (y % BLUE_NOISE_SIZE) * BLUE_NOISE_SIZE;
+    for (let x = 0; x < width; x++) {
+      const bias = (matrix[row + (x % BLUE_NOISE_SIZE)] - 0.5) * 255;
+      const i = y * width + x;
+      bits[i] = plane[i] > threshold + bias ? 1 : 0;
+    }
+  }
+  return bits;
+}
+
 /** Registry. Keys are the values stored in the UI and in saved settings. */
 export const DITHER_METHODS = Object.freeze({
   'floyd-steinberg': floydSteinberg,
   atkinson,
+  bluenoise: blueNoise,
   bayer4,
+  sauvola,
   threshold: hardThreshold,
 });
 

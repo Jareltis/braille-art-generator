@@ -6,6 +6,7 @@
 <script type="module">
 import { binarize, imageDataToBraille, toLuminance, tonePlane } from '../src/core/braille.js';
 import { DITHER_METHODS, DEFAULT_DITHER } from '../src/core/dither.js';
+import { BLUE_NOISE_SIZE, blueNoiseMatrix } from '../src/core/bluenoise.js';
 import { otsuThreshold } from '../src/core/otsu.js';
 import { lightness, linearToThreshold, luminance, thresholdToLinear } from '../src/core/gamma.js';
 import { applyAdjustments } from '../src/core/adjust.js';
@@ -53,9 +54,67 @@ async function run() {
   // --- a linear ramp must come out roughly half lit ------------------------
   const ramp = new Float32Array(W * H);
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) ramp[y * W + x] = (x / (W - 1)) * 255;
+  // Sauvola is excluded on purpose: it picks a threshold per neighbourhood
+  // rather than reproducing a tone, so preserving the average is not something
+  // it promises. It gets its own checks below.
   for (const name of Object.keys(DITHER_METHODS)) {
+    if (name === 'sauvola') continue;
     near(`${name}: gradient coverage`, coverage(DITHER_METHODS[name](ramp, W, H, 128)), 0.42, 0.58);
   }
+
+  // --- a local threshold, where one number cannot work --------------------
+  // Detail of constant *relative* contrast laid over a background that runs
+  // from dim to bright: stripes at 45% of whatever the background is here.
+  // This is the shape of a photograph lit from one side.
+  const uneven = new Float32Array(W * H);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const background = 60 + (x / (W - 1)) * 195;
+      uneven[y * W + x] = y % 12 < 6 ? background * 0.45 : background;
+    }
+  }
+
+  const quarterCoverage = (bits, quarter) => {
+    let lit = 0;
+    let total = 0;
+    const from = Math.floor((W * quarter) / 4);
+    const to = Math.floor((W * (quarter + 1)) / 4);
+    for (let y = 0; y < H; y++) {
+      for (let x = from; x < to; x++) {
+        total++;
+        lit += bits[y * W + x];
+      }
+    }
+    return lit / total;
+  };
+
+  const globalBits = DITHER_METHODS.threshold(uneven, W, H, 128, 128);
+  const localBits = DITHER_METHODS.sauvola(uneven, W, H, 128, 128);
+
+  log.push(`INFO  quarters, global: ${[0, 1, 2, 3].map((q) => quarterCoverage(globalBits, q).toFixed(2)).join(' ')}`);
+  log.push(`INFO  quarters, sauvola: ${[0, 1, 2, 3].map((q) => quarterCoverage(localBits, q).toFixed(2)).join(' ')}`);
+
+  ok('a single threshold loses the dim end entirely', quarterCoverage(globalBits, 0) < 0.02,
+     `${(quarterCoverage(globalBits, 0) * 100).toFixed(0)}% survives`);
+  ok('sauvola keeps the detail there', quarterCoverage(localBits, 0) > 0.4,
+     `${(quarterCoverage(localBits, 0) * 100).toFixed(0)}% survives`);
+  ok('and keeps it at the bright end too', quarterCoverage(localBits, 3) > 0.4,
+     `${(quarterCoverage(localBits, 3) * 100).toFixed(0)}%`);
+  ok('so the detail reads evenly across the frame',
+     Math.abs(quarterCoverage(localBits, 0) - quarterCoverage(localBits, 3)) < 0.15,
+     `${quarterCoverage(localBits, 0).toFixed(2)} against ${quarterCoverage(localBits, 3).toFixed(2)}`);
+
+  // Flat means flat: the variance term is what stops an even area dissolving.
+  const flatLocal = DITHER_METHODS.sauvola(flat(120), W, H, 128, 128);
+  const flatSpread = coverage(flatLocal);
+  ok('an even area is not turned into noise', flatSpread === 0 || flatSpread === 1,
+     `coverage ${flatSpread}`);
+
+  // The control still does something: it shifts what the method chose.
+  const darker = coverage(DITHER_METHODS.sauvola(uneven, W, H, 200, 128));
+  const lighter = coverage(DITHER_METHODS.sauvola(uneven, W, H, 60, 128));
+  ok('raising the control removes dots', darker < coverage(localBits), `${darker.toFixed(2)}`);
+  ok('lowering it adds them', lighter > coverage(localBits), `${lighter.toFixed(2)}`);
 
   // --- bayer is position-only; error diffusion is not ----------------------
   const full = DITHER_METHODS.bayer4(ramp, W, H, 128);
@@ -63,6 +122,70 @@ async function run() {
   let same = true;
   for (let i = 0; i < W * 4; i++) if (full[i] !== firstRows[i]) same = false;
   check('bayer4 depends only on position', same, true);
+
+  // --- blue noise ----------------------------------------------------------
+  const matrix = blueNoiseMatrix();
+  check('the tile is the declared size', matrix.length, BLUE_NOISE_SIZE * BLUE_NOISE_SIZE);
+  const ranks = [...matrix].map((v) => Math.round(v * matrix.length - 0.5));
+  check('every rank appears exactly once', new Set(ranks).size, matrix.length);
+  ok('no threshold reaches the ends', Math.min(...matrix) > 0 && Math.max(...matrix) < 1,
+     `${Math.min(...matrix).toFixed(4)}..${Math.max(...matrix).toFixed(4)}`);
+  ok('the tile is built the same way every time', blueNoiseMatrix() === matrix);
+
+  // The property that makes it blue: the points chosen first are spread out
+  // rather than clumped, so no scale carries a repeating structure.
+  const N = BLUE_NOISE_SIZE;
+  const toroidal = (a, b) => {
+    const dx = Math.min(Math.abs(a[0] - b[0]), N - Math.abs(a[0] - b[0]));
+    const dy = Math.min(Math.abs(a[1] - b[1]), N - Math.abs(a[1] - b[1]));
+    return Math.hypot(dx, dy);
+  };
+  const meanNearest = (points) => points.reduce((total, p) => {
+    let closest = Infinity;
+    for (const q of points) if (q !== p) closest = Math.min(closest, toroidal(p, q));
+    return total + closest;
+  }, 0) / points.length;
+
+  const firstTenth = Math.round(matrix.length * 0.1);
+  const chosen = ranks
+    .map((rank, i) => [rank, i])
+    .filter(([rank]) => rank < firstTenth)
+    .map(([, i]) => [i % N, (i / N) | 0]);
+
+  let seed = 12345;
+  const nextRandom = () => {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
+  const scattered = [];
+  const taken = new Set();
+  while (scattered.length < firstTenth) {
+    const i = Math.floor(nextRandom() * matrix.length);
+    if (taken.has(i)) continue;
+    taken.add(i);
+    scattered.push([i % N, (i / N) | 0]);
+  }
+
+  const spreadBlue = meanNearest(chosen);
+  const spreadRandom = meanNearest(scattered);
+  ok('early points are spread further apart than chance', spreadBlue > spreadRandom * 1.2,
+     `${spreadBlue.toFixed(2)} against ${spreadRandom.toFixed(2)} random`);
+
+  // It has to remain an ordered method: no error travels, so a region's result
+  // cannot depend on what is above it.
+  const wholeRamp = DITHER_METHODS.bluenoise(ramp, W, H, 128);
+  const topRows = DITHER_METHODS.bluenoise(ramp.slice(0, W * 4), W, 4, 128);
+  let tilesAgree = true;
+  for (let i = 0; i < W * 4; i++) if (wholeRamp[i] !== topRows[i]) tilesAgree = false;
+  check('blue noise depends only on position', tilesAgree, true);
+  near('blue noise: gradient coverage', coverage(wholeRamp), 0.42, 0.58);
+
+  // And it should not look like Bayer: the two tiles must disagree widely.
+  const bayerBits = DITHER_METHODS.bayer4(ramp, W, H, 128);
+  let differing = 0;
+  for (let i = 0; i < wholeRamp.length; i++) if (wholeRamp[i] !== bayerBits[i]) differing++;
+  ok('its texture is nothing like the ordered matrix', differing > wholeRamp.length * 0.1,
+     `${((differing / wholeRamp.length) * 100).toFixed(0)}% of pixels differ`);
 
   // --- inversion is an exact complement ------------------------------------
   const normal = binarize(ramp, W, H, { threshold: 128, invert: false, method: 'atkinson' });
