@@ -3,6 +3,9 @@
 // All pixel work lives in ./core; this and ./ui are the only files touching the DOM.
 
 import { CELL_W, CELL_H, rowsForAspect, trimBlank, trimBounds, trimColours } from './core/braille.js';
+import {
+  LOCALES, currentLocale, initLocale, onLocaleChange, preferredLocale, setLocale, t,
+} from './i18n/index.js';
 import { cellHex, colourRuns } from './core/colour.js';
 import { DEFAULT_DITHER } from './core/dither.js';
 import { CONTENT_PRESETS } from './core/presets.js';
@@ -50,6 +53,7 @@ const dom = {
   trimBlank: el('trimBlank'),
   fitLimit: el('fitLimit'),
   colour: el('colour'),
+  language: el('language'),
   downloadHtml: el('downloadHtml'),
   downloadAnsi: el('downloadAnsi'),
   dotEdit: el('dotEdit'),
@@ -269,7 +273,7 @@ async function renderPreview() {
 
 async function render() {
   if (!source) {
-    setStatus('Сначала загрузите изображение.', 'warn');
+    setStatus(t('status.needImage'), 'warn');
     return;
   }
 
@@ -326,7 +330,12 @@ function syncRows() {
   dom.rows.value = rowsFor(clampInt(dom.cols.value, 1, MAX_COLS, 80));
 }
 
-const fail = (error) => setStatus(String(error?.message ?? error), 'error');
+// An error may carry a key rather than a sentence: the module that threw it
+// should not have to know which language the page is in.
+const fail = (error) => setStatus(
+  error?.i18n ? t(error.i18n, { reason: error.message }) : String(error?.message ?? error),
+  'error',
+);
 
 const schedulePreview = coalesce(() => { renderPreview().catch(fail); });
 /**
@@ -338,7 +347,7 @@ const schedulePreview = coalesce(() => { renderPreview().catch(fail); });
 const renderThen = coalesce((stamp) => {
   render()
     .then(() => {
-      if (statusStamp === stamp) setStatus('Готово.', 'ok');
+      if (statusStamp === stamp) setStatus(t('status.done'), 'ok');
     })
     .catch(fail);
 });
@@ -358,13 +367,13 @@ function changed({ affectsPreview = true } = {}) {
   if (affectsPreview) schedulePreview();
   if (!source) return;
   if (dotEditor?.isEnabled()) {
-    setStatus('Правка точек включена — арт не пересчитывается, чтобы не стереть правки.', 'warn');
+    setStatus(t('dots.frozen'), 'warn');
     return;
   }
   if (isLive()) {
     scheduleRender();
   } else if (artText) {
-    setStatus('Размер великоват для авто-обновления — нажмите «Сгенерировать».', 'warn');
+    setStatus(t('status.tooBigForLive'), 'warn');
   }
 }
 
@@ -385,14 +394,14 @@ function loadFile(file) {
     if (dotEditor?.isEnabled()) setEditing(false);
     syncRows();
     dom.srcMeta.textContent = `${image.naturalWidth}×${image.naturalHeight}`;
-    setStatus(`Загружено ${image.naturalWidth}\u00d7${image.naturalHeight} px, считаю\u2026`);
+    setStatus(t('source.loaded', { w: image.naturalWidth, h: image.naturalHeight }));
     schedulePreview();
     scheduleRender();
   }, { once: true });
 
   image.addEventListener('error', () => {
     URL.revokeObjectURL(url);
-    setStatus('Не удалось прочитать файл как изображение.', 'error');
+    setStatus(t('source.unreadable'), 'error');
   }, { once: true });
 
   image.src = url;
@@ -400,13 +409,13 @@ function loadFile(file) {
 
 function requireArt() {
   if (artText) return true;
-  setStatus('Сначала сгенерируйте арт.', 'warn');
+  setStatus(t('status.needArt'), 'warn');
   return false;
 }
 
 async function autoThreshold() {
   if (!source) {
-    setStatus('Сначала загрузите изображение.', 'warn');
+    setStatus(t('status.needImage'), 'warn');
     return;
   }
   const { cols, rows } = resolveGrid();
@@ -415,7 +424,7 @@ async function autoThreshold() {
   const target = drawScaled(source, cols * CELL_W, rows * CELL_H, backgroundFor(isInverted()), { smooth: smoothScaling, crop: cropRect });
   const threshold = await pipeline.otsu(readImageData(target), readAdjustments(), readOptions());
   controls.threshold.set(threshold);
-  setStatus(`Порог подобран: ${threshold}.`, 'ok');
+  setStatus(t('threshold.picked', { value: threshold }), 'ok');
   changed({ affectsPreview: false });
 }
 
@@ -425,12 +434,14 @@ function updateMeta(text, sampled = null) {
   const rows = lines.length;
   const cols = lines[0]?.length ?? 0;
   const platform = dom.platform.value;
-  const { limit, label } = PLATFORMS[platform];
+  const { limit } = PLATFORMS[platform];
 
   const trimmed = sampled && (sampled.cols !== cols || sampled.rows !== rows);
   const parts = [
-    trimmed ? `${sampled.cols}×${sampled.rows} → ${cols}×${rows} после обрезки` : `${cols}×${rows} символов`,
-    `${text.length.toLocaleString('ru-RU')} знаков с переносами`,
+    trimmed
+      ? t('meta.trimmed', { fromCols: sampled.cols, fromRows: sampled.rows, cols, rows })
+      : t('meta.size', { cols, rows }),
+    t('meta.characters', { count: text.length }),
   ];
 
   // Width is only half the problem: the message length limit is the wall that
@@ -440,8 +451,8 @@ function updateMeta(text, sampled = null) {
     const length = messageLength(text, platform);
     over = length > limit;
     parts.push(
-      `${label}: ${length.toLocaleString('ru-RU')} из ${limit.toLocaleString('ru-RU')}`
-      + (over ? ' — в одно сообщение не поместится' : ''),
+      t('meta.limit', { platform: t(`platform.${platform}`), used: length, limit })
+      + (over ? t('meta.over') : ''),
     );
   }
 
@@ -450,9 +461,9 @@ function updateMeta(text, sampled = null) {
 }
 
 function fillPresets() {
-  dom.preset.replaceChildren(new Option('— не менять —', ''));
-  for (const [key, preset] of Object.entries(CONTENT_PRESETS)) {
-    dom.preset.append(new Option(preset.label, key));
+  dom.preset.replaceChildren(new Option(t('preset.none'), ''));
+  for (const key of Object.keys(CONTENT_PRESETS)) {
+    dom.preset.append(new Option(t(`preset.${key}`), key));
   }
 }
 
@@ -462,7 +473,7 @@ function fillPresets() {
  */
 function applyPreset(key) {
   const preset = CONTENT_PRESETS[key];
-  dom.presetHint.textContent = preset?.hint ?? '';
+  dom.presetHint.textContent = preset ? t(`preset.${key}.hint`) : '';
   if (!preset) return;
 
   const chosen = preset.settings;
@@ -483,7 +494,7 @@ function applyPreset(key) {
 
 function fillPlatforms() {
   dom.platform.replaceChildren(
-    ...Object.entries(PLATFORMS).map(([key, platform]) => new Option(platform.label, key)),
+    ...Object.keys(PLATFORMS).map((key) => new Option(t(`platform.${key}`), key)),
   );
 }
 
@@ -500,12 +511,11 @@ function syncPlatform() {
     dom.platformState.textContent = '';
   } else if (width) {
     dom.platformState.textContent =
-      `Измерено: ${width} символов, вертикальный масштаб ${scale.toFixed(2)}.`;
+      t('platform.measured', { width, scale: scale.toFixed(2) });
     dom.cols.value = width;
   } else {
     dom.platformState.textContent =
-      'Ширина не измерена. Здесь нет заранее вбитых чисел: она зависит от устройства, '
-      + 'масштаба и настроек шрифта в самом клиенте, так что снять её можно только у себя.';
+      t('platform.unmeasured');
   }
 
   dom.fitLimit.disabled = !Number.isFinite(PLATFORMS[key].limit);
@@ -516,7 +526,7 @@ function syncPlatform() {
 
 function exportSvg() {
   downloadSvg(brailleToSvg(artText, exportStyle()), 'braille.svg');
-  setStatus('SVG сохранён.', 'ok');
+  setStatus(t('status.svgSaved'), 'ok');
 }
 
 /* ------------------------------------------------------------------------ *
@@ -559,6 +569,7 @@ const PERSISTED_FIELDS = [
 function collectSettings() {
   const values = {
     mode: dom.app.dataset.mode,
+    language: currentLocale(),
     keepAspect: dom.keepAspect.checked,
     textBold: dom.textBold.checked,
     colour: dom.colour.checked,
@@ -594,7 +605,7 @@ function applySettings(values) {
   if (typeof values.smooth === 'boolean') smoothScaling = values.smooth;
 
   setLayout(dom.layout.value);
-  dom.presetHint.textContent = CONTENT_PRESETS[dom.preset.value]?.hint ?? '';
+  dom.presetHint.textContent = CONTENT_PRESETS[dom.preset.value] ? t(`preset.${dom.preset.value}.hint`) : '';
 }
 
 function resetEverything() {
@@ -624,7 +635,7 @@ function resetEverything() {
   syncPlatform();
   syncRows();
   setSourceKind(dom.sourceKind.value);
-  setStatus('Настройки сброшены.', 'info');
+  setStatus(t('reset.allDone'), 'info');
 }
 
 /* ------------------------------------------------------------------------ *
@@ -656,7 +667,7 @@ function acceptDroppedFiles() {
     highlight(false);
     const file = firstImage(event.dataTransfer?.files);
     if (file) loadFile(file);
-    else setStatus('Это не изображение.', 'warn');
+    else setStatus(t('source.notAnImage'), 'warn');
   });
 }
 
@@ -688,7 +699,7 @@ function inspect(canvasId) {
   if (canvasId === 'resCanvas') full.style.imageRendering = 'pixelated';
 
   const caption = document.createElement('p');
-  caption.textContent = `${preview.width}×${preview.height} px · щёлкните или нажмите Esc, чтобы закрыть`;
+  caption.textContent = t('inspect.close', { w: preview.width, h: preview.height });
 
   const close = () => {
     overlay.remove();
@@ -741,7 +752,7 @@ function setEditing(on) {
   dom.dotEdit.setAttribute('aria-pressed', String(on));
   dom.dotUndo.disabled = !on || !dotEditor.canUndo();
   dom.dotHint.textContent = on
-    ? 'Щёлкайте или ведите по арту, чтобы ставить и стирать точки. Пока правка включена, арт не пересчитывается.'
+    ? t('dots.hint')
     : '';
 }
 
@@ -753,11 +764,48 @@ function setEditing(on) {
  * cropping, the exports and dot editing all work on text without knowing it is
  * text -- which is why there is no bitmap font here.
  * ------------------------------------------------------------------------ */
+function fillLanguages() {
+  dom.language.replaceChildren(
+    ...Object.entries(LOCALES).map(([code, locale]) => {
+      const chosen = code === currentLocale();
+      return new Option(locale.name, code, chosen, chosen);
+    }),
+  );
+}
+
+/**
+ * Everything the markup cannot carry on a data-i18n attribute: option labels
+ * built at run time, hints chosen by state, and the meta line, which is
+ * assembled from numbers.
+ */
+function retranslate() {
+  const chosen = {
+    preset: dom.preset.value,
+    platform: dom.platform.value,
+    font: dom.textFont.value,
+  };
+
+  fillLanguages();
+  fillPresets();
+  fillPlatforms();
+  fillFonts();
+
+  dom.preset.value = chosen.preset;
+  dom.platform.value = chosen.platform;
+  dom.textFont.value = chosen.font;
+
+  dom.presetHint.textContent = CONTENT_PRESETS[chosen.preset] ? t(`preset.${chosen.preset}.hint`) : '';
+  dom.dotHint.textContent = dotEditor?.isEnabled() ? t('dots.hint') : '';
+  syncPlatform();
+  if (artText) updateMeta(artText);
+  setStatus(artText ? t('status.done') : t('status.start'), 'info');
+}
+
 function fillFonts() {
   dom.textFont.replaceChildren(
-    ...Object.entries(TEXT_FONTS).map(([key, font]) => {
+    ...Object.keys(TEXT_FONTS).map((key) => {
       const isDefault = key === DEFAULT_TEXT_FONT;
-      return new Option(font.label, key, isDefault, isDefault);
+      return new Option(t(`font.${key}`), key, isDefault, isDefault);
     }),
   );
 }
@@ -817,7 +865,7 @@ function setSourceKind(kind) {
   } else {
     dom.output.textContent = '';
     artText = '';
-    setStatus('Выберите файл, перетащите изображение или вставьте из буфера.');
+    setStatus(t('source.prompt'));
   }
 }
 
@@ -848,17 +896,17 @@ async function artAtWidth(cols) {
  */
 async function fitToLimit() {
   if (!source) {
-    setStatus('Сначала загрузите изображение.', 'warn');
+    setStatus(t('status.needImage'), 'warn');
     return;
   }
   const platform = dom.platform.value;
-  const { limit, label } = PLATFORMS[platform];
+  const { limit } = PLATFORMS[platform];
   if (!Number.isFinite(limit)) {
-    setStatus('У этой площадки нет лимита на длину сообщения.', 'warn');
+    setStatus(t('platform.noLimit'), 'warn');
     return;
   }
 
-  setStatus(`Подбираю ширину под ${label}…`);
+  setStatus(t('fit.searching', { platform: t(`platform.${platform}`) }));
   let low = 8;
   let high = MAX_COLS;
   let widest = null;
@@ -875,13 +923,13 @@ async function fitToLimit() {
   }
 
   if (widest === null) {
-    setStatus(`Даже минимальный размер не влезает в ${label}.`, 'warn');
+    setStatus(t('fit.impossible', { platform: t(`platform.${platform}`) }), 'warn');
     return;
   }
   dom.cols.value = widest;
   syncRows();
   changed({ affectsPreview: false });
-  setStatus(`Ширина ${widest}: это максимум, который влезает в ${label}.`, 'ok');
+  setStatus(t('fit.found', { width: widest, platform: t(`platform.${platform}`) }), 'ok');
 }
 
 /**
@@ -900,8 +948,8 @@ async function copyArt() {
     await copyText(forPlatform(artText, platform));
     setStatus(
       PLATFORMS[platform].codeBlock
-        ? 'Скопировано вместе с обёрткой в код-блок.'
-        : 'Скопировано в буфер обмена.',
+        ? t('status.copiedFenced')
+        : t('status.copied'),
       'ok',
     );
     return;
@@ -914,9 +962,9 @@ async function copyArt() {
 
   const oversized = !partsFit(parts, platform);
   setStatus(
-    `Часть ${index + 1} из ${parts.length} скопирована`
-    + (nextPart < parts.length ? ' — нажмите ещё раз для следующей.' : '. Это последняя.')
-    + (oversized ? ' Одна строка длиннее лимита: разрезать её, не сломав арт, нельзя.' : ''),
+    t('status.part', { index: index + 1, total: parts.length })
+    + (nextPart < parts.length ? t('status.partNext') : t('status.partLast'))
+    + (oversized ? t('status.partOversized') : ''),
     oversized ? 'warn' : 'ok',
   );
 }
@@ -934,7 +982,7 @@ function useSketchSource() {
 async function startCamera() {
   try {
     await camera.start();
-    setStatus('Камера включена. Наведите и снимите кадр.', 'ok');
+    setStatus(t('camera.ready'), 'ok');
   } catch (error) {
     // Refusing permission or having no camera is an ordinary answer, not a
     // fault: say so and fall back rather than leaving a dead mode on screen.
@@ -945,7 +993,7 @@ async function startCamera() {
 function captureFrame() {
   const frame = camera.capture(createCanvas);
   if (!frame) {
-    setStatus('Кадр не получен — камера ещё не запущена.', 'warn');
+    setStatus(t('camera.notStarted'), 'warn');
     return;
   }
   source = frame;
@@ -955,7 +1003,7 @@ function captureFrame() {
   cropper?.set(null);
   describeSource();
   changed();
-  setStatus(`Снят кадр ${frame.width}×${frame.height}.`, 'ok');
+  setStatus(t('camera.captured', { w: frame.width, h: frame.height }), 'ok');
 }
 
 /* ------------------------------------------------------------------------ *
@@ -982,7 +1030,7 @@ function paintArt() {
   }
   if (lines.length * artCols > COLOUR_CELL_LIMIT) {
     dom.output.textContent = artText;
-    setStatus('Сетка великовата для цветного показа — в файлах цвет останется.', 'warn');
+    setStatus(t('colour.tooLarge'), 'warn');
     return;
   }
 
@@ -1020,9 +1068,20 @@ function init() {
 
   controls.calibratedScale = bindRange(el('calibratedScale'), el('calibratedScaleVal'), { decimals: 2 });
 
+  // A stored choice beats the browser's preference. applyTranslations runs for
+  // the first time here, before anything is listening for changes.
+  initLocale(loadSettings().language ?? preferredLocale());
+  onLocaleChange(retranslate);
+
+  fillLanguages();
   fillPresets();
   fillPlatforms();
   fillFonts();
+
+  dom.language.addEventListener('change', () => {
+    setLocale(dom.language.value);
+    persist();
+  });
 
   applySettings(loadSettings());
 
@@ -1068,7 +1127,7 @@ function init() {
   dom.copyRuler.addEventListener('click', async () => {
     try {
       await copyText(forPlatform(ruler(), dom.platform.value));
-      setStatus('Линейка скопирована — отправьте её себе и посчитайте деления до переноса.', 'ok');
+      setStatus(t('calibrate.rulerCopied'), 'ok');
     } catch (error) {
       fail(error);
     }
@@ -1080,14 +1139,14 @@ function init() {
       scale: controls.calibratedScale.value,
     });
     syncPlatform();
-    setStatus('Измерения сохранены — они запомнятся для этой площадки.', 'ok');
+    setStatus(t('calibrate.saved'), 'ok');
     changed({ affectsPreview: false });
   });
 
   dom.resetCalibration.addEventListener('click', () => {
     clearCalibration(dom.platform.value);
     syncPlatform();
-    setStatus('Измерения сброшены.', 'info');
+    setStatus(t('calibrate.cleared'), 'info');
     changed({ affectsPreview: false });
   });
 
@@ -1100,7 +1159,7 @@ function init() {
   dom.downloadHtml.addEventListener('click', () => {
     if (!requireArt()) return;
     downloadHtml(brailleToHtml(artText, artColours, artCols, exportStyle()), 'braille.html');
-    setStatus(artColours ? 'HTML сохранён вместе с цветом.' : 'HTML сохранён.', 'ok');
+    setStatus(artColours ? t('status.htmlSavedColour') : t('status.htmlSaved'), 'ok');
   });
 
   dom.downloadAnsi.addEventListener('click', () => {
@@ -1108,8 +1167,8 @@ function init() {
     downloadText(brailleToAnsi(artText, artColours, artCols), 'braille.ans');
     setStatus(
       artColours
-        ? 'ANSI сохранён. Смотреть так: cat braille.ans'
-        : 'ANSI сохранён без цвета — включите «Цвет».',
+        ? t('status.ansiSaved')
+        : t('status.ansiNoColour'),
       'ok',
     );
   });
@@ -1125,7 +1184,7 @@ function init() {
   cropper = createCropper(dom.cropper, dom.srcCanvas, (rect) => {
     cropRect = rect;
     previewReady = false;
-    setStatus(rect ? 'Область выбрана.' : 'Взят весь кадр.', 'info');
+    setStatus(rect ? t('crop.selected') : t('crop.whole'), 'info');
     changed();
   });
 
@@ -1133,7 +1192,7 @@ function init() {
     const on = !cropper.isActive();
     cropper.setActive(on);
     dom.cropToggle.setAttribute('aria-pressed', String(on));
-    if (on) setStatus('Тяните рамку по «Оригиналу», чтобы выбрать область.', 'info');
+    if (on) setStatus(t('crop.prompt'), 'info');
   });
 
   dom.cropReset.addEventListener('click', () => cropper.reset());
@@ -1152,14 +1211,14 @@ function init() {
   });
 
   dom.dotUndo.addEventListener('click', () => {
-    if (dotEditor.undo()) setStatus('Правка отменена.', 'info');
+    if (dotEditor.undo()) setStatus(t('dots.undone'), 'info');
   });
 
   window.addEventListener('keydown', (event) => {
     if (!(event.ctrlKey || event.metaKey) || event.key !== 'z') return;
     if (!dotEditor.isEnabled()) return;
     event.preventDefault();
-    if (dotEditor.undo()) setStatus('Правка отменена.', 'info');
+    if (dotEditor.undo()) setStatus(t('dots.undone'), 'info');
   });
 
   for (const shot of document.querySelectorAll('[data-inspect]')) {
@@ -1204,9 +1263,9 @@ function init() {
       setEditing(false);
       // Not the status line: the render that follows immediately overwrites it,
       // and losing hand edits is worth more than a quarter of a second.
-      dom.dotHint.textContent = 'Правки точек сброшены — арт пересчитан заново.';
+      dom.dotHint.textContent = t('dots.discarded');
     } else {
-      setStatus('Считаю\u2026');
+      setStatus(t('status.working'));
     }
     scheduleRender();
   });
@@ -1216,7 +1275,7 @@ function init() {
       controls[name].reset();
     }
     changed();
-    setStatus('Параметры изображения сброшены.', 'info');
+    setStatus(t('reset.editsDone'), 'info');
   });
 
   dom.downloadTxt.addEventListener('click', () => {
@@ -1238,8 +1297,8 @@ function init() {
     downloadCanvas(canvas, 'braille.png');
     setStatus(
       scale < 1
-        ? `PNG сохранён, уменьшен до ${Math.round(scale * 100)}% — иначе он превысил бы 8192 px.`
-        : 'PNG сохранён.',
+        ? t('status.pngScaled', { percent: Math.round(scale * 100) })
+        : t('status.pngSaved'),
       scale < 1 ? 'warn' : 'ok',
     );
   });
@@ -1252,8 +1311,8 @@ function init() {
   else dom.app.dataset.source = 'image';
   setStatus(
     pipeline.offThread
-      ? 'Загрузите изображение. Вычисления идут в фоновом потоке.'
-      : 'Загрузите изображение. Фоновый поток недоступен — считаем в основном.',
+      ? t('status.start')
+      : t('status.startInline'),
   );
 }
 

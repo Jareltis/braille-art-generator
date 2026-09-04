@@ -21,15 +21,15 @@ export function createCamera(video) {
     async start() {
       if (stream) return;
       if (!navigator.mediaDevices?.getUserMedia) {
-        throw new Error('Камера недоступна: нужен https или localhost.');
+        throw Object.assign(new Error('insecure context'), { i18n: 'camera.insecure' });
       }
       try {
         stream = await navigator.mediaDevices.getUserMedia({ video: WANTED, audio: false });
       } catch (error) {
-        const reason = error?.name === 'NotAllowedError' ? 'доступ к камере не разрешён'
-          : error?.name === 'NotFoundError' ? 'камера не найдена'
-            : error?.message || 'не удалось открыть камеру';
-        throw new Error(`Камера: ${reason}.`);
+        const key = error?.name === 'NotAllowedError' ? 'camera.denied'
+          : error?.name === 'NotFoundError' ? 'camera.missing'
+            : 'camera.failed';
+        throw Object.assign(new Error(error?.message ?? 'camera failed'), { i18n: key });
       }
       video.srcObject = stream;
       await video.play();

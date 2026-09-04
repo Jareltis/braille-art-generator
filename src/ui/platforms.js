@@ -12,12 +12,14 @@ const STORE_PREFIX = 'braille-art.platform.';
  * like "Discord is about 30 wide" look authoritative and are worth nothing, so
  * width is measured by the person sending the art and remembered per platform
  * rather than guessed on their behalf.
+ *
+ * Names live in the dictionaries under platform.<key>.
  */
 export const PLATFORMS = Object.freeze({
-  none: { label: 'Никуда конкретно', limit: Infinity, codeBlock: false },
-  discord: { label: 'Discord', limit: 2000, codeBlock: true },
-  telegram: { label: 'Telegram', limit: 4096, codeBlock: true },
-  other: { label: 'Другой чат', limit: Infinity, codeBlock: true },
+  none: { limit: Infinity, codeBlock: false },
+  discord: { limit: 2000, codeBlock: true },
+  telegram: { limit: 4096, codeBlock: true },
+  other: { limit: Infinity, codeBlock: true },
 });
 
 // Private browsing and blocked site data both throw here rather than returning

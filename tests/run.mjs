@@ -22,7 +22,7 @@ import { fileURLToPath } from 'node:url';
 const testsDir = dirname(fileURLToPath(import.meta.url));
 const root = resolve(testsDir, '..');
 const PORT = 8199;
-const TIMEOUT_MS = 60_000;
+const TIMEOUT_MS = 150_000;   // the page suite drives a lot of waiting now
 
 const CHROME_CANDIDATES = [
   process.env.CHROME,

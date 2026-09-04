@@ -17,6 +17,7 @@ import { EDGE_MODES } from '../src/core/edges.js';
 import { createCanvas, drawScaled, readImageData } from '../src/ui/canvas.js';
 import { FULL_FRAME, isWholeImage } from '../src/ui/crop.js';
 import { DEFAULT_TEXT_FONT, TEXT_FONTS, renderText } from '../src/ui/text.js';
+import { FALLBACK, LOCALES, formatNumber, setLocale, t } from '../src/i18n/index.js';
 import { brailleToAnsi, brailleToHtml, brailleToSvg } from '../src/ui/export.js';
 import { cellColours, cellHex, colourRuns } from '../src/core/colour.js';
 import {
@@ -347,7 +348,6 @@ async function run() {
     if (s.threshold < 0 || s.threshold > 255) presetsValid = false;
     if (s.sharpness < 0 || s.sharpness > 5) presetsValid = false;
     if (Math.abs(s.contrast) > 100 || Math.abs(s.brightness) > 100) presetsValid = false;
-    if (!preset.label || !preset.hint) presetsValid = false;
   }
   check('every preset sets every control', presetsComplete, true);
   check('every preset value is in range', presetsValid, true);
@@ -576,6 +576,81 @@ async function run() {
     check('the text is the same either way', coloured.text, encode(sample, { threshold: 128 }).text);
   }
 
+  {
+    // --- translation --------------------------------------------------------
+    const codes = Object.keys(LOCALES);
+    ok('more than one language is offered', codes.length >= 2, codes.join(', '));
+
+    // Every dictionary must answer every key. A gap would silently fall back to
+    // English in one place and not another, which reads as a bug rather than as
+    // a missing translation.
+    const keysOf = (code) => new Set(Object.keys(LOCALES[code].strings));
+    const reference = keysOf(FALLBACK);
+    for (const code of codes) {
+      const here = keysOf(code);
+      const missing = [...reference].filter((key) => !here.has(key));
+      const extra = [...here].filter((key) => !reference.has(key));
+      check(`${code}: nothing missing`, missing.join(', '), '');
+      check(`${code}: nothing left over`, extra.join(', '), '');
+    }
+    ok('every language declares a tag and a name',
+       codes.every((code) => LOCALES[code].tag && LOCALES[code].name));
+
+    // The markup asks for keys by name; each one has to exist.
+    const markup = await (await fetch('/index.html')).text();
+    const asked = [...markup.matchAll(/data-i18n(?:-title|-label)?="([^"]+)"/g)].map((m) => m[1]);
+    ok('the markup asks for keys at all', asked.length > 50, `${asked.length} places`);
+    const unknown = [...new Set(asked)].filter((key) => !reference.has(key));
+    check('every key the markup asks for exists', unknown.join(', '), '');
+
+    // So do the things named from data: presets, targets, typefaces.
+    const named = [
+      ...Object.keys(CONTENT_PRESETS).flatMap((key) => [`preset.${key}`, `preset.${key}.hint`]),
+      ...Object.keys(PLATFORMS).map((key) => `platform.${key}`),
+      ...Object.keys(TEXT_FONTS).map((key) => `font.${key}`),
+      ...Object.keys(DITHER_METHODS).map((key) => `dither.${key}`),
+      ...EDGE_MODES.map((mode) => `edges.${mode}`),
+    ];
+    const unnamed = named.filter((key) => !reference.has(key));
+    check('everything chosen from data has a name', unnamed.join(', '), '');
+
+    // No dictionary should still be carrying a name the data no longer uses.
+    ok('presets carry settings only, not words',
+       Object.values(CONTENT_PRESETS).every((preset) => !('label' in preset) && !('hint' in preset)));
+    ok('targets carry facts only', Object.values(PLATFORMS).every((target) => !('label' in target)));
+    ok('typefaces carry stacks only', Object.values(TEXT_FONTS).every((font) => !('label' in font)));
+
+    // --- plurals ------------------------------------------------------------
+    // The reason Intl.PluralRules is here rather than a count-of-one test:
+    // Russian needs three forms where English needs two.
+    setLocale('ru');
+    const russian = [1, 2, 5, 21, 105].map((count) => t('meta.characters', { count }));
+    ok('russian uses one form for 1', /^1 знак /.test(russian[0]), russian[0]);
+    ok('russian uses another for 2', /^2 знака /.test(russian[1]), russian[1]);
+    ok('russian uses a third for 5', /^5 знаков /.test(russian[2]), russian[2]);
+    ok('and 21 goes back to the first', /^21 знак /.test(russian[3]), russian[3]);
+    ok('while 105 takes the third', /^105 знаков /.test(russian[4]), russian[4]);
+
+    setLocale('en');
+    ok('english has a singular', /^1 character /.test(t('meta.characters', { count: 1 })));
+    ok('english has a plural', /^2 characters /.test(t('meta.characters', { count: 2 })));
+
+    // --- numbers and interpolation -----------------------------------------
+    setLocale('ru');
+    ok('russian groups thousands its own way', formatNumber(1234567).includes(String.fromCharCode(160)),
+       JSON.stringify(formatNumber(1234567)));
+    setLocale('en');
+    check('english groups with commas', formatNumber(1234567), '1,234,567');
+
+    check('values are put into the sentence', t('threshold.picked', { value: 156 }), 'Threshold chosen: 156.');
+    check('an unknown placeholder is left alone', t('camera.failed', {}), 'Camera: {reason}.');
+
+    // --- gaps are visible, not silent --------------------------------------
+    check('a missing key shows itself', t('no.such.key'), 'no.such.key');
+
+    setLocale('en');
+  }
+
   // --- offline shell -------------------------------------------------------
   const manifest = await (await fetch('/manifest.webmanifest')).json();
   check('the manifest names the app', manifest.name, 'Braille Art Generator');
@@ -653,8 +728,7 @@ async function run() {
 
   ok('a longer string is wider', renderText('AAAAAA').width > renderText('A').width);
   ok('a second line makes it taller', renderText('A\nB').height > renderText('A').height);
-  ok('every offered font has a stack',
-     Object.values(TEXT_FONTS).every((font) => font.stack && font.label));
+  ok('every offered font has a stack', Object.values(TEXT_FONTS).every((font) => font.stack));
   ok('the default font is one of them', DEFAULT_TEXT_FONT in TEXT_FONTS);
 
   // Empty input must not produce a zero-sized canvas that later divides by zero.

@@ -299,7 +299,7 @@
       scrollbar-width: thin;
     }
     #output:empty::before {
-      content: 'Перетащите изображение сюда, вставьте из буфера или выберите файл слева.';
+      content: var(--empty-art, '');
       display: block; padding: 20px 4px; color: var(--muted);
       font-family: Inter, system-ui, sans-serif; font-size: 13px; white-space: normal;
     }
@@ -322,7 +322,7 @@
 
     /* drag and drop */
     body.dropping::after {
-      content: 'Отпустите, чтобы загрузить';
+      content: var(--drop-hint, '');
       position: fixed; inset: 10px; z-index: 30;
       display: grid; place-items: center;
       border: 2px dashed var(--accent); border-radius: 14px;
@@ -358,16 +358,19 @@
 
     <header class="topbar">
       <div class="brand">Braille&nbsp;<span>Art</span>&nbsp;Generator</div>
-      <div class="modes" role="group" aria-label="Режим интерфейса">
-        <button id="modeSimple" type="button" aria-pressed="true">Простой</button>
-        <button id="modeAdvanced" type="button" aria-pressed="false">Расширенный</button>
+      <div class="modes" role="group" data-i18n-label="mode.group">
+        <button id="modeSimple" type="button" aria-pressed="true" data-i18n="mode.simple"></button>
+        <button id="modeAdvanced" type="button" aria-pressed="false" data-i18n="mode.advanced"></button>
       </div>
-      <label class="barfield" for="layout">Раскладка
+      <label class="barfield" for="language"><span data-i18n="language.label"></span>
+        <select id="language"></select>
+      </label>
+      <label class="barfield" for="layout"><span data-i18n="layout.label"></span>
         <select id="layout">
-          <option value="grid">2 × 2</option>
-          <option value="strip">Полоса сверху</option>
-          <option value="focus">Акцент на арт</option>
-          <option value="row">В один ряд</option>
+          <option value="grid" data-i18n="layout.grid"></option>
+          <option value="strip" data-i18n="layout.strip"></option>
+          <option value="focus" data-i18n="layout.focus"></option>
+          <option value="row" data-i18n="layout.row"></option>
         </select>
       </label>
       <p id="status" class="grow" role="status" aria-live="polite"></p>
@@ -377,37 +380,37 @@
       <aside class="sidebar">
 
         <div class="field">
-          <label for="sourceKind">Источник</label>
+          <label for="sourceKind" data-i18n="source.label"></label>
           <select id="sourceKind">
-            <option value="image">Изображение</option>
-            <option value="text">Текст</option>
-            <option value="camera">Камера</option>
-            <option value="draw">Рисунок</option>
+            <option value="image" data-i18n="source.image"></option>
+            <option value="text" data-i18n="source.text"></option>
+            <option value="camera" data-i18n="source.camera"></option>
+            <option value="draw" data-i18n="source.draw"></option>
           </select>
         </div>
 
         <div data-when="image">
           <div class="field">
-            <label for="file">Файл</label>
+            <label for="file" data-i18n="source.file"></label>
             <input id="file" type="file" accept="image/*">
           </div>
         </div>
 
         <div data-when="text">
           <div class="field">
-            <label for="textInput">Надпись</label>
-            <textarea id="textInput" rows="2" spellcheck="false">ПРИВЕТ</textarea>
+            <label for="textInput" data-i18n="text.label"></label>
+            <textarea id="textInput" rows="2" spellcheck="false">BRAILLE</textarea>
           </div>
           <div class="field row">
             <div>
-              <label for="textFont">Шрифт</label>
+              <label for="textFont" data-i18n="text.font"></label>
               <select id="textFont"></select>
             </div>
             <div>
-              <label>Начертание</label>
+              <label data-i18n="text.weight"></label>
               <div class="check">
                 <input id="textBold" type="checkbox" checked>
-                <label for="textBold">Жирное</label>
+                <label for="textBold" data-i18n="text.bold"></label>
               </div>
             </div>
           </div>
@@ -415,157 +418,153 @@
 
         <div data-when="camera">
           <div class="field buttons">
-            <button id="cameraCapture" class="primary" type="button">Снять кадр</button>
+            <button id="cameraCapture" class="primary" type="button" data-i18n="camera.capture"></button>
           </div>
-          <p class="hint">Кадр берётся в разрешении камеры, а не превью.</p>
+          <p class="hint" data-i18n="camera.hint"></p>
         </div>
 
         <div data-when="draw">
           <div class="field">
-            <label for="brushSize">Толщина кисти</label>
+            <label for="brushSize" data-i18n="draw.brush"></label>
             <div class="slider">
               <input id="brushSize" type="range" min="2" max="60" value="18">
               <span class="readout" id="brushSizeVal">18</span>
             </div>
           </div>
           <div class="field buttons">
-            <button id="brushErase" type="button" aria-pressed="false">Стирать</button>
-            <button id="drawClear" type="button">Очистить</button>
+            <button id="brushErase" type="button" aria-pressed="false" data-i18n="draw.erase"></button>
+            <button id="drawClear" type="button" data-i18n="draw.clear"></button>
           </div>
         </div>
 
         <div class="field buttons" data-when="image text camera">
-          <button id="cropToggle" type="button" aria-pressed="false">Обрезать</button>
-          <button id="cropReset" type="button">Весь кадр</button>
+          <button id="cropToggle" type="button" aria-pressed="false" data-i18n="crop.toggle"></button>
+          <button id="cropReset" type="button" data-i18n="crop.reset"></button>
         </div>
 
         <div class="field">
-          <label for="preset">Тип изображения</label>
+          <label for="preset" data-i18n="preset.label"></label>
           <select id="preset"></select>
           <p class="hint" id="presetHint"></p>
         </div>
 
         <div class="field row">
           <div>
-            <label for="outWidth">Ширина, символов</label>
+            <label for="outWidth" data-i18n="size.width"></label>
             <input id="outWidth" type="number" min="1" max="400" value="80">
           </div>
           <div data-advanced>
-            <label for="outHeight">Высота, символов</label>
+            <label for="outHeight" data-i18n="size.height"></label>
             <input id="outHeight" type="number" min="1" max="400" value="30">
           </div>
         </div>
 
         <div class="field check" data-advanced>
           <input id="keepAspect" type="checkbox" checked>
-          <label for="keepAspect">Сохранять пропорции</label>
+          <label for="keepAspect" data-i18n="size.keepAspect"></label>
         </div>
 
         <div class="field">
-          <label for="threshold">Порог</label>
+          <label for="threshold" data-i18n="threshold.label"></label>
           <div class="slider">
             <input id="threshold" type="range" min="0" max="255" value="128">
             <span class="readout" id="thresholdVal">128</span>
-            <button id="autoThreshold" type="button" title="Подобрать методом Оцу">Авто</button>
+            <button id="autoThreshold" type="button" data-i18n-title="threshold.autoTitle" data-i18n="threshold.auto"></button>
           </div>
         </div>
 
         <div class="field">
-          <label for="platform">Куда отправлять</label>
+          <label for="platform" data-i18n="platform.label"></label>
           <select id="platform"></select>
           <p class="hint" id="platformState"></p>
         </div>
 
         <div class="field check">
           <input id="trimBlank" type="checkbox">
-          <label for="trimBlank">Обрезать пустые поля</label>
+          <label for="trimBlank" data-i18n="trim.label"></label>
         </div>
 
         <div class="field buttons">
-          <button id="fitLimit" type="button">Подобрать под лимит</button>
+          <button id="fitLimit" type="button" data-i18n="fit.label"></button>
         </div>
 
         <div class="field">
-          <button id="calibrate" type="button">Откалибровать под свой чат</button>
+          <button id="calibrate" type="button" data-i18n="calibrate.open"></button>
 
           <div class="panel-inset" id="calibratePanel" hidden>
-            <p class="hint">
-              Отправьте линейку себе в чат и посмотрите, сколько делений <b>⣿</b>
-              помещается в строку до переноса. Каждое деление — 10 символов.
-              Меряем именно Брайлем: у цифр в том же шрифте другая ширина.
-            </p>
+            <p class="hint" data-i18n="calibrate.explain"></p>
             <div class="ruler" id="rulerText"></div>
             <div class="buttons">
-              <button id="copyRuler" type="button">Копировать линейку</button>
+              <button id="copyRuler" type="button" data-i18n="calibrate.copyRuler"></button>
             </div>
 
             <div class="row" style="margin-top:11px">
               <div>
-                <label for="calibratedWidth">Ширина</label>
+                <label for="calibratedWidth" data-i18n="calibrate.width"></label>
                 <input id="calibratedWidth" type="number" min="4" max="400" value="40">
               </div>
               <div>
-                <label for="calibratedScale">Верт. масштаб</label>
+                <label for="calibratedScale" data-i18n="calibrate.scale"></label>
                 <div class="slider">
                   <input id="calibratedScale" type="range" min="0.5" max="2" step="0.05" value="1">
                   <span class="readout" id="calibratedScaleVal">1.00</span>
                 </div>
               </div>
             </div>
-            <p class="hint">Масштаб — если арт в чате выглядит вытянутым или сплюснутым: межстрочный интервал у клиентов разный.</p>
+            <p class="hint" data-i18n="calibrate.scaleHint"></p>
 
             <div class="buttons" style="margin-top:11px">
-              <button id="saveCalibration" class="primary" type="button">Сохранить</button>
-              <button id="resetCalibration" type="button">Сбросить</button>
+              <button id="saveCalibration" class="primary" type="button" data-i18n="calibrate.save"></button>
+              <button id="resetCalibration" type="button" data-i18n="calibrate.reset"></button>
             </div>
           </div>
         </div>
 
         <div class="field">
           <div class="buttons">
-            <button id="copy" class="primary" type="button">Копировать</button>
+            <button id="copy" class="primary" type="button" data-i18n="action.copy"></button>
             <button id="downloadTxt" type="button">.txt</button>
             <button id="downloadPng" type="button">PNG</button>
             <button id="downloadSvg" type="button" data-advanced>SVG</button>
             <button id="downloadHtml" type="button" data-advanced>HTML</button>
             <button id="downloadAnsi" type="button" data-advanced>ANSI</button>
-            <button id="generate" type="button">Пересчитать</button>
+            <button id="generate" type="button" data-i18n="action.regenerate"></button>
           </div>
         </div>
 
         <div class="field buttons">
-          <button id="dotEdit" type="button" aria-pressed="false">Правка точек</button>
-          <button id="dotUndo" type="button" disabled>Отменить</button>
+          <button id="dotEdit" type="button" aria-pressed="false" data-i18n="dots.edit"></button>
+          <button id="dotUndo" type="button" disabled data-i18n="dots.undo"></button>
         </div>
         <p class="hint" id="dotHint"></p>
 
         <hr data-advanced>
 
         <div data-advanced>
-          <p class="group-title">Как считать точки</p>
+          <p class="group-title" data-i18n="dither.group"></p>
 
           <div class="field check">
             <input id="colour" type="checkbox">
-            <label for="colour">Цвет: тонировать ячейки</label>
+            <label for="colour" data-i18n="colour.label"></label>
           </div>
 
           <div class="field row">
             <div>
-              <label for="dither">Метод</label>
+              <label for="dither" data-i18n="dither.label"></label>
               <select id="dither">
-                <option value="floyd-steinberg">Флойд–Стейнберг</option>
-                <option value="atkinson">Аткинсон</option>
-                <option value="bluenoise">Синий шум</option>
-                <option value="bayer4">Байер 4×4</option>
-                <option value="sauvola">Локальный порог</option>
-                <option value="threshold">Простой порог</option>
+                <option value="floyd-steinberg" data-i18n="dither.floyd-steinberg"></option>
+                <option value="atkinson" data-i18n="dither.atkinson"></option>
+                <option value="bluenoise" data-i18n="dither.bluenoise"></option>
+                <option value="bayer4" data-i18n="dither.bayer4"></option>
+                <option value="sauvola" data-i18n="dither.sauvola"></option>
+                <option value="threshold" data-i18n="dither.threshold"></option>
               </select>
             </div>
             <div>
-              <label for="invert">Инверсия</label>
+              <label for="invert" data-i18n="invert.label"></label>
               <select id="invert">
-                <option value="0">Нет</option>
-                <option value="1">Да</option>
+                <option value="0" data-i18n="invert.no"></option>
+                <option value="1" data-i18n="invert.yes"></option>
               </select>
             </div>
           </div>
@@ -574,19 +573,19 @@
         <hr data-advanced>
 
         <div data-advanced>
-          <p class="group-title">Контуры</p>
+          <p class="group-title" data-i18n="edges.group"></p>
 
           <div class="field">
-            <label for="edgeMode">Детектор</label>
+            <label for="edgeMode" data-i18n="edges.detector"></label>
             <select id="edgeMode">
-              <option value="none">Нет — по яркости</option>
-              <option value="xdog">XDoG — штриховая линия</option>
-              <option value="sobel">Собель — градиент</option>
+              <option value="none" data-i18n="edges.none"></option>
+              <option value="xdog" data-i18n="edges.xdog"></option>
+              <option value="sobel" data-i18n="edges.sobel"></option>
             </select>
           </div>
 
           <div class="field">
-            <label for="edgeAmount">Заливка ↔ линии</label>
+            <label for="edgeAmount" data-i18n="edges.amount"></label>
             <div class="slider">
               <input id="edgeAmount" type="range" min="0" max="100" value="100" disabled>
               <span class="readout" id="edgeAmountVal">100</span>
@@ -594,7 +593,7 @@
           </div>
 
           <div class="field">
-            <label for="edgeRadius">Толщина линий</label>
+            <label for="edgeRadius" data-i18n="edges.radius"></label>
             <div class="slider">
               <input id="edgeRadius" type="range" min="0.3" max="3" step="0.1" value="1.0" disabled>
               <span class="readout" id="edgeRadiusVal">1.0</span>
@@ -605,31 +604,31 @@
         <hr data-advanced>
 
         <div data-advanced>
-          <p class="group-title">Коррекция изображения</p>
+          <p class="group-title" data-i18n="adjust.group"></p>
 
           <div class="field">
-            <label for="brightness">Яркость</label>
+            <label for="brightness" data-i18n="adjust.brightness"></label>
             <div class="slider">
               <input id="brightness" type="range" min="-100" max="100" value="0">
               <span class="readout" id="brightnessVal">0</span>
             </div>
           </div>
           <div class="field">
-            <label for="contrast">Контраст</label>
+            <label for="contrast" data-i18n="adjust.contrast"></label>
             <div class="slider">
               <input id="contrast" type="range" min="-100" max="100" value="0">
               <span class="readout" id="contrastVal">0</span>
             </div>
           </div>
           <div class="field">
-            <label for="saturation">Насыщенность</label>
+            <label for="saturation" data-i18n="adjust.saturation"></label>
             <div class="slider">
               <input id="saturation" type="range" min="-100" max="100" value="0">
               <span class="readout" id="saturationVal">0</span>
             </div>
           </div>
           <div class="field">
-            <label for="sharpness">Резкость</label>
+            <label for="sharpness" data-i18n="adjust.sharpness"></label>
             <div class="slider">
               <input id="sharpness" type="range" min="0" max="5" step="0.1" value="0">
               <span class="readout" id="sharpnessVal">0.0</span>
@@ -640,19 +639,19 @@
         <hr data-advanced>
 
         <div data-advanced>
-          <p class="group-title">Отображение</p>
+          <p class="group-title" data-i18n="display.group"></p>
 
           <div class="field row">
             <div>
-              <label for="fontSize">Кегль, px</label>
+              <label for="fontSize" data-i18n="display.fontSize"></label>
               <input id="fontSize" type="number" min="6" max="48" value="12">
             </div>
             <div></div>
           </div>
 
           <div class="field buttons">
-            <button id="resetEdits" type="button">Сбросить коррекцию</button>
-            <button id="resetAll" type="button">Сбросить всё</button>
+            <button id="resetEdits" type="button" data-i18n="reset.edits"></button>
+            <button id="resetAll" type="button" data-i18n="reset.all"></button>
           </div>
         </div>
 
@@ -660,8 +659,8 @@
 
       <section class="stage">
         <div class="panes">
-          <figure class="shot" tabindex="0" role="button" data-inspect="srcCanvas" aria-label="Увеличить: оригинал">
-            <figcaption><b>Оригинал</b><span id="srcMeta"></span></figcaption>
+          <figure class="shot" tabindex="0" role="button" data-inspect="srcCanvas" data-i18n-label="pane.zoom.original">
+            <figcaption><b data-i18n="pane.original"></b><span id="srcMeta"></span></figcaption>
             <div class="canvas-wrap">
               <canvas id="srcCanvas" width="360" height="240" data-when="image text camera"></canvas>
               <video id="camera" data-when="camera" playsinline muted></video>
@@ -670,25 +669,25 @@
             </div>
           </figure>
 
-          <figure class="shot" tabindex="0" role="button" data-inspect="editCanvas" aria-label="Увеличить: после коррекции">
-            <figcaption><b>После коррекции</b></figcaption>
+          <figure class="shot" tabindex="0" role="button" data-inspect="editCanvas" data-i18n-label="pane.zoom.adjusted">
+            <figcaption><b data-i18n="pane.adjusted"></b></figcaption>
             <canvas id="editCanvas" width="360" height="240"></canvas>
           </figure>
 
-          <figure class="shot" tabindex="0" role="button" data-inspect="resCanvas" aria-label="Увеличить: пиксели сетки">
-            <figcaption><b>Пиксели сетки</b><span id="gridMeta"></span></figcaption>
+          <figure class="shot" tabindex="0" role="button" data-inspect="resCanvas" data-i18n-label="pane.zoom.grid">
+            <figcaption><b data-i18n="pane.grid"></b><span id="gridMeta"></span></figcaption>
             <canvas id="resCanvas" width="160" height="120"></canvas>
           </figure>
 
           <figure class="shot shot-art">
-            <figcaption><b>Результат</b></figcaption>
+            <figcaption><b data-i18n="pane.result"></b></figcaption>
             <pre id="output" tabindex="0"></pre>
           </figure>
         </div>
 
         <div class="stagefoot">
           <p id="meta"></p>
-          <a href="https://github.com/Jareltis/Braille_Art_Generator">Исходный код · GPL-3.0-or-later</a>
+          <a href="https://github.com/Jareltis/Braille_Art_Generator"><span data-i18n="app.source"></span> · GPL-3.0-or-later</a>
         </div>
       </section>
     </div>

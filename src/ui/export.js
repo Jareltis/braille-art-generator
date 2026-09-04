@@ -91,7 +91,7 @@ export function renderTextToCanvas(text, { fontFamily, fontSize, lineHeight, for
  */
 export async function copyText(text) {
   if (!navigator.clipboard) {
-    throw new Error('Буфер обмена недоступен — откройте страницу по http(s), а не как файл.');
+    throw Object.assign(new Error('no clipboard'), { i18n: 'status.clipboardUnavailable' });
   }
   await navigator.clipboard.writeText(text);
 }

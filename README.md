@@ -1,296 +1,66 @@
 # Braille Art Generator
 
-Превращает изображение в текст из символов **Unicode Braille** (U+2800…U+28FF).
-Каждый символ кодирует блок 2×4 пикселя, поэтому плотность деталей вчетверо
-выше, чем у обычного ASCII-арта.
+[Русский](README.ru.md) · **English**
 
-Работает целиком в браузере: изображение никуда не загружается, сервер отдаёт
-только статические файлы.
+Turns an image into text made of **Unicode braille** glyphs (U+2800…U+28FF).
+Each glyph encodes a 2×4 block of pixels, so it carries four times the detail of
+ordinary ASCII art.
 
-**[Открыть генератор →](https://jareltis.github.io/Braille_Art_Generator/)**
+It runs entirely in the browser: the image is never uploaded, and the server
+only ever hands out static files.
+
+**[Open the generator →](https://jareltis.github.io/Braille_Art_Generator/)**
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Older versions: MIT](https://img.shields.io/badge/%E2%89%A4v0.0.12-MIT-green.svg)](LICENSE-MIT)
 
-![Интерфейс генератора: оригинал, изображение после коррекции, пиксели сетки и готовый арт на одном экране](docs/screenshot.png)
+![The generator: original, adjusted image, sampled pixels and the finished art, all on one screen](docs/screenshot.png)
 
 ---
 
-## Возможности
+## What it does
 
 | | |
 |---|---|
-| **Дизеринг** | Флойд–Стейнберг, Аткинсон, синий шум, Байер 4×4 |
-| **Пороги** | глобальный, автоподбор по Оцу и локальный адаптивный (Саувола) |
-| **Выделение контуров** | XDoG для штриховой линии, Собель для градиента, плавный переход заливка ↔ линии |
-| **Автоподбор порога** | метод Оцу — по гистограмме тех самых пикселей, которые пойдут в вывод |
-| **Коррекция изображения** | яркость, контраст, насыщенность, резкость |
-| **Параметры вывода** | ширина и высота в символах, автоподбор высоты по пропорциям, инверсия |
-| **Живой пересчёт** | арт обновляется сам, пока сетка не слишком велика |
-| **Фоновый поток** | вычисления идут в Web Worker, интерфейс не подвисает |
-| **Пресеты** | фото, штриховая графика, логотип, пиксель-арт — каждый выставляет весь набор параметров |
-| **Площадки** | лимит сообщения на виду, копирование в код-блоке, калибровка ширины под свой клиент |
-| **Чтобы влезло** | обрезка пустых полей, подбор ширины под лимит, разбивка на несколько сообщений |
-| **Цвет** | тонировка ячеек: на экране, в PNG, SVG, HTML и ANSI для терминала |
-| **Экспорт** | `.txt`, копирование в буфер, PNG, SVG, HTML, ANSI |
-| **Два режима** | простой — пять контролов; расширенный раскрывает всё |
-| **Всё на одном экране** | оригинал, коррекция, пиксели сетки и сам арт видны одновременно |
-| **Раскладки** | 2×2 по умолчанию, полоса сверху, акцент на арт, один ряд |
-| **Источник** | изображение, надпись крупными буквами, камера или рисунок от руки |
-| **Загрузка** | файл, перетаскивание, вставка из буфера (Ctrl+V) |
-| **Кадрирование** | рамка прямо по превью: тянуть на пустом месте — выделить, внутри — двигать, за угол — менять размер |
-| **Правка точек** | дорисовать или стереть отдельные точки прямо по готовому арту, с отменой |
-| **Офлайн** | ставится как приложение и работает без сети |
-| **Без бэкенда** | ни одного сетевого запроса после загрузки страницы |
+| **Dithering** | Floyd–Steinberg, Atkinson, blue noise, Bayer 4×4 |
+| **Thresholds** | global, automatic by Otsu, and local adaptive (Sauvola) |
+| **Edge detection** | XDoG for drawn strokes, Sobel for gradients, a slider between fill and lines |
+| **Colour** | one tint per cell: on screen, in PNG, SVG, HTML and ANSI for the terminal |
+| **Image adjustment** | brightness, contrast, saturation, sharpness |
+| **Output** | width and height in cells, proportions kept automatically, inversion |
+| **Presets** | photographs, line art, logos, pixel art — each sets every control it covers |
+| **Targets** | message limit in view, copying inside a code fence, width measured against your own client |
+| **Fitting** | trim blank margins, find the widest size that fits, split into several messages |
+| **Source** | a file, lettering in large braille type, the camera, or a drawing |
+| **Loading** | file picker, drag and drop, paste with Ctrl+V |
+| **Cropping** | drag a rectangle over the preview: empty space selects, inside moves, a corner resizes |
+| **Editing** | set and clear individual dots on the finished art, with undo |
+| **Two modes** | simple keeps five controls; advanced reveals everything |
+| **One screen** | original, adjusted image, sampled pixels and the art are all visible at once |
+| **Layouts** | 2×2 by default, strip on top, art-first, single row |
+| **Languages** | English and Russian, chosen from the browser and remembered |
+| **Offline** | installs as an app and works with no network |
+| **No backend** | not one network request after the page has loaded |
 
-Пустая ячейка выводится как `U+2800 BRAILLE PATTERN BLANK`, а не как пробел —
-поэтому арт не разваливается при вставке в чат, где пробелы схлопываются.
-
-### Чем отличаются методы
-
-Порог принимает решение по каждому пикселю отдельно, поэтому ровную заливку в
-25% серого он передать не может физически — либо всё, либо ничего. Дизеринг
-разменивает точность отдельного пикселя на верную среднюю яркость участка.
-
-- **Флойд–Стейнберг** — распределяет ошибку между четырьмя соседями. Мягкие
-  полутона, лучший выбор для фотографий.
-- **Аткинсон** — отдаёт соседям лишь 6/8 ошибки. Остальное теряется намеренно:
-  света и тени уходят в клиппинг вместо размазывания, и на грубой сетке это
-  читается контрастнее.
-- **Байер 4×4** — упорядоченный дизеринг, ошибка между пикселями не ходит
-  вовсе. Регулярная сетка вместо органического зерна, и результат зависит
-  только от координат.
-- **Синий шум** — тоже упорядоченный, но плитка порогов построена алгоритмом
-  void-and-cluster: пороги разложены так, что ни на одном масштабе нет
-  повторяющейся структуры. Получается фактура диффузии при позиционной
-  независимости Байера.
-- **Локальный порог (Саувола)** — порог считается по окрестности каждого
-  пикселя, а не по всему кадру. Единственное число не может обслужить фото,
-  освещённое с одной стороны: каким бы оно ни было, один край кадра погибнет.
-- **Простой порог** — для логотипов, текста и штриховой графики, где дизеринг
-  только добавляет шум.
-
-### Почему считается в двух разных пространствах
-
-Покрытие точками линейно по свету: половина зажжённых точек излучает половину
-света, поэтому доля точек, воспроизводящая тон, — это **линейная** яркость
-этого тона. Диффузия ошибки по гамма-кодированным значениям (так делает
-большинство подобных конвертеров, и так делал этот до 0.9) сохраняет среднее не
-той величины и систематически осветляет результат: ровный серый sRGB 128
-раскладывался с покрытием 0.50 вместо правильных 0.22.
-
-А контуры — наоборот. Разность гауссиан отвечает на кривизну, и линейная
-яркость плавного визуального градиента сильно выпукла: на пяти равных шагах
-sRGB её приращения различаются в 9.2 раза, тогда как у перцептивной светлоты
-L* — в 1.2. Запущенный в линейном пространстве XDoG объявлял контуром весь
-градиент целиком.
-
-Поэтому плоскость, которую пороговит кодировщик, линейна для тона и
-перцептивна для линий, а `tonePlane()` решает какая и сообщает об этом. Ползунок
-порога остаётся в sRGB, чтобы его середина была серединой того, что видит
-человек, и переводится один раз — там, где выбрана плоскость.
-
-### Контуры
-
-По умолчанию точка ставится там, где ярко. Для рисунков, аниме-кадров, чертежей
-и мемных шаблонов это часто даёт кашу: важна не яркость, а линия.
-
-- **XDoG** — разность двух гауссиан с мягким порогом. В отличие от градиента,
-  отклик уходит в минус только с тёмной стороны границы, поэтому получается
-  односторонний штрих переменной толщины, а не полоса по обе стороны контура.
-  Именно эта переменная толщина хорошо ложится на сетку 2×4.
-- **Собель** — модуль градиента. Быстрый и предсказуемый, но отвечает на вопрос
-  «насколько здесь круто», так что мягкая граница возвращается широкой полосой.
-  Хорош для чёткой графики и для быстрой оценки, что вообще есть в кадре.
-
-Ползунок **заливка ↔ линии** смешивает контуры с яркостью до дизеринга: рисунок
-может сохранить светотень и одновременно получить чёткие края.
-
-### Интерфейс
-
-Страница занимает ровно высоту окна и сама не прокручивается. Четыре области —
-оригинал, изображение после коррекции, пиксели, из которых считается арт, и сам
-арт — видны одновременно. Прокручиваются только колонка параметров и содержимое
-арта, каждое внутри себя.
-
-По умолчанию это сетка **2 × 2**: коробка, близкая по форме к самому снимку,
-тратит куда меньше места, чем широкая полоса — в полосе кадр 16:9 сжимался в
-пятнышко между двумя чёрными полями. В верхней панели можно выбрать другую
-раскладку: полосу сверху, акцент на арт или один ряд для широких мониторов.
-Каждый вариант — это просто другой grid-шаблон, поэтому добавить ещё один стоит
-нескольких строк CSS.
-
-Превью небольшие, поэтому по клику любое открывается на весь экран в реальном
-разрешении — так можно рассмотреть, что именно уходит в кодировщик, не жертвуя
-общей раскладкой.
-
-Переключатель **Простой / Расширенный** — это одно DOM-дерево и один атрибут на
-корне: режим решает только то, что показывает CSS. Двух интерфейсов, которые
-пришлось бы держать в синхроне, не существует, и ни один контрол не может
-хранить разное значение в зависимости от того, из какого режима его трогали.
-
-В простом режиме на экране пять вещей: файл, тип изображения, ширина, порог и
-куда отправлять. Расширенный добавляет метод дизеринга, инверсию, контуры,
-тональную коррекцию и кегль.
-
-Настройки и выбранный режим запоминаются между заходами; «Сбросить всё»
-возвращает к исходному.
-
-### Кадрирование
-
-Часто нужен не весь кадр, а лицо персонажа или предмет. Кнопка **«Обрезать»**
-включает рамку прямо на превью оригинала.
-
-Выделение хранится в долях изображения, а не в пикселях, поэтому переживает
-перерисовку превью в другом размере. Вырезается оно из оригинала **до** любого
-масштабирования — то есть кадрирование не стоит ни капли детализации: обрезав
-десятую часть кадра, вы получаете её в полном разрешении, а не увеличенный
-фрагмент превью.
-
-Панель «Оригинал» продолжает показывать весь кадр — иначе рамку не на что было
-бы натягивать; все остальные панели и сам арт считаются уже по выделению.
-
-### Камера и рисование
-
-Кроме файла и надписи источником может быть **камера** — кадр берётся в её
-собственном разрешении, а не в разрешении превью, — или **рисунок от руки**:
-холст занимает панель «Оригинал», и штрих превращается в точки по ходу
-рисования. Есть толщина кисти и ластик.
-
-Оба источника — это canvas, поэтому к ним применимо всё остальное без единой
-строки особого случая.
-
-### Надписи
-
-Переключатель **«Источник»** меняет изображение на текст: вводите строку и
-получаете надпись, набранную крупными буквами из точек Брайля.
-
-Растрового шрифта в проекте нет. Текст рисуется на canvas теми шрифтами, что
-уже есть в системе, и дальше идёт через обычный конвейер как любая другая
-картинка — поэтому к надписи применимо всё остальное: контуры, дизеринг,
-кадрирование, пресеты площадок, экспорт и правка отдельных точек. Ничему ниже
-по конвейеру не нужно знать, что это буквы.
-
-Рисуется намеренно крупно — 200 px на строку — и уменьшается тем же
-box-фильтром, что и фотографии. Отрисовка сразу в размер сетки отдала бы
-кодировщику решения браузерного хинтинга и сглаживания вместо честных полутонов.
-
-### Правка точек
-
-Алгоритм не всегда угадывает: где-то не хватает точки, где-то одна лишняя.
-Кнопка **«Правка точек»** позволяет щёлкать и вести прямо по готовому арту.
-Штрих выбирает направление по первой задетой точке и дальше только ставит или
-только стирает — иначе при протягивании точки мигали бы под курсором.
-Отмена — кнопкой или `Ctrl+Z`.
-
-Арт при этом остаётся обычным текстом: щелчок переводится в ячейку и точку по
-тем же метрикам шрифта, из которых считается высота и делается экспорт. Никаким
-частям ниже по конвейеру не нужно знать, что текст правили руками.
-
-Пока правка включена, **арт перестаёт следовать за параметрами**. Это
-осознанный размен: либо арт пересчитывается по контролам, либо он ваш и его
-можно доводить. Молча стирать минуту работы из-за случайно задетого ползунка
-было бы хуже, чем отказаться пересчитывать. Кнопка «Пересчитать» сбрасывает
-правки явно и говорит об этом.
-
-### Цвет
-
-Ячейка Брайля — это один глиф, и цвет у неё может быть ровно один, сколько бы
-из восьми точек ни было поднято. Поэтому цвет **не участвует в решении о
-точках** — это по-прежнему вопрос о яркости — а только тонирует уже решённое.
-
-Усредняется он по тем пикселям, чьи точки подняты: только они и рисуются, а
-подмешивание погашенных тянуло бы каждую ячейку к фону и выбеливало картинку.
-Среднее берётся в линейном свете — усреднять гамма-кодированные каналы это та
-же ошибка, что и дизерить по ним: половина белого и половина чёрного дают
-sRGB 188, а не 128.
-
-Цвет живёт отдельным массивом рядом с текстом, а не внутри него: арт остаётся
-обычной строкой, которую можно скопировать, сохранить и править руками, а
-форматы, не умеющие цвет, просто его игнорируют.
-
-Раскрашивается пробегами одинакового цвета, а не по ячейке: сетка 400×400 — это
-160 000 элементов, которые ни один браузер быстро не разложит. На фотографии
-соседние ячейки обычно отличаются на единицы уровней, и пробеги сокращают счёт
-на порядок — в примере выше 1155 ячеек уложились в 115 пробегов.
-
-Цветными выходят экран, PNG, SVG, HTML и **ANSI для терминала** (`cat
-braille.ans`). Обычный текст и буфер обмена цвет не несут: чаты его не
-поддерживают.
-
-### Чтобы влезло в сообщение
-
-Знать, что арт не влезает, само по себе бесполезно. Выходов ровно три, и все три
-на месте.
-
-**Обрезка пустых полей.** Вписывание картинки в сетку оставляет по краям рамку
-из пустых ячеек, а пустая ячейка стоит знака ровно как любая другая. Лимит
-считается в знаках, а не в картинке, поэтому обрезка — самый дешёвый способ
-уместиться: она не удаляет ничего, что видно. Столбец убирается только если он
-пуст во всех строках, иначе изображение поехало бы вбок.
-
-Выключена по умолчанию: она меняет размер результата, и «Ширина» перестала бы
-означать ширину вывода. Когда включена, счётчик честно пишет `80×50 → 59×27
-после обрезки`.
-
-**Подбор ширины под лимит.** Кнопка ищет самую большую ширину, при которой арт
-ещё проходит. Двоичным поиском, а не перебором вниз: зависимость достаточно
-монотонна, а каждая проба стоит полной генерации — девять проб лучше сотни.
-
-**Разбивка на сообщения.** Если не влезает даже урезанным, копирование отдаёт
-арт частями: нажали — часть 1, нажали ещё — часть 2. Резать можно только по
-границам строк, иначе половинки перестанут совпадать, придя разными
-сообщениями. Строку шире целого лимита разделить нельзя, и об этом говорится
-прямо, а не молча.
-
-### Установка и работа офлайн
-
-Приложение — PWA: браузер предложит установить его на рабочий стол, после чего
-оно открывается своим окном и работает без сети. Сервис-воркер кеширует всю
-оболочку целиком; обновление приезжает при смене версии в `sw.js`.
-
-Это стало возможно только потому, что внешних зависимостей нет вообще: пока
-стили тянулись с CDN, офлайн был недостижим.
-
-### Почему ширины под площадки не зашиты
-
-В генераторах принято писать «Discord — примерно 30 символов, Twitch — 20».
-Такие числа выглядят авторитетно и не стоят ничего: ширина зависит от
-устройства, размера окна, масштаба, настройки размера шрифта в самом клиенте и
-от того, лежит ли арт в код-блоке.
-
-Поэтому в коде лежит только проверяемое — лимит длины сообщения. Ширину вы
-измеряете один раз сами: кнопка **«Откалибровать под свой чат»** выдаёт линейку
-из символов Брайля, вы отправляете её себе и считаете деления до переноса.
-Измерять надо именно Брайлем: у цифр в том же шрифте другая ширина, и линейка
-из цифр показала бы не тот ответ.
-
-Там же **вертикальный масштаб** — на случай, если арт в чате выглядит вытянутым
-или сплюснутым: межстрочный интервал у клиентов разный, и одной ширины мало.
-Измерения запоминаются отдельно для каждой площадки.
-
-Параметр τ в XDoG намеренно равен 1, а не 0.98 из оригинальной статьи. При
-меньших значениях отклик на ровном поле равен `l·(1−τ)`, то есть зависит от
-яркости — ровный средний серый начинает «звенеть», а тёмные области заплывают
-штрихами, которых там нет. При τ=1 ровный участок сокращается в ноль на любом
-уровне, и детектор сообщает только линии. Тон возвращает ползунок смешивания,
-где им можно управлять.
+An empty cell is emitted as `U+2800 BRAILLE PATTERN BLANK`, not as a space, so
+the art keeps its alignment in chats that collapse whitespace.
 
 ---
 
-## Запуск
+## Run it
 
-Проще всего — [открыть готовую версию](https://jareltis.github.io/Braille_Art_Generator/).
+The easiest way is to [open the hosted version](https://jareltis.github.io/Braille_Art_Generator/).
 
-Локально нужен любой HTTP-сервер: проект собран из ES-модулей, а браузеры не
-загружают модули по `file://`. Двойной клик по `index.html` не сработает.
+Locally, any static server will do — the project is built from ES modules, and
+browsers refuse to load those over `file://`, so double-clicking `index.html`
+will not work.
 
 ```bash
 git clone https://github.com/Jareltis/Braille_Art_Generator.git
 cd Braille_Art_Generator
 ```
 
-Дальше — что есть под рукой:
+Then whichever is at hand:
 
 ```bash
 python -m http.server 8000        # Python 3
@@ -298,116 +68,252 @@ npx serve .                       # Node
 php -S localhost:8000             # PHP
 ```
 
-Откройте `http://localhost:8000`.
+Open `http://localhost:8000`.
 
-Сборка не нужна: ни `npm install`, ни бандлера, ни зависимостей. Достаточно
-выложить папку на GitHub Pages или любой статический хостинг.
+There is no build: no `npm install`, no bundler, no dependencies. Publishing is
+a matter of copying the folder to GitHub Pages or any static host.
 
 ---
 
-## Как это устроено
+## How it works
+
+### The methods
+
+A threshold decides each pixel on its own, so a flat 25% grey has exactly one
+answer available to it: nothing. Dithering trades per-pixel accuracy for a
+correct local average, which is what makes photographs legible on a grid this
+coarse.
+
+- **Floyd–Steinberg** spreads the error over four neighbours. Soft half-tones;
+  the right choice for photographs.
+- **Atkinson** passes on only six eighths of the error. Losing the rest is the
+  point: highlights and shadows clip rather than smear, which reads better on a
+  coarse grid.
+- **Blue noise** is ordered like Bayer — nothing travels between pixels, so the
+  result never shifts when the image is re-cropped — but its tile is built by
+  void-and-cluster, spreading thresholds so that no scale carries a repeating
+  structure. Error-diffusion texture with position independence.
+- **Bayer 4×4** is the classic ordered matrix, with the crosshatch that comes
+  with it.
+- **Local threshold (Sauvola)** picks a threshold per neighbourhood instead of
+  one for the frame. A single number cannot serve a photograph lit from one
+  side: whatever it is, one end of the frame is crushed.
+- **Plain threshold** for logos, text and line art, where dithering only adds
+  noise.
+
+### Two colour spaces, on purpose
+
+Dot coverage is linear in light: half the dots lit emits half the light, so the
+fraction that reproduces a tone is that tone's **linear** luminance. Diffusing
+error over gamma-encoded values — which most converters of this kind do, and
+which this one did until 0.9 — preserves the average of the wrong quantity and
+comes out systematically too light. Flat sRGB mid-grey was dithered at 0.50
+coverage where it should be 0.22.
+
+Edges want the opposite. A difference of Gaussians answers to curvature, and the
+linear luminance of a smooth visual ramp is strongly convex: across five equal
+sRGB steps its gaps differ by a factor of 9.2, where the gaps in perceptual
+lightness L\* differ by 1.2. Run in linear light, XDoG reports an edge across an
+entire gradient.
+
+So the plane the encoder thresholds is linear for tone and perceptual for line,
+and `tonePlane()` decides which and says so. The threshold control stays in
+sRGB, so its middle is still the middle of what you see, and crosses over once.
+
+### Edges
+
+By default a dot means "bright here". For drawings, anime frames, diagrams and
+meme templates that is the wrong question — what matters is the line.
+
+- **XDoG** is the one that draws. The difference only goes negative on the dark
+  side of an edge, so the result is a one-sided stroke of varying weight rather
+  than a band straddling the boundary, and that variation is the part a 2×4 cell
+  can show.
+- **Sobel** reports gradient magnitude: fast and predictable, but a soft edge
+  comes back as a wide band.
+
+τ is deliberately 1 rather than the ≈0.98 the XDoG paper uses for stylisation.
+Below 1 the flat-field response is `l·(1−τ)` — proportional to brightness — so
+an even mid-grey answers with ink and dark areas silt up with strokes that are
+not edges.
+
+### Colour
+
+A braille cell is a single glyph and can carry one colour however many of its
+eight dots are raised. Colour therefore takes no part in deciding the dots — that
+stays a question about luminance — it only tints what was already decided.
+
+It is averaged over the pixels whose dots are raised, because only those are
+drawn, and the mean is taken in linear light for the same reason dithering is:
+half white and half black is sRGB 188, not 128.
+
+Colours live in an array beside the text rather than inside it, so the art stays
+a plain string that can be copied, saved and hand-edited. Everything
+colour-aware paints runs of near-enough equal colour rather than cells: a
+400×400 grid is 160,000 cells, and on the sample image 1155 of them collapse
+into 115 spans.
+
+### Why no platform widths are baked in
+
+Generators like to state that Discord is "about 30 characters" and Twitch "about
+20". Those numbers look authoritative and are worth nothing: the width moves
+with the device, the window, the zoom, the client's own font size setting and
+whether the art sits in a code block.
+
+So the code holds only what is checkable — the message length limit. The width
+is measured once, by you: **Measure your own chat** hands you a ruler, you paste
+it into the client and count the marks before it wraps. The ruler is made of
+braille on purpose — a digit is a different width in the same font, so a numeric
+ruler would answer a different question.
+
+Beside it is a **vertical scale**, for when the art arrives stretched or
+squashed: clients set their own line height, and width alone does not fix that.
+Measurements are remembered per target.
+
+### Fitting into a message
+
+Knowing the art is over the limit is not much use on its own.
+
+**Trimming** removes rows and columns of empty cells from the edges. A blank
+cell costs a character like any other, and the limit is counted in characters,
+so this is the cheapest way to fit and it deletes nothing anyone can see. It is
+off by default, because with it on the width field would no longer describe the
+output.
+
+**Fitting to the limit** searches for the widest sampling that still passes, by
+bisection rather than stepping down: a probe costs a full render.
+
+**Splitting** cuts at row boundaries only — anywhere else and the halves stop
+lining up once they arrive as separate messages.
+
+### Cropping, lettering, camera and drawings
+
+A crop selection is held in fractions of the image, so it survives the preview
+being redrawn at another size, and it is cut from the original before anything
+is scaled: taking a tenth of a frame gives that tenth at full resolution.
+
+Lettering, camera frames and drawings are all canvases, which is why the whole
+pipeline applies to them without a single special case. There is no bitmap font:
+text is drawn with the fonts the machine already has, at 200px per line, and
+reduced by the same box filter photographs go through.
+
+### Dots by hand
+
+The algorithm does not always guess right. Clicking or dragging on the finished
+art sets and clears individual dots, with undo on a button and on Ctrl+Z.
+
+While editing is on the art stops following the controls. That is the bargain:
+either it tracks the parameters or it is yours to touch up. Silently discarding
+a minute of work because a slider moved would be worse than refusing to
+recalculate.
+
+### The interface
+
+The page is exactly the height of the window and never scrolls itself. Four
+areas — the original, the adjusted image, the pixels the encoder actually reads,
+and the art — are visible together, by default as a 2×2 grid. Only the controls
+column and the art contents scroll, each inside its own box. Previews are small
+by necessity, so clicking one opens it full size at real resolution.
+
+Simple and advanced are one DOM tree and one attribute: the mode decides only
+what CSS shows, so there is no second interface to keep in step.
+
+### Adding a language
+
+Nothing outside `src/i18n/` holds a user-visible string: the markup carries keys
+in `data-i18n` attributes and the code asks `t()` for everything it says. A new
+language is one file beside `en.js` and one line in `LOCALES`.
+
+Plural forms go through `Intl.PluralRules`, so a dictionary supplies only the
+forms its own language uses — English needs two, Russian needs three. `{name}`
+inserts a value as it is; `{#name}` groups it as a number, because 1234
+characters should read as 1,234 while a frame 1280 pixels wide should not.
+
+The suite checks that every dictionary answers every key, that every key the
+markup asks for exists, and that everything named from data has a name.
+
+---
+
+## Layout of the source
 
 ```
-index.html          разметка и стили, без внешних зависимостей
+index.html          markup and styles, inline, no external requests
 src/
-  core/             чистая логика — ни document, ни canvas
-    braille.js        ImageData -> текст: карта точек, сетка ячеек
-    gamma.js          sRGB, линейный свет и перцептивная светлота
-    dither.js         диффузия ошибки, упорядоченные матрицы, локальный порог
-    bluenoise.js      плитка порогов по алгоритму void-and-cluster
-    colour.js         средний цвет ячейки и склейка в пробеги
-    edges.js          XDoG и Собель, смешивание линий с тоном
-    blur.js           разделимый гауссов размытие
-    otsu.js           автоподбор порога по гистограмме
-    presets.js        наборы параметров под тип изображения
-    adjust.js         тональная коррекция и нерезкое маскирование
-    pixels.js         luma, ограничение диапазона, вписывание размеров
+  core/             pure logic: no document, no canvas
+    braille.js        ImageData -> text: dot map, cell grid, tonePlane
+    gamma.js          sRGB, linear light, perceptual lightness
+    dither.js         error diffusion, ordered matrices, local threshold
+    bluenoise.js      a void-and-cluster threshold tile, built at load
+    colour.js         average colour per cell, collapsed into runs
+    edges.js          XDoG and Sobel, mixed with tone
+    blur.js           separable Gaussian
+    otsu.js           a threshold from the histogram
+    adjust.js         tone and unsharp masking
+    pixels.js         luma, clamping, fitting, cell geometry
+    presets.js        control values per kind of image
   worker/
-    pipeline.worker.js  тот же core, но в фоновом потоке
-    protocol.js         передача пикселей через границу потока
-  ui/               всё, что касается DOM
-    pipeline.js       единый интерфейс: воркер или основной поток
-    canvas.js         масштабирование, чтение и запись пикселей
-    controls.js       связка ползунков, склейка по кадрам
-    export.js         .txt, буфер обмена, PNG, SVG
-    platforms.js      лимиты сообщений и калибровка ширины
-    settings.js       запоминание состояния панели
-    crop.js           рамка выделения на превью
-    dots.js           правка отдельных точек по готовому арту
-    text.js           надпись как источник изображения
-    camera.js         кадр с веб-камеры
-    draw.js           холст для рисования от руки
-  main.js           связывает одно с другим
-tests/              прогоняются в реальном браузере
-sw.js               кеш оболочки для офлайна
+    pipeline.worker.js  the same core modules, off the main thread
+    protocol.js         pixels across the thread boundary
+  ui/                 everything that touches the DOM
+    pipeline.js       one interface over worker and inline
+    canvas.js         scaling, cropping, reading and writing pixels
+    export.js         .txt, clipboard, PNG, SVG, HTML, ANSI
+    platforms.js      message limits and width calibration
+    settings.js       remembering the panel
+    crop.js           the selection rectangle
+    dots.js           editing individual dots
+    text.js           lettering as a source
+    camera.js         a frame from the webcam
+    draw.js           a sketch pad
+  i18n/
+    index.js          t(), plural rules, applying keys to markup
+    en.js, ru.js      dictionaries
+  main.js           wiring
+tests/              run in a real browser
+sw.js               the offline shell
 manifest.webmanifest
 ```
 
-`src/core/` не обращается к DOM и использует только `ImageData`, доступный и в
-Web Worker, — поэтому воркер импортирует ровно те же модули, что и страница.
-Если воркер создать не удалось, `ui/pipeline.js` считает в основном потоке с тем
-же интерфейсом.
-
-### Пропорции
-
-Ячейка braille — это 2×4 исходных пикселя, но на экране глиф занимает
-примерно вдвое больше по высоте, чем по ширине. Чтобы арт не выходил
-растянутым, реальная ширина глифа измеряется в том самом шрифте, которым
-отрисован результат, и одно это число используют и расчёт высоты, и вёрстка,
-и экспорт в PNG.
+`src/core/` never touches the DOM and uses only `ImageData`, which exists in
+workers too — so `pipeline.worker.js` imports exactly the same modules the page
+does, not copies of them.
 
 ---
 
-## Тесты
+## Tests
 
 ```bash
-node tests/run.mjs             # все страницы
-node tests/run.mjs pipeline    # только одну
+node tests/run.mjs             # both pages
+node tests/run.mjs pipeline    # just one
 ```
 
-Нужен установленный Chrome или Edge (путь можно задать переменной `CHROME`).
-Больше ничего ставить не требуется.
+Chrome or Edge must be installed (`CHROME` overrides the path). Nothing else is
+needed: no npm, no build, no dependencies.
 
-Тесты гоняются в настоящем браузере, потому что проверять нужно именно то, что
-там происходит: воркеры, `ImageData`, метрики шрифта. `tests/pipeline.html`
-проверяет алгоритмы и сверяет вывод воркера с основным потоком побайтно;
-`tests/page.html` открывает `index.html` в iframe, подсовывает ему файл и
-убеждается, что арт появляется сам.
+They run in a real browser because that is where the things worth checking live:
+workers, `ImageData`, font metrics. `tests/pipeline.html` checks the algorithms
+and compares worker output against the main thread byte for byte;
+`tests/page.html` drives `index.html` itself in an iframe, hands it a file and
+confirms the art appears with nothing clicked.
 
-Раскладка проверяется так же, а не на глаз: тест измеряет все четыре области и
-требует, чтобы каждая целиком помещалась во вьюпорт — в том числе на окне
-высотой 620 px и в расширенном режиме.
-
----
-
-## Планы
-
-| Версия | Что добавится |
-|---|---|
-| ~~0.2~~ | ~~Дизеринг, автоподбор порога, Web Worker~~ — готово |
-| ~~0.3~~ | ~~Выделение контуров (XDoG, Собель), ползунок «линии ↔ заливка»~~ — готово |
-| ~~0.4~~ | ~~Пресеты, площадки с калибровкой, счётчик символов, экспорт в SVG~~ — готово |
-| ~~0.5~~ | ~~Редизайн: всё на одном экране, режимы Простой/Расширенный, перетаскивание и вставка, сохранение настроек~~ — готово |
-| ~~0.6~~ | ~~Кадрирование, работа офлайн (PWA)~~ — готово |
-| ~~0.7~~ | ~~Правка отдельных точек по готовому арту, отмена~~ — готово |
-| ~~0.8~~ | ~~Надписи крупными буквами из точек~~ — готово |
-| ~~0.9~~ | ~~Гамма-корректный счёт, локальный порог, синий шум~~ — готово |
-| ~~0.10~~ | ~~Обрезка полей, подбор ширины под лимит, разбивка на сообщения~~ — готово |
-| ~~0.11~~ | ~~Камера и рисование как источники, демо и скриншот~~ — готово |
-| ~~0.12~~ | ~~Цвет: тонировка ячеек, экспорт в HTML и ANSI~~ — готово |
-
-Дальше — по мере появления идей.
+Layout is measured rather than eyeballed: the suite takes the bounds of all four
+panes and requires each to sit wholly inside the viewport, in every arrangement,
+including at a 620px-tall window.
 
 ---
 
-## Лицензия
+## Licence
 
-Проект сменил лицензию по ходу истории, и обе продолжают действовать:
+The project changed licence partway through its history, and both remain in
+force:
 
-- версии **до `v0.0.12`** включительно — [MIT](LICENSE-MIT);
-  это состояние сохранено тегом `v0.0.12-mit` и веткой `archive/mit-v0.0.12`;
-- версии **начиная с `v0.1.0`** — [GNU GPL v3.0 или новее](LICENSE).
+- versions **up to and including `v0.0.12`** — [MIT](LICENSE-MIT); that state is
+  kept by the tag `v0.0.12-mit` and the branch `archive/mit-v0.0.12`;
+- versions **from `v0.1.0`** — [GNU GPL v3.0 or later](LICENSE).
 
-Подробности и что это значит на практике — в [`LICENSING.md`](LICENSING.md).
+An MIT grant cannot be withdrawn, so everything published under it stays
+available under MIT for good. See [`LICENSING.md`](LICENSING.md) for what that
+means in practice.
 
-Часть кода написана с помощью ИИ-инструментов, см. [`AI_NOTICE.md`](AI_NOTICE.md).
+Parts of the code were written with AI assistance — see
+[`AI_NOTICE.md`](AI_NOTICE.md).

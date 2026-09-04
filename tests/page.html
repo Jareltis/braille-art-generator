@@ -34,6 +34,11 @@ async function run() {
   const $ = (id) => frame.contentDocument.getElementById(id);
 
   await until(() => $('status').textContent.length > 0);
+  // The language now follows the browser, and this one speaks English. Pin it,
+  // so the assertions below can go on quoting the Russian wording.
+  $('language').value = 'ru';
+  $('language').dispatchEvent(new Event('change', { bubbles: true }));
+
   ok('page initialises', $('status').textContent.length > 0, $('status').textContent);
   ok('worker is in use on the real page', $('status').textContent.includes('фоновом потоке'));
   check('height field starts derived', $('outHeight').disabled, true);
@@ -781,6 +786,36 @@ async function run() {
     $('colour').dispatchEvent(new Event('change', { bubbles: true }));
     ok('turning it off returns to plain text',
        await until(() => $('output').querySelectorAll('span').length === 0));
+  }
+
+  {
+    // --- switching language -------------------------------------------------
+    const label = (forId) => frame.contentDocument.querySelector(`label[for="${forId}"]`).textContent;
+
+    check('the picker offers both languages', $('language').options.length, 2);
+    check('the run is pinned to russian', $('language').value, 'ru');
+    check('markup follows the language', label('threshold'), 'Порог');
+    check('so does the document', frame.contentDocument.documentElement.lang, 'ru-RU');
+
+    $('language').value = 'en';
+    $('language').dispatchEvent(new Event('change', { bubbles: true }));
+
+    check('switching retranslates the markup', label('threshold'), 'Threshold');
+    check('and the document tag', frame.contentDocument.documentElement.lang, 'en');
+    ok('options built at run time follow too',
+       [...$('preset').options].some((o) => o.textContent === 'Photographs'),
+       [...$('preset').options].map((o) => o.textContent).join(' | '));
+    ok('and so do the ones named from data',
+       [...$('platform').options].some((o) => o.textContent === 'Nowhere in particular'));
+
+    // The choice has to outlast a reload, like every other setting.
+    await wait(400);
+    const again = new Promise((r) => frame.addEventListener('load', r, { once: true }));
+    frame.src = '../index.html';
+    await again;
+    await until(() => $('status').textContent.length > 0);
+    check('the language is remembered', $('language').value, 'en');
+    check('and applied on load', label('threshold'), 'Threshold');
   }
 
   const failed = log.filter((l) => l.startsWith('FAIL')).length;

@@ -18,11 +18,12 @@ const RENDER_SIZE = 200;
 const LINE_SPACING = 1.15;
 const PADDING = 0.18;      // of RENDER_SIZE, so strokes never touch the edge
 
+/** Names live in the dictionaries under font.<key>. */
 export const TEXT_FONTS = Object.freeze({
-  sans: { label: 'Без засечек', stack: 'Inter, "Segoe UI", system-ui, sans-serif' },
-  serif: { label: 'С засечками', stack: 'Georgia, "Times New Roman", serif' },
-  mono: { label: 'Моноширинный', stack: '"Cascadia Mono", "DejaVu Sans Mono", monospace' },
-  display: { label: 'Плакатный', stack: 'Impact, "Arial Black", "Segoe UI", sans-serif' },
+  sans: { stack: 'Inter, "Segoe UI", system-ui, sans-serif' },
+  serif: { stack: 'Georgia, "Times New Roman", serif' },
+  mono: { stack: '"Cascadia Mono", "DejaVu Sans Mono", monospace' },
+  display: { stack: 'Impact, "Arial Black", "Segoe UI", sans-serif' },
 });
 
 export const DEFAULT_TEXT_FONT = 'display';

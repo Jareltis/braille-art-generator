@@ -4,11 +4,12 @@
 // A preset is just a set of control values -- nothing here is a separate code
 // path. Each one sets every control it cares about, so picking one twice always
 // lands in the same place no matter what was fiddled with in between.
+//
+// Names and explanations live in the dictionaries, under preset.<key> and
+// preset.<key>.hint: this file holds no words anyone reads.
 
 export const CONTENT_PRESETS = Object.freeze({
   photo: {
-    label: 'Фото и портреты',
-    hint: 'Диффузия ошибки передаёт полутона, которых у порога нет',
     settings: {
       method: 'floyd-steinberg',
       threshold: 128,
@@ -24,8 +25,6 @@ export const CONTENT_PRESETS = Object.freeze({
   },
 
   lineart: {
-    label: 'Рисунок, аниме, чертёж',
-    hint: 'Штрих XDoG вместо яркости; дизеринг выключен, чтобы не зашумлять линию',
     settings: {
       method: 'threshold',
       threshold: 40,
@@ -41,8 +40,6 @@ export const CONTENT_PRESETS = Object.freeze({
   },
 
   logo: {
-    label: 'Логотип и текст',
-    hint: 'Жёсткий порог и высокий контраст: дизеринг тут только грязнит',
     settings: {
       method: 'threshold',
       threshold: 128,
@@ -58,8 +55,6 @@ export const CONTENT_PRESETS = Object.freeze({
   },
 
   pixel: {
-    label: 'Пиксель-арт',
-    hint: 'Уменьшение без интерполяции — иначе пиксельная сетка размывается в кашу',
     settings: {
       method: 'threshold',
       threshold: 128,
