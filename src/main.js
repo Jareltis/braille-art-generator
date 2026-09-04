@@ -110,6 +110,8 @@ const dom = {
   downloadSvg: el('downloadSvg'),
   autoThreshold: el('autoThreshold'),
   suggest: el('suggest'),
+  settingsUndo: el('settingsUndo'),
+  settingsRedo: el('settingsRedo'),
   generate: el('generate'),
   reset: el('resetEdits'),
   output: el('output'),
@@ -666,6 +668,60 @@ function collectSettings() {
   return values;
 }
 
+/**
+ * Somewhere to come back from.
+ *
+ * Three things now rewrite the whole panel in one go -- picking a preset,
+ * letting it work out the kind of picture, taking one of the offered variants
+ * -- and until this there was no way back from any of them except memory. The
+ * stack holds whole settings, not the individual controls that changed, because
+ * that is what those actions replace and what applySettings already knows how
+ * to put back.
+ *
+ * It is also how one art is compared against another: step back, look, step
+ * forward. That beats a peek-while-held toggle, which would have to show one
+ * art while the panel described a different one, and would hand the wrong thing
+ * to whoever pressed copy at that moment.
+ */
+const HISTORY_DEPTH = 30;
+const wasBefore = [];
+const wasAfter = [];
+
+function syncHistoryButtons() {
+  dom.settingsUndo.disabled = wasBefore.length === 0;
+  dom.settingsRedo.disabled = wasAfter.length === 0;
+}
+
+/**
+ * Note where things stand, before something automatic moves them.
+ *
+ * Called at the places that rewrite several controls at once rather than inside
+ * the functions that do the rewriting: detectPreset goes through applyPreset,
+ * and remembering in both would put the same state on the stack twice.
+ */
+function remember() {
+  wasBefore.push(collectSettings());
+  if (wasBefore.length > HISTORY_DEPTH) wasBefore.shift();
+  wasAfter.length = 0;
+  syncHistoryButtons();
+}
+
+function stepHistory(from, to, message) {
+  if (!from.length) return false;
+  to.push(collectSettings());
+  applySettings(from.pop());
+  syncHistoryButtons();
+  syncEdgeControls();
+  syncPlatform();
+  syncRows();
+  setStatus(t(message), 'info');
+  changed();
+  return true;
+}
+
+const undoSettings = () => stepHistory(wasBefore, wasAfter, 'settings.undone');
+const redoSettings = () => stepHistory(wasAfter, wasBefore, 'settings.redone');
+
 const persist = coalesce(() => {
   const settings = collectSettings();
   saveSettings(settings);
@@ -840,6 +896,7 @@ function showOffers(offers, { opener, onDismiss } = {}) {
     tile.append(art, name, why);
     tile.addEventListener('click', () => {
       taken = true;
+      remember();
       applyRecipe(offer.recipe);
       close();
       setStatus(t('offer.applied', { name: t(`variant.${offer.key}`) }), 'ok');
@@ -1379,7 +1436,10 @@ function init() {
   dom.textBold.addEventListener('change', () => { useTextSource(); persist(); });
 
   dom.suggest.addEventListener('click', () => { suggestVariants(); });
+  dom.settingsUndo.addEventListener('click', undoSettings);
+  dom.settingsRedo.addEventListener('click', redoSettings);
   dom.preset.addEventListener('change', () => {
+    remember();
     if (dom.preset.value === AUTO_PRESET) detectPreset();
     else applyPreset(dom.preset.value);
   });
@@ -1444,7 +1504,7 @@ function init() {
 
   dom.modeSimple.addEventListener('click', () => { setMode('simple'); persist(); });
   dom.modeAdvanced.addEventListener('click', () => { setMode('advanced'); persist(); });
-  dom.resetAll.addEventListener('click', resetEverything);
+  dom.resetAll.addEventListener('click', () => { remember(); resetEverything(); });
   dom.layout.addEventListener('change', () => {
     setLayout(dom.layout.value);
     persist();
@@ -1485,10 +1545,20 @@ function init() {
   });
 
   window.addEventListener('keydown', (event) => {
-    if (!(event.ctrlKey || event.metaKey) || event.key !== 'z') return;
-    if (!dotEditor.isEnabled()) return;
-    event.preventDefault();
-    if (dotEditor.undo()) setStatus(t('dots.undone'), 'info');
+    if (!(event.ctrlKey || event.metaKey)) return;
+    const key = event.key.toLowerCase();
+    if (key !== 'z' && key !== 'y') return;
+
+    // While dots are being edited the same chord means the dots, which is what
+    // the hand is on. The panel's history waits its turn.
+    if (dotEditor.isEnabled() && key === 'z' && !event.shiftKey) {
+      event.preventDefault();
+      if (dotEditor.undo()) setStatus(t('dots.undone'), 'info');
+      return;
+    }
+
+    const forward = key === 'y' || event.shiftKey;
+    if (forward ? redoSettings() : undoSettings()) event.preventDefault();
   });
 
   for (const shot of document.querySelectorAll('[data-inspect]')) {
@@ -1531,7 +1601,7 @@ function init() {
     syncRows();
   });
 
-  dom.autoThreshold.addEventListener('click', () => { autoThreshold().catch(fail); });
+  dom.autoThreshold.addEventListener('click', () => { remember(); autoThreshold().catch(fail); });
   dom.generate.addEventListener('click', () => {
     if (dotEditor.isEnabled()) {
       setEditing(false);

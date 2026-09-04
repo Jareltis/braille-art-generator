@@ -86,6 +86,8 @@ async function run() {
   $('language').dispatchEvent(new Event('change', { bubbles: true }));
 
   ok('page initialises', $('status').textContent.length > 0, $('status').textContent);
+  check('a fresh page has nothing to step back to', $('settingsUndo').disabled, true);
+  check('and nothing to step forward to', $('settingsRedo').disabled, true);
   ok('worker is in use on the real page', $('status').textContent.includes('фоновом потоке'));
   check('height field starts derived', $('outHeight').disabled, true);
   check('default method is floyd-steinberg', $('dither').value, 'floyd-steinberg');
@@ -391,6 +393,67 @@ async function run() {
     ok('and the hint explains auto, not the kind it found',
        $('presetHint').textContent.length > 0 && !$('presetHint').textContent.includes('XDoG'),
        $('presetHint').textContent);
+  }
+
+  mark('the panel can be stepped back');
+  // --- the panel can be stepped back ---------------------------------------
+  // Presets, the kind detector and the offered variants all rewrite several
+  // controls at once. Stepping back is the only way to see what was there
+  // before them, and stepping back and forward is how one art is compared
+  // against another.
+  {
+    const doc = frame.contentDocument;
+    $('preset').value = '';
+    $('preset').dispatchEvent(new Event('change', { bubbles: true }));
+    $('contrast').value = '41';
+    $('contrast').dispatchEvent(new Event('input', { bubbles: true }));
+    $('dither').value = 'bluenoise';
+    $('dither').dispatchEvent(new Event('change', { bubbles: true }));
+    await wait(150);
+
+    // Earlier blocks have already picked presets, so there is a history by now.
+    check('there is something to step back to', $('settingsUndo').disabled, false);
+
+    $('preset').value = 'lineart';
+    $('preset').dispatchEvent(new Event('change', { bubbles: true }));
+    check('a preset moves several controls at once', $('dither').value, 'threshold');
+
+    $('settingsUndo').click();
+    check('back restores the method', $('dither').value, 'bluenoise');
+    check('and the slider', $('contrast').value, '41');
+    ok('and says so', $('status').textContent.length > 0, $('status').textContent);
+
+    $('settingsRedo').click();
+    check('forward puts the preset back', $('dither').value, 'threshold');
+    check('and forward is then spent', $('settingsRedo').disabled, true);
+
+    // A fresh change closes off the branch that was stepped away from.
+    $('settingsUndo').click();
+    $('saturation').value = '15';
+    $('saturation').dispatchEvent(new Event('input', { bubbles: true }));
+    $('preset').value = 'photo';
+    $('preset').dispatchEvent(new Event('change', { bubbles: true }));
+    check('a new change drops what was ahead', $('settingsRedo').disabled, true);
+
+    // Ctrl+Z belongs to the dots while dots are being edited, and to the panel
+    // otherwise. Both have to hold, or one of them is unreachable.
+    const chord = (extra = {}) => frame.contentWindow.dispatchEvent(
+      new frame.contentWindow.KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true, ...extra }),
+    );
+    const beforeChord = $('dither').value;
+    chord();
+    ok('the chord steps the panel back', $('dither').value !== beforeChord,
+       `${beforeChord} -> ${$('dither').value}`);
+    chord({ shiftKey: true });
+    check('and with shift, forward again', $('dither').value, beforeChord);
+
+    $('dotEdit').click();
+    await until(() => $('dotEdit').getAttribute('aria-pressed') === 'true');
+    const whileEditing = $('dither').value;
+    chord();
+    check('while editing dots the chord leaves the panel alone', $('dither').value, whileEditing);
+    $('dotEdit').click();
+    await until(() => $('dotEdit').getAttribute('aria-pressed') === 'false');
   }
 
   mark('variants are offered');

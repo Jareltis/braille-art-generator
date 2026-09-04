@@ -32,6 +32,7 @@ only ever hands out static files.
 | **Presets** | photographs, line art, logos, pixel art — each sets every control it covers |
 | **Detect the kind** | measures the picture and picks the preset for it, saying which way it went |
 | **Suggest** | renders a spread of recipes, scores each against the picture, offers the best four |
+| **Back and forward** | steps the whole panel through what the automatic changes did to it |
 | **Targets** | message limit in view, copying inside a code fence, width measured against your own client |
 | **Fitting** | trim blank margins, find the widest size that fits, split into several messages |
 | **Source** | a file, lettering in large braille type, the camera, or a drawing |
@@ -227,6 +228,21 @@ no fragmentation to fix, only too much ink.
 Below 1 the flat-field response is `l·(1−τ)` — proportional to brightness — so
 an even mid-grey answers with ink and dark areas silt up with strokes that are
 not edges.
+
+### Stepping back
+
+Three things rewrite the whole panel in one go: picking a preset, letting it
+work out the kind of picture, and taking one of the offered variants. **Back**
+and **Forward** step through those, restoring whole settings rather than
+individual controls, since whole settings are what those actions replace.
+
+They are also how one art is compared against another: step back, look, step
+forward. That was chosen over a hold-to-peek toggle, which would have to show
+one art while the panel described a different one — and would hand the wrong
+thing to anyone who pressed copy at that moment.
+
+Ctrl+Z and Ctrl+Shift+Z do the same, except while dots are being edited by hand:
+there the chord belongs to the dots, which is what the hand is on.
 
 ### Suggesting variants
 
