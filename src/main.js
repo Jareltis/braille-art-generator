@@ -823,7 +823,9 @@ function showOffers(offers, { opener, onDismiss } = {}) {
     tile.className = 'offer-tile';
 
     const art = document.createElement('pre');
-    art.textContent = offer.text;
+    // Trimmed here if trimming is on, because the tile is a promise about what
+    // choosing it will produce, and trimming happens after the encoder.
+    art.textContent = dom.trimBlank.checked ? trimBlank(offer.text) : offer.text;
     art.setAttribute('aria-hidden', 'true');   // the name below says what it is
 
     const name = document.createElement('span');
@@ -863,7 +865,30 @@ function showOffers(offers, { opener, onDismiss } = {}) {
   overlay.append(grid, hint);
   document.addEventListener('keydown', onKey);
   document.body.append(overlay);
+  fitArt(tiles);
   tiles[0]?.focus();
+}
+
+/**
+ * Grow each art until it fills its tile.
+ *
+ * Measured rather than calculated from an assumed character width: the advance
+ * of a braille glyph over the line height differs between fonts, and the whole
+ * layout already learned once that guessing that ratio produces three numbers
+ * that disagree. So the art is laid out at a known size, its real extent is
+ * read back, and the size is scaled by whichever of width or height runs out
+ * first.
+ */
+function fitArt(tiles) {
+  const PROBE = 10;
+  for (const tile of tiles) {
+    const art = tile.querySelector('pre');
+    art.style.fontSize = `${PROBE}px`;
+    const room = art.getBoundingClientRect();
+    if (!art.scrollWidth || !art.scrollHeight || !room.width || !room.height) continue;
+    const factor = Math.min(room.width / art.scrollWidth, room.height / art.scrollHeight);
+    art.style.fontSize = `${Math.max(2, PROBE * factor)}px`;
+  }
 }
 
 /** Render a spread of recipes, score each against the picture, offer the best. */

@@ -34,6 +34,22 @@ export const VARIANT_RECIPES = Object.freeze([
 ]);
 
 /**
+ * A recipe in the units the encoder wants.
+ *
+ * Recipes are written in the units of the controls, the way presets are, so
+ * that applying one is a matter of copying the numbers onto the panel. The
+ * encoder wants detail as a fraction, and the panel holds it as a percentage.
+ * Getting that wrong renders the offer at a strength of 35 instead of 0.35, so
+ * the tile shows one picture and choosing it produces another -- which is
+ * exactly what happened, and why the conversion now lives in one place.
+ */
+export const encodeOptions = (recipe) => ({
+  method: recipe.method,
+  detail: recipe.detail / 100,
+  edge: recipe.edge,
+});
+
+/**
  * How different two candidates have to be to both be worth showing.
  *
  * As a fraction of the dots. Below this they are the same picture with a
@@ -66,12 +82,7 @@ export function chooseVariants(pixels, options, reference, want = 4, onProgress 
   const gridH = options.grid.rows * 4;
 
   VARIANT_RECIPES.forEach((recipe, index) => {
-    const art = encode(pixels, {
-      ...options,
-      method: recipe.method,
-      detail: recipe.detail,
-      edge: recipe.edge,
-    });
+    const art = encode(pixels, { ...options, ...encodeOptions(recipe) });
     scored.push({
       key: recipe.key,
       recipe,

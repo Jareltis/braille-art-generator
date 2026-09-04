@@ -265,12 +265,19 @@ whether the picture is in there. And the four offered must differ from one
 another by at least 4% of their dots, or a picture that suits several recipes
 spends all four places on the same image with a different grain.
 
-One finding from building it is worth passing on. At these grid widths — 40 to
-60 characters — ordered dithering and blue noise often beat Floyd–Steinberg on
-photographs, which is not how those methods compare at print resolutions. Error
-diffusion trades spatial accuracy for tonal accuracy, and on a grid this coarse
-the trade stops paying: the error travels far enough to move features. That is
-exactly the sort of thing this button exists to surface.
+Across six photographs and drawings at both 40 and 60 characters wide, error
+diffusion wins or ties everywhere — 0.94 on a drawing, 0.89 on a landscape —
+with ordered dithering and blue noise a few thousandths behind on the flattest
+graphics. So the default is what the numbers say it should be, and the tiles are
+there for the times a picture disagrees.
+
+An earlier draft of this section claimed the opposite, on the strength of a
+measurement made through a bench that had its own copy of the call into the
+encoder. The copy passed detail in the units of the slider where the encoder
+wants a fraction, rendering every candidate at a strength of 35 instead of 0.35,
+which flattens error diffusion into solid blobs and inverts the ranking. The
+bench now goes through the same function the application does, which is the only
+version of this that stays true.
 
 ### Which kind of picture is this
 

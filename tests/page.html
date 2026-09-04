@@ -399,6 +399,7 @@ async function run() {
   // is taken. Escape must leave the panel exactly as it found it.
   {
     const doc = frame.contentDocument;
+    let wantedText = '';
     const before = {
       dither: $('dither').value, detail: $('detail').value,
       edge: $('edgeMode').value, status: $('status').textContent,
@@ -446,9 +447,35 @@ async function run() {
     ) ?? doc.querySelector('.offer-tile');
     const named = wanted.querySelector('.offer-name').textContent;
     wanted.click();
+    const promised = wanted.querySelector('pre').textContent;
+    wantedText = promised;
     ok('choosing closes the dialog', await until(() => doc.querySelector('.offer') === null));
     ok('and says which one was taken',
        await until(() => $('status').textContent.includes(named)), $('status').textContent);
+
+    // The whole promise of the offer: the tile is the art, not an impression of
+    // it. This caught a units mistake -- recipes carry detail in the units of
+    // the slider, the encoder wants a fraction -- that rendered every tile at a
+    // strength of 35 instead of 0.35, so choosing one produced a different
+    // picture from the one on it.
+    ok('and the art is the one that was on the tile',
+       await until(() => $('output').textContent === promised),
+       `${$('output').textContent.length} characters against the tile's ${promised.length}`);
+
+    // The tiles are meant to be looked at, so the art has to fill them rather
+    // than sit in a corner at a fixed few pixels.
+    $('suggest').focus();
+    $('suggest').click();
+    await until(() => doc.querySelector('.offer') !== null);
+    const shown = doc.querySelector('.offer-tile pre');
+    const room = shown.getBoundingClientRect();
+    ok('the art fills the tile it is shown in',
+       shown.scrollWidth > room.width * 0.8 || shown.scrollHeight > room.height * 0.8,
+       `art ${shown.scrollWidth}x${shown.scrollHeight} in ${Math.round(room.width)}x${Math.round(room.height)}`);
+    ok('and is drawn large enough to read', Number.parseFloat(shown.style.fontSize) > 7,
+       shown.style.fontSize);
+    doc.dispatchEvent(new frame.contentWindow.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await until(() => doc.querySelector('.offer') === null);
   }
 
   mark('every setting travels');
