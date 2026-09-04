@@ -27,7 +27,7 @@ export const CELL_H = 4;
  *
  * and places dot N at bit N-1 of the offset from U+2800.
  */
-const DOT_BITS = Object.freeze([
+export const DOT_BITS = Object.freeze([
   Object.freeze([0, 1, 2, 6]), // dots 1, 2, 3, 7
   Object.freeze([3, 4, 5, 7]), // dots 4, 5, 6, 8
 ]);

@@ -266,6 +266,9 @@
     #resCanvas { image-rendering: pixelated; }
 
     .shot-art { background: var(--art-bg); }
+    /* while dots are being painted a drag must not select the text under it */
+    .editing #output { cursor: crosshair; user-select: none; touch-action: none; }
+    .editing .shot-art { outline: 1px solid var(--accent); outline-offset: -1px; }
     #output {
       margin: 0;
       min-height: 0; overflow: auto;
@@ -448,6 +451,12 @@
             <button id="generate" type="button">Пересчитать</button>
           </div>
         </div>
+
+        <div class="field buttons">
+          <button id="dotEdit" type="button" aria-pressed="false">Правка точек</button>
+          <button id="dotUndo" type="button" disabled>Отменить</button>
+        </div>
+        <p class="hint" id="dotHint"></p>
 
         <hr data-advanced>
 

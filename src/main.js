@@ -14,6 +14,7 @@ import {
 } from './ui/platforms.js';
 import { clearSettings, loadSettings, saveSettings } from './ui/settings.js';
 import { createCropper } from './ui/crop.js';
+import { createDotEditor } from './ui/dots.js';
 import { createPipeline } from './ui/pipeline.js';
 
 const MAX_COLS = 400;
@@ -38,6 +39,9 @@ const dom = {
   cropper: el('cropper'),
   cropToggle: el('cropToggle'),
   cropReset: el('cropReset'),
+  dotEdit: el('dotEdit'),
+  dotUndo: el('dotUndo'),
+  dotHint: el('dotHint'),
   resetAll: el('resetAll'),
   srcMeta: el('srcMeta'),
   gridMeta: el('gridMeta'),
@@ -91,6 +95,7 @@ let smoothScaling = true;
 /** Selected region in fractions of the source, or null for the whole frame. */
 let cropRect = null;
 let cropper = null;
+let dotEditor = null;
 
 // Requests are answered out of order once they are asynchronous; a reply is
 // only applied while it is still the newest of its kind.
@@ -135,6 +140,8 @@ function outputMetrics() {
     fontSize,
     lineHeight: lineHeightPx / fontSize,
     cellAspect: advance / lineHeightPx,
+    advancePx: advance,
+    lineHeightPx,
   };
 }
 
@@ -246,10 +253,12 @@ async function render() {
 
   artText = text;
   dom.output.textContent = text;
+  dotEditor?.forget();
+  dom.dotUndo.disabled = true;
   applyFontSize();
   putImageData(dom.resCanvas, pixels);
   dom.gridMeta.textContent = `${cols * CELL_W}×${rows * CELL_H}`;
-  updateMeta(cols, rows, text);
+  updateMeta(text);
 }
 
 function applyFontSize() {
@@ -287,6 +296,10 @@ function changed({ affectsPreview = true } = {}) {
   persist();
   if (affectsPreview) schedulePreview();
   if (!source) return;
+  if (dotEditor?.isEnabled()) {
+    setStatus('Правка точек включена — арт не пересчитывается, чтобы не стереть правки.', 'warn');
+    return;
+  }
   if (isLive()) {
     scheduleRender();
   } else if (artText) {
@@ -306,6 +319,7 @@ function loadFile(file) {
     previewReady = false;
     cropRect = null;
     cropper?.set(null);
+    if (dotEditor?.isEnabled()) setEditing(false);
     syncRows();
     dom.srcMeta.textContent = `${image.naturalWidth}×${image.naturalHeight}`;
     setStatus(`Загружено ${image.naturalWidth}\u00d7${image.naturalHeight} px, считаю\u2026`);
@@ -343,7 +357,10 @@ async function autoThreshold() {
 }
 
 /** The size line, plus how the art measures against the target's limit. */
-function updateMeta(cols, rows, text) {
+function updateMeta(text) {
+  const lines = text.split('\n');
+  const rows = lines.length;
+  const cols = lines[0]?.length ?? 0;
   const platform = dom.platform.value;
   const { limit, label } = PLATFORMS[platform];
 
@@ -631,6 +648,31 @@ function registerServiceWorker() {
   });
 }
 
+/* ------------------------------------------------------------------------ *
+ * Hand-editing the dots
+ *
+ * Regeneration would overwrite anything drawn by hand, so while editing is on
+ * the art stops following the controls. That is the whole bargain: either the
+ * art tracks the parameters, or it is yours to touch up -- silently discarding
+ * a minute of work because a slider moved would be worse than refusing to.
+ * ------------------------------------------------------------------------ */
+function replaceArt(next) {
+  artText = next;
+  dom.output.textContent = next;
+  updateMeta(next);
+  dom.dotUndo.disabled = !dotEditor?.canUndo();
+}
+
+function setEditing(on) {
+  dotEditor.setEnabled(on);
+  dom.app.classList.toggle('editing', on);
+  dom.dotEdit.setAttribute('aria-pressed', String(on));
+  dom.dotUndo.disabled = !on || !dotEditor.canUndo();
+  dom.dotHint.textContent = on
+    ? 'Щёлкайте или ведите по арту, чтобы ставить и стирать точки. Пока правка включена, арт не пересчитывается.'
+    : '';
+}
+
 function init() {
   controls.threshold = bindRange(el('threshold'), el('thresholdVal'), { onChange: () => changed({ affectsPreview: false }) });
   controls.brightness = bindRange(el('brightness'), el('brightnessVal'), { onChange: changed });
@@ -712,6 +754,28 @@ function init() {
 
   dom.cropReset.addEventListener('click', () => cropper.reset());
 
+  dotEditor = createDotEditor(dom.output, {
+    metrics: outputMetrics,
+    getText: () => artText,
+    setText: replaceArt,
+  });
+
+  dom.dotEdit.addEventListener('click', () => {
+    if (!requireArt()) return;
+    setEditing(!dotEditor.isEnabled());
+  });
+
+  dom.dotUndo.addEventListener('click', () => {
+    if (dotEditor.undo()) setStatus('Правка отменена.', 'info');
+  });
+
+  window.addEventListener('keydown', (event) => {
+    if (!(event.ctrlKey || event.metaKey) || event.key !== 'z') return;
+    if (!dotEditor.isEnabled()) return;
+    event.preventDefault();
+    if (dotEditor.undo()) setStatus('Правка отменена.', 'info');
+  });
+
   for (const shot of document.querySelectorAll('[data-inspect]')) {
     shot.addEventListener('click', () => {
       // While a selection is being dragged, a click means crop, not zoom.
@@ -750,7 +814,14 @@ function init() {
 
   dom.autoThreshold.addEventListener('click', () => { autoThreshold().catch(fail); });
   dom.generate.addEventListener('click', () => {
-    setStatus('Считаю\u2026');
+    if (dotEditor.isEnabled()) {
+      setEditing(false);
+      // Not the status line: the render that follows immediately overwrites it,
+      // and losing hand edits is worth more than a quarter of a second.
+      dom.dotHint.textContent = 'Правки точек сброшены — арт пересчитан заново.';
+    } else {
+      setStatus('Считаю\u2026');
+    }
     scheduleRender();
   });
 

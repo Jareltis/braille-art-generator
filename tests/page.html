@@ -419,6 +419,95 @@ async function run() {
   check('no service worker is registered from inside a frame',
     (await win.navigator.serviceWorker?.getRegistrations?.() ?? []).length, 0);
 
+  // --- editing dots by hand ------------------------------------------------
+  const artLines = () => $('output').textContent.split(String.fromCharCode(10));
+  const cellAt = (row, col) => artLines()[row].charCodeAt(col) - 0x2800;
+
+  // Resolve a cell to a screen position with the same metrics the app uses, so
+  // the test clicks where the glyph actually is rather than where it guesses.
+  const probe = frame.contentDocument.createElement('canvas').getContext('2d');
+  const artStyle = () => win.getComputedStyle($('output'));
+  const pointAt = (row, col, fx, fy) => {
+    const style = artStyle();
+    probe.font = `${style.fontSize} ${style.fontFamily}`;
+    const advance = probe.measureText(String.fromCharCode(0x28FF)).width;
+    const lineHeight = Number.parseFloat(style.lineHeight);
+    const box = $('output').getBoundingClientRect();
+    return {
+      clientX: box.left + Number.parseFloat(style.paddingLeft) + (col + fx) * advance - $('output').scrollLeft,
+      clientY: box.top + Number.parseFloat(style.paddingTop) + (row + fy) * lineHeight - $('output').scrollTop,
+      pointerId: 7,
+      button: 0,
+      bubbles: true,
+      cancelable: true,
+    };
+  };
+  const poke = async (row, col, fx, fy) => {
+    const target = $('output');
+    target.dispatchEvent(new win.PointerEvent('pointerdown', pointAt(row, col, fx, fy)));
+    target.dispatchEvent(new win.PointerEvent('pointerup', pointAt(row, col, fx, fy)));
+    await wait(60);
+  };
+
+  check('editing is off to begin with', $('dotEdit').getAttribute('aria-pressed'), 'false');
+  check('undo starts unavailable', $('dotUndo').disabled, true);
+
+  $('dotEdit').click();
+  check('the edit button reports being on', $('dotEdit').getAttribute('aria-pressed'), 'true');
+  ok('the app marks itself as editing', $('app').classList.contains('editing'));
+  ok('the mode explains itself', $('dotHint').textContent.length > 0);
+
+  // Top-left dot of a cell: fraction 0.25 across, 0.1 down.
+  const maskBefore = cellAt(2, 3);
+  await poke(2, 3, 0.25, 0.1);
+  const maskAfter = cellAt(2, 3);
+  ok('clicking flips exactly one dot', (maskBefore ^ maskAfter) === 1,
+     `mask ${maskBefore} -> ${maskAfter}`);
+  check('undo becomes available', $('dotUndo').disabled, false);
+
+  // A different dot of the same cell must be independent.
+  const beforeSecond = cellAt(2, 3);
+  await poke(2, 3, 0.75, 0.9);   // right column, bottom row = dot 8 = bit 7
+  ok('a second dot in the same cell flips on its own', (beforeSecond ^ cellAt(2, 3)) === 128,
+     `mask ${beforeSecond} -> ${cellAt(2, 3)}`);
+
+  $('dotUndo').click();
+  check('undo puts the cell back', cellAt(2, 3), beforeSecond);
+
+  // Ctrl+Z is the same action.
+  win.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true }));
+  await wait(60);
+  check('ctrl+z undoes as well', cellAt(2, 3), maskBefore);
+
+  // A drag paints in one direction rather than flickering as it crosses dots.
+  const artView = $('output');
+  const rowBefore = artLines()[4];
+  artView.dispatchEvent(new win.PointerEvent('pointerdown', pointAt(4, 2, 0.25, 0.1)));
+  for (let col = 2; col <= 8; col++) {
+    artView.dispatchEvent(new win.PointerEvent('pointermove', pointAt(4, col, 0.25, 0.1)));
+  }
+  artView.dispatchEvent(new win.PointerEvent('pointerup', pointAt(4, 8, 0.25, 0.1)));
+  await wait(80);
+  const changedCells = [...artLines()[4]].filter((ch, i) => ch !== rowBefore[i]).length;
+  ok('dragging paints a run of cells', changedCells >= 3, `${changedCells} cells changed`);
+
+  // --- editing freezes regeneration ---------------------------------------
+  const frozen = $('output').textContent;
+  $('threshold').value = '90';
+  $('threshold').dispatchEvent(new Event('input', { bubbles: true }));
+  await wait(350);
+  check('moving a control does not wipe the edits', $('output').textContent, frozen);
+  ok('and it says why', /не пересчитывается/.test($('status').textContent), $('status').textContent);
+
+  // --- an explicit recalculation is allowed to discard them ----------------
+  $('generate').click();
+  await until(() => $('output').textContent !== frozen);
+  ok('recalculating discards the edits and says so', /сброшены/.test($('dotHint').textContent),
+     $('dotHint').textContent);
+  check('editing switches itself off', $('dotEdit').getAttribute('aria-pressed'), 'false');
+  check('undo history goes with it', $('dotUndo').disabled, true);
+  ok('the art follows the controls again', $('output').textContent !== frozen);
+
   const failed = log.filter((l) => l.startsWith('FAIL')).length;
   out(`${log.join('\n')}\n${failed ? `\n${failed} FAILED` : '\nAll e2e checks passed.'}`);
 }
