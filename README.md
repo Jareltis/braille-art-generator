@@ -33,6 +33,7 @@ only ever hands out static files.
 | **Detect the kind** | measures the picture and picks the preset for it, saying which way it went |
 | **Suggest** | renders a spread of recipes, scores each against the picture, offers the best four |
 | **Back and forward** | steps the whole panel through what the automatic changes did to it |
+| **On a phone** | the result first, the source views as a strip beneath it, controls below |
 | **Targets** | message limit in view, copying inside a code fence, width measured against your own client |
 | **Fitting** | trim blank margins, find the widest size that fits, split into several messages |
 | **Source** | a file, lettering in large braille type, the camera, or a drawing |
@@ -228,6 +229,23 @@ no fragmentation to fix, only too much ink.
 Below 1 the flat-field response is `l·(1−τ)` — proportional to brightness — so
 an even mid-grey answers with ink and dark areas silt up with strokes that are
 not edges.
+
+### On a small screen
+
+Below 900px the page stops trying to hold four panes at once and scrolls. That
+much was always true; what was wrong is that it scrolled in source order, so the
+art sat below the entire control panel. Measured on a 390×844 screen, the result
+began 2163px down — two and a half screens past every control, on the one device
+most people would be sharing from.
+
+The result now comes first, and the three source views become a strip of
+thumbnails beneath it rather than three more full-height panes. They are for
+checking, not for reading. Between 620 and 900px — a landscape phone, a tablet —
+the controls flow into two columns instead of one stack of fields stretched
+across the whole screen.
+
+None of this is a second interface: it is the same markup with a different
+order, which is the same rule the Simple and Advanced modes follow.
 
 ### Stepping back
 

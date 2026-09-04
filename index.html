@@ -383,15 +383,43 @@
       .app { height: auto; min-height: 100dvh; }
       .workspace { grid-template-columns: minmax(0, 1fr); }
       .sidebar { overflow: visible; max-height: none; }
-      .panes,
+
+      /* The result comes first here. The panel is longer than a phone screen,
+         and in source order the art sat below all of it: you had to scroll
+         past every control to see what the app had made. The order goes on
+         .stage, not on .panes -- .stage is what the workspace grid actually
+         holds, and order only reaches a container's own children. */
+      .stage { order: -1; }
+
+      /* The art across the top, the three source views as a thumbnail strip
+         beneath it. They are for checking, not for reading, and at this width
+         one full-size view each pushed the controls three screens down. */
       [data-layout] .panes {
-        grid-template-columns: minmax(0, 1fr);
-        grid-template-rows: none;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-rows: auto auto;
       }
-      [data-layout] .shot-art { grid-column: auto; grid-row: auto; }
-      .shot canvas { height: 200px; }
-      #output { max-height: 60vh; }
+      [data-layout] .panes .shot { grid-column: auto; grid-row: 2; }
+      /* Same weight as the rule above, and after it: .panes .shot matches the
+         art too, and the shorter selector lost to it. */
+      [data-layout] .panes .shot-art { grid-column: 1 / -1; grid-row: 1; }
+      .shot canvas { height: 96px; }
+      #output { max-height: 52vh; }
     }
+
+    /* On the narrowest screens the pixel counts in the thumbnail captions have
+       nowhere to go and are cut off mid-number, which reads as breakage. The
+       name alone is enough at 96px tall; the figures are still on the art. */
+    @media (max-width: 560px) {
+      .panes .shot:not(.shot-art) figcaption span { display: none; }
+    }
+
+    /* A landscape phone or a tablet: still one column, but wide enough that a
+       single stack leaves every field stretched across the whole screen. */
+    @media (min-width: 620px) and (max-width: 900px) {
+      .sidebar { column-count: 2; column-gap: 18px; }
+      .sidebar > * { break-inside: avoid; }
+    }
+
     @media (max-height: 560px) {
       :root { --strip-h: 96px; }
     }

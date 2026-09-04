@@ -395,6 +395,58 @@ async function run() {
        $('presetHint').textContent);
   }
 
+  mark('a phone puts the result first');
+  // --- a phone puts the result first ---------------------------------------
+  // Below 900px the page gives up on holding everything at once and scrolls,
+  // which is fine. What was not fine is that it scrolled in source order, so
+  // the art sat below the whole control panel: on a phone you had to go past
+  // every control to see what the app had made.
+  {
+    const doc = frame.contentDocument;
+    const wide = { width: frame.style.width, height: frame.style.height };
+    const resize = async (width, height) => {
+      frame.style.width = `${width}px`;
+      frame.style.height = `${height}px`;
+      await wait(300);
+    };
+
+    await resize(390, 844);
+    const top = (selector) => doc.querySelector(selector).getBoundingClientRect().top;
+    const box = (selector) => doc.querySelector(selector).getBoundingClientRect();
+
+    ok('the art comes before the controls', top('.shot-art') < top('.sidebar'),
+       `art at ${Math.round(top('.shot-art'))}px, panel at ${Math.round(top('.sidebar'))}px`);
+    ok('and it is the first thing on the page after the header',
+       top('.shot-art') < frame.contentWindow.innerHeight / 2,
+       `${Math.round(top('.shot-art'))}px down a ${frame.contentWindow.innerHeight}px screen`);
+
+    // The three source views become a strip under it rather than three more
+    // full-height panes, which is what pushed the controls three screens down.
+    const sources = [...doc.querySelectorAll('.panes .shot:not(.shot-art)')];
+    check('the three source views are still there', sources.length, 3);
+    ok('they sit side by side on one row',
+       sources.every((shot) => Math.abs(shot.getBoundingClientRect().top - sources[0].getBoundingClientRect().top) < 2),
+       sources.map((shot) => Math.round(shot.getBoundingClientRect().top)).join(', '));
+    ok('and below the art, not beside it',
+       sources[0].getBoundingClientRect().top >= box('.shot-art').bottom - 2,
+       `strip at ${Math.round(sources[0].getBoundingClientRect().top)}px, art ends at ${Math.round(box('.shot-art').bottom)}px`);
+    ok('the art is wider than any one of them',
+       box('.shot-art').width > sources[0].getBoundingClientRect().width * 2,
+       `${Math.round(box('.shot-art').width)}px against ${Math.round(sources[0].getBoundingClientRect().width)}px`);
+
+    // Wide enough for two columns of controls, narrow enough to still be one
+    // stack: a landscape phone should not stretch every field across 844px.
+    await resize(844, 390);
+    const fields = [...doc.querySelectorAll('.sidebar .field')].slice(0, 12);
+    const columns = new Set(fields.map((field) => Math.round(field.getBoundingClientRect().left)));
+    ok('a landscape phone lays the controls out in more than one column', columns.size >= 2,
+       `${columns.size} column positions among ${fields.length} fields`);
+
+    await resize(Number.parseInt(wide.width, 10) || 1280, Number.parseInt(wide.height, 10) || 900);
+    ok('and the wide layout comes back', top('.sidebar') < top('.shot-art') + 1,
+       `panel at ${Math.round(top('.sidebar'))}px, art at ${Math.round(top('.shot-art'))}px`);
+  }
+
   mark('the panel can be stepped back');
   // --- the panel can be stepped back ---------------------------------------
   // Presets, the kind detector and the offered variants all rewrite several
