@@ -26,6 +26,8 @@ import { gaussianBlur } from '../src/core/blur.js';
 import { sobel, xdog, applyEdges, gradient, thin, lineMap, structureMap, hysteresis, responseAt, cleanThresholds } from '../src/core/edges.js';
 import { CONTENT_PRESETS } from '../src/core/presets.js';
 import { IMAGE_KINDS, classifyImage, imageFeatures } from '../src/core/classify.js';
+import { VIEWING_BLUR, scoreArt, similarity, toneAgreement } from '../src/core/score.js';
+import { DISTINCT, VARIANT_RECIPES, chooseVariants, difference, referenceFor } from '../src/core/variants.js';
 import { EDGE_MODES } from '../src/core/edges.js';
 import { createCanvas, drawScaled, readImageData } from '../src/ui/canvas.js';
 import { STRUCTURE_FULL, reduceMax, reduceStats, withDetail } from '../src/core/sample.js';
@@ -1208,6 +1210,93 @@ async function run() {
     ok('a one-pixel column does not divide by zero',
        Object.values(odd).every((v) => Number.isFinite(v) && v >= 0 && v <= 1),
        Object.entries(odd).map(([k, v]) => `${k} ${v.toFixed(2)}`).join(', '));
+  }
+
+  // --- weighing one art against another ------------------------------------
+  {
+    const flat = (value) => new Float32Array(W * H).fill(value);
+    const level = thresholdToLinear(128);
+
+    // A ramp, which is where the methods differ most.
+    const slope = new Float32Array(W * H);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) slope[y * W + x] = (x / (W - 1)) * 255;
+
+    const scoreOf = (method, plane) =>
+      scoreArt(DITHER_METHODS[method](plane, W, H, level, level), W, H, plane);
+
+    // The ordering the eye gives, and the numbers agree: error diffusion holds
+    // a ramp, ordered dithering holds it in sixteen steps, a single threshold
+    // throws half of it away.
+    const diffused = scoreOf('floyd-steinberg', slope);
+    const ordered = scoreOf('bayer4', slope);
+    const cut = scoreOf('threshold', slope);
+    ok('diffusion beats a bare threshold on a ramp', diffused > cut, `${diffused.toFixed(3)} against ${cut.toFixed(3)}`);
+    ok('and ordered dithering sits between them', ordered > cut && ordered < diffused,
+       `${ordered.toFixed(3)} between ${cut.toFixed(3)} and ${diffused.toFixed(3)}`);
+
+    // Tone alone must not be enough to win. A hard threshold turns flat grey
+    // into a solid field, which has no structure to be wrong about -- and
+    // structural similarity alone called that 0.73 until tone was folded in.
+    const solid = scoreArt(DITHER_METHODS.threshold(flat(110), W, H, level, level), W, H, flat(110));
+    ok('a solid field does not pass for a flat tone', solid < 0.5, solid.toFixed(3));
+
+    check('an exact match agrees on tone', toneAgreement(flat(80), flat(80)), 1);
+    near('and being 255 out agrees on nothing', toneAgreement(flat(0), flat(255)), 0, 0);
+    near('a plane is identical to itself', similarity(slope, slope, W, H), 0.999, 1.001);
+
+    // Too little blur and the comparison is looking at single dots rather than
+    // at the picture: measured, the ordering inverts below about one dot.
+    const sharp = scoreArt(DITHER_METHODS['floyd-steinberg'](slope, W, H, level, level), W, H, slope, 0.3);
+    ok('the viewing distance is far enough to see past the dots', diffused > sharp,
+       `${diffused.toFixed(3)} at ${VIEWING_BLUR} against ${sharp.toFixed(3)} up close`);
+  }
+
+  // --- four variants worth offering ----------------------------------------
+  {
+    const canvas = createCanvas(120, 80);
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const shaded = ctx.createImageData(120, 80);
+    for (let y = 0; y < 80; y++) {
+      for (let x = 0; x < 120; x++) {
+        const i = (y * 120 + x) * 4;
+        const shade = 40 + 170 * (x / 119) + 30 * Math.sin(y / 6);
+        shaded.data[i] = shaded.data[i + 1] = shaded.data[i + 2] = shade;
+        shaded.data[i + 3] = 255;
+      }
+    }
+    ctx.putImageData(shaded, 0, 0);
+    const pixels = readImageData(canvas);
+
+    const grid = { cols: 30, rows: 10 };
+    const reference = referenceFor(pixels, grid.cols, grid.rows);
+    const chosen = chooseVariants(pixels, { grid, threshold: 128 }, reference, 4);
+
+    check('four are offered', chosen.length, 4);
+    ok('best first', chosen.every((entry, i) => i === 0 || chosen[i - 1].score >= entry.score),
+       chosen.map((c) => c.score.toFixed(2)).join(' >= '));
+
+    // The whole point of the diversity rule: four tiles showing the same
+    // picture four times would be four wasted places.
+    let closest = 1;
+    for (let i = 0; i < chosen.length; i++) {
+      for (let j = i + 1; j < chosen.length; j++) {
+        closest = Math.min(closest, difference(chosen[i].bits, chosen[j].bits));
+      }
+    }
+    ok('and no two are the same picture', closest >= DISTINCT,
+       `closest pair differs by ${(closest * 100).toFixed(1)}% of dots, floor is ${DISTINCT * 100}%`);
+
+    ok('each carries the art itself', chosen.every((entry) => entry.text.split(String.fromCharCode(10)).length === grid.rows),
+       chosen.map((entry) => entry.text.split(String.fromCharCode(10)).length).join(', '));
+
+    // Every recipe has to be nameable, in both languages, or a tile comes up
+    // blank precisely when the search happens to pick it.
+    for (const locale of Object.keys(LOCALES)) {
+      setLocale(locale);
+      const unnamed = VARIANT_RECIPES.filter((recipe) => t(`variant.${recipe.key}`) === `variant.${recipe.key}`);
+      check(`${locale}: every recipe has a name`, unnamed.map((r) => r.key).join(','), '');
+    }
+    setLocale('ru');
   }
 
   const failed = log.filter((l) => l.startsWith('FAIL')).length;

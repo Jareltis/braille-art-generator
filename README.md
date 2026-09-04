@@ -31,6 +31,7 @@ only ever hands out static files.
 | **Output** | width and height in cells, proportions kept automatically, inversion |
 | **Presets** | photographs, line art, logos, pixel art — each sets every control it covers |
 | **Detect the kind** | measures the picture and picks the preset for it, saying which way it went |
+| **Suggest** | renders a spread of recipes, scores each against the picture, offers the best four |
 | **Targets** | message limit in view, copying inside a code fence, width measured against your own client |
 | **Fitting** | trim blank margins, find the widest size that fits, split into several messages |
 | **Source** | a file, lettering in large braille type, the camera, or a drawing |
@@ -227,6 +228,50 @@ Below 1 the flat-field response is `l·(1−τ)` — proportional to brightness 
 an even mid-grey answers with ink and dark areas silt up with strokes that are
 not edges.
 
+### Suggesting variants
+
+The controls span more combinations than anyone will sit and try, and which one
+suits a given picture is not obvious even to someone who knows what every
+control does. **Suggest** renders a spread of ten recipes, scores each against
+the picture, and puts the best four on the table. Nothing is applied until one
+is taken; Escape leaves everything as it was, down to the message in the status
+line.
+
+Scoring is done the way a person does it — by leaning back. Up close the art is
+a field of dots; at a distance the dots merge and either the picture is there or
+it is not. So the dots are turned back into light, both sides are blurred by
+about what the eye does at reading distance, and the two are compared. Coverage
+is what makes that a fair comparison rather than a loose analogy: half the dots
+raised emits half the light, which is the same linear quantity the photograph is
+measured in.
+
+The comparison has two halves, multiplied so that neither can carry a candidate
+alone:
+
+- **Structure**, as structural similarity over 8×8 windows: is the average
+  right, is the amount of variation right, do the two vary together.
+- **Tone**, as the plain difference between the blurred planes.
+
+Structure alone is not enough, and the reason is worth stating. On a flat region
+SSIM rewards having no structure, and something uniformly wrong has no structure
+either: a hard threshold turns flat mid-grey into a solid field — 57 percentage
+points of coverage out — and structural similarity alone still called it 0.73.
+
+Two more things were measured rather than assumed. The viewing blur is 1.6 dots:
+below about one dot the comparison sees individual dots and rewards whichever
+method happens to land its dots on the right pixels, and the ranking inverts
+outright; above about three it sees only average brightness and stops caring
+whether the picture is in there. And the four offered must differ from one
+another by at least 4% of their dots, or a picture that suits several recipes
+spends all four places on the same image with a different grain.
+
+One finding from building it is worth passing on. At these grid widths — 40 to
+60 characters — ordered dithering and blue noise often beat Floyd–Steinberg on
+photographs, which is not how those methods compare at print resolutions. Error
+diffusion trades spatial accuracy for tonal accuracy, and on a grid this coarse
+the trade stops paying: the error travels far enough to move features. That is
+exactly the sort of thing this button exists to surface.
+
 ### Which kind of picture is this
 
 Choosing between the presets means knowing which one applies, which is a
@@ -416,6 +461,8 @@ src/
     pixels.js         luma, clamping, fitting, cell geometry
     presets.js        control values per kind of image
     classify.js       which of those kinds a picture is
+    score.js          how much an art still looks like its picture
+    variants.js       a spread of recipes, and which are worth offering
   worker/
     pipeline.worker.js  the same core modules, off the main thread
     protocol.js         pixels across the thread boundary

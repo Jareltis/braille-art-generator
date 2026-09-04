@@ -7,6 +7,7 @@
 import { applyAdjustments } from '../core/adjust.js';
 import { encode, tonePlane } from '../core/braille.js';
 import { otsuThreshold } from '../core/otsu.js';
+import { variantsOf } from '../core/variants.js';
 import { linearToThreshold } from '../core/gamma.js';
 import { pack, transferOf, unpack } from './protocol.js';
 
@@ -43,6 +44,11 @@ const handlers = {
     const transfer = transferOf(out);
     if (colours) transfer.push(colours.buffer);
     return { payload: { text, colours, cols, rows, image: out }, transfer };
+  },
+
+  variants({ image, params, options, want }) {
+    const pixels = applyAdjustments(unpack(image), params);
+    return { payload: { variants: variantsOf(pixels, options, want) } };
   },
 
   otsu({ image, params, options }) {

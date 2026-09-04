@@ -393,6 +393,64 @@ async function run() {
        $('presetHint').textContent);
   }
 
+  mark('variants are offered');
+  // --- variants are offered -------------------------------------------------
+  // The offer has to be an offer: shown, refusable, and applied only when one
+  // is taken. Escape must leave the panel exactly as it found it.
+  {
+    const doc = frame.contentDocument;
+    const before = {
+      dither: $('dither').value, detail: $('detail').value,
+      edge: $('edgeMode').value, status: $('status').textContent,
+    };
+
+    // Focused first, because that is what pressing a button does and what the
+    // returning focus has to find. A bare .click() leaves focus on the body,
+    // which quietly turns the focus check below into a check of nothing.
+    $('suggest').focus();
+    $('suggest').click();
+    ok('the dialog opens', await until(() => doc.querySelector('.offer') !== null),
+       $('status').textContent);
+
+    const tiles = () => [...doc.querySelectorAll('.offer-tile')];
+    check('four variants are on the table', tiles().length, 4);
+    ok('each tile shows the art itself',
+       tiles().every((tile) => (tile.querySelector('pre')?.textContent ?? '').length > 0));
+    ok('each tile says how close it is',
+       tiles().every((tile) => /\d+%/.test(tile.querySelector('.offer-why')?.textContent ?? '')),
+       tiles()[0]?.querySelector('.offer-why')?.textContent);
+    check('the first is focused', doc.activeElement, tiles()[0]);
+
+    // Arrows walk the grid: right by one, down by two.
+    doc.dispatchEvent(new frame.contentWindow.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    check('right moves along the row', doc.activeElement, tiles()[1]);
+    doc.dispatchEvent(new frame.contentWindow.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    check('down moves to the next row', doc.activeElement, tiles()[3]);
+
+    // Escape changes nothing.
+    doc.dispatchEvent(new frame.contentWindow.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    ok('escape closes it', await until(() => doc.querySelector('.offer') === null));
+    check('and the method is untouched', $('dither').value, before.dither);
+    check('and the detail is untouched', $('detail').value, before.detail);
+    check('and the detector is untouched', $('edgeMode').value, before.edge);
+    check('focus returns to the button', doc.activeElement, $('suggest'));
+    ok('and the panel says what it said before', $('status').textContent === before.status,
+       `${$('status').textContent} (was ${before.status})`);
+
+    // Taking one applies it.
+    $('suggest').focus();
+    $('suggest').click();
+    await until(() => doc.querySelector('.offer') !== null);
+    const wanted = [...doc.querySelectorAll('.offer-tile')].find(
+      (tile) => tile.querySelector('pre').textContent !== $('output').textContent,
+    ) ?? doc.querySelector('.offer-tile');
+    const named = wanted.querySelector('.offer-name').textContent;
+    wanted.click();
+    ok('choosing closes the dialog', await until(() => doc.querySelector('.offer') === null));
+    ok('and says which one was taken',
+       await until(() => $('status').textContent.includes(named)), $('status').textContent);
+  }
+
   mark('every setting travels');
   // --- every setting travels ----------------------------------------------
   // A control that changes the art has to reach the link, or a shared recipe

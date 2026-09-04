@@ -338,6 +338,27 @@
     .inspect canvas { max-width: 100%; max-height: 85vh; object-fit: contain; border-radius: 8px; background: #000; }
     .inspect p { margin: 0; color: var(--muted); font-size: 13px; }
 
+    /* the offered variants */
+    .offer { cursor: default; align-content: center; }
+    .offer-grid {
+      display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px;
+      width: min(1100px, 100%); max-height: 82vh;
+    }
+    .offer-tile {
+      display: flex; flex-direction: column; gap: 6px; min-width: 0; min-height: 0;
+      padding: 10px; border: 1px solid var(--line-strong); border-radius: 10px;
+      background: var(--panel); color: var(--ink); font: inherit; text-align: left;
+      cursor: pointer;
+    }
+    .offer-tile:focus-visible, .offer-tile:hover { border-color: var(--accent); }
+    .offer-tile pre {
+      margin: 0; overflow: hidden; flex: 1; min-height: 0;
+      font-family: ui-monospace, "Cascadia Mono", "Segoe UI Mono", Menlo, monospace;
+      font-size: 7px; line-height: 1.05; white-space: pre; color: var(--ink);
+    }
+    .offer-tile .offer-name { font-size: 13px; }
+    .offer-tile .offer-why { color: var(--muted); font-size: 12px; }
+
     /* drag and drop */
     body.dropping::after {
       content: var(--drop-hint, '');
@@ -548,6 +569,7 @@
             <button id="downloadSvg" type="button" data-advanced>SVG</button>
             <button id="downloadHtml" type="button" data-advanced>HTML</button>
             <button id="downloadAnsi" type="button" data-advanced>ANSI</button>
+            <button id="suggest" type="button" data-i18n="action.suggest"></button>
             <button id="generate" type="button" data-i18n="action.regenerate"></button>
           </div>
         </div>

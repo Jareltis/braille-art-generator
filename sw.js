@@ -22,6 +22,8 @@ const ASSETS = [
   './src/core/bluenoise.js',
   './src/core/braille.js',
   './src/core/classify.js',
+  './src/core/score.js',
+  './src/core/variants.js',
   './src/core/dither.js',
   './src/core/edges.js',
   './src/core/gamma.js',

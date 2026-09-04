@@ -4,6 +4,7 @@
 import { applyAdjustments } from '../core/adjust.js';
 import { encode, tonePlane } from '../core/braille.js';
 import { otsuThreshold } from '../core/otsu.js';
+import { variantsOf } from '../core/variants.js';
 import { linearToThreshold } from '../core/gamma.js';
 import { pack, transferOf, unpack } from '../worker/protocol.js';
 
@@ -58,6 +59,11 @@ function workerPipeline(worker) {
       const { threshold } = await send('otsu', { image, params, options }, transferOf(image));
       return threshold;
     },
+    async variants(imageData, params, options, want) {
+      const image = pack(imageData);
+      const result = await send('variants', { image, params, options, want }, transferOf(image));
+      return result.variants;
+    },
   };
 }
 
@@ -86,6 +92,9 @@ function inlinePipeline() {
       const { plane, linear } = tonePlane(applyAdjustments(imageData, params), options);
       const chosen = otsuThreshold(plane);
       return Math.round(linear ? linearToThreshold(chosen) : chosen);
+    },
+    async variants(imageData, params, options, want) {
+      return variantsOf(applyAdjustments(imageData, params), options, want);
     },
   };
 }

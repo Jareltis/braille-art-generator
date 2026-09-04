@@ -10,6 +10,7 @@ import { cellHex, colourRuns } from './core/colour.js';
 import { DEFAULT_DITHER } from './core/dither.js';
 import { CONTENT_PRESETS } from './core/presets.js';
 import { classifyImage } from './core/classify.js';
+import { VARIANT_RECIPES } from './core/variants.js';
 import { fitWithin } from './core/pixels.js';
 import { createCanvas, drawScaled, putImageData, readImageData } from './ui/canvas.js';
 import { bindRange, clampInt, coalesce } from './ui/controls.js';
@@ -108,6 +109,7 @@ const dom = {
   resetCalibration: el('resetCalibration'),
   downloadSvg: el('downloadSvg'),
   autoThreshold: el('autoThreshold'),
+  suggest: el('suggest'),
   generate: el('generate'),
   reset: el('resetEdits'),
   output: el('output'),
@@ -776,6 +778,130 @@ function acceptPastedImages() {
  * The three previews are small so all four panes fit one screen; this is how
  * you actually examine one without giving up that layout.
  * ------------------------------------------------------------------------ */
+/** A recipe writes the same controls a preset does, and nothing else. */
+function applyRecipe(recipe) {
+  dom.dither.value = recipe.method;
+  controls.detail.set(recipe.detail);
+  dom.edgeMode.value = recipe.edge.mode;
+  if (recipe.edge.mode !== 'none') {
+    controls.edgeAmount.set(Math.round((recipe.edge.amount ?? 1) * 100));
+    controls.edgeRadius.set(recipe.edge.radius ?? 1);
+    controls.edgeClean.set(Math.round((recipe.edge.clean ?? 0) * 100));
+  }
+  syncEdgeControls();
+}
+
+/**
+ * Put the offers on the table.
+ *
+ * Each tile is a button holding the art itself, because the art is the argument
+ * -- a name for a dithering method tells nobody which one suits their picture.
+ * Arrows walk the grid and Enter takes one; Escape leaves everything as it was,
+ * which is the point of showing them rather than applying the best outright.
+ */
+function showOffers(offers, { opener, onDismiss } = {}) {
+  const overlay = document.createElement('div');
+  overlay.className = 'inspect offer';
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-modal', 'true');
+  overlay.setAttribute('aria-label', t('offer.label'));
+
+  const grid = document.createElement('div');
+  grid.className = 'offer-grid';
+
+  let taken = false;
+  const close = () => {
+    overlay.remove();
+    document.removeEventListener('keydown', onKey);
+    if (opener instanceof HTMLElement) opener.focus();
+    if (!taken) onDismiss?.();
+  };
+
+  const tiles = offers.map((offer) => {
+    const tile = document.createElement('button');
+    tile.type = 'button';
+    tile.className = 'offer-tile';
+
+    const art = document.createElement('pre');
+    art.textContent = offer.text;
+    art.setAttribute('aria-hidden', 'true');   // the name below says what it is
+
+    const name = document.createElement('span');
+    name.className = 'offer-name';
+    name.textContent = t(`variant.${offer.key}`);
+
+    const why = document.createElement('span');
+    why.className = 'offer-why';
+    why.textContent = t('offer.match', { score: Math.round(offer.score * 100) });
+
+    tile.append(art, name, why);
+    tile.addEventListener('click', () => {
+      taken = true;
+      applyRecipe(offer.recipe);
+      close();
+      setStatus(t('offer.applied', { name: t(`variant.${offer.key}`) }), 'ok');
+      scheduleRender();
+    });
+    grid.append(tile);
+    return tile;
+  });
+
+  const hint = document.createElement('p');
+  hint.textContent = t('offer.hint');
+
+  const onKey = (event) => {
+    if (event.key === 'Escape') { close(); return; }
+    const at = tiles.indexOf(document.activeElement);
+    if (at < 0) return;
+    // Two columns, so left and right step by one and up and down by two.
+    const step = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: 2, ArrowUp: -2 }[event.key];
+    if (!step) return;
+    event.preventDefault();
+    tiles[Math.min(tiles.length - 1, Math.max(0, at + step))].focus();
+  };
+
+  overlay.append(grid, hint);
+  document.addEventListener('keydown', onKey);
+  document.body.append(overlay);
+  tiles[0]?.focus();
+}
+
+/** Render a spread of recipes, score each against the picture, offer the best. */
+async function suggestVariants() {
+  if (!source) {
+    setStatus(t('status.needImage'), 'warn');
+    return;
+  }
+  const { cols, rows } = resolveGrid();
+  const detail = detailSize(cols, rows);
+  const target = drawScaled(
+    source, detail.w, detail.h, backgroundFor(isInverted()),
+    { smooth: smoothScaling, crop: cropRect },
+  );
+
+  // Whatever the panel was saying goes back if the offer is declined: the
+  // search is not something that happened to the art.
+  const before = { text: dom.status.textContent, kind: dom.status.dataset.kind };
+  // Noted before the button is disabled, because disabling it takes the focus
+  // away: asking afterwards finds the body and the dialog has nowhere to
+  // return to.
+  const opener = document.activeElement;
+
+  dom.suggest.disabled = true;
+  setStatus(t('offer.working', { count: VARIANT_RECIPES.length }));
+  try {
+    const offers = await pipeline.variants(
+      readImageData(target), readAdjustments(), { ...readOptions(), grid: { cols, rows } }, 4,
+    );
+    dom.suggest.disabled = false;
+    showOffers(offers, { opener, onDismiss: () => setStatus(before.text, before.kind) });
+  } catch (error) {
+    fail(error);
+  } finally {
+    dom.suggest.disabled = false;
+  }
+}
+
 function inspect(canvasId) {
   const preview = el(canvasId);
   if (!preview.width || !preview.height) return;
@@ -1224,6 +1350,7 @@ function init() {
   dom.textFont.addEventListener('change', () => { useTextSource(); persist(); });
   dom.textBold.addEventListener('change', () => { useTextSource(); persist(); });
 
+  dom.suggest.addEventListener('click', () => { suggestVariants(); });
   dom.preset.addEventListener('change', () => {
     if (dom.preset.value === AUTO_PRESET) detectPreset();
     else applyPreset(dom.preset.value);

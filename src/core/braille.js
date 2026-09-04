@@ -160,6 +160,9 @@ export function encode(imageData, options = {}) {
 
   return {
     text: bitsToBraille(bits, cols, rows),
+    // The raised dots themselves, for anything that has to weigh this art
+    // against another: text would have to be taken apart again to get here.
+    bits,
     // The very values the dots were decided from, at grid size: that is what
     // the sampled-pixels pane should be showing.
     plane,
