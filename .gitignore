@@ -1,0 +1,12 @@
+# editors / OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# tooling that may appear later (tests, linting)
+node_modules/
+*.log
+
+# local scratch
+_*.html

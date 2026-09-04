@@ -1,228 +1,256 @@
 <!doctype html>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 <html lang="ru">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Braille ASCII Art Generator</title>
-
-  <!-- Bootstrap 5 -->
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Braille Art Generator</title>
+  <meta name="description" content="Генератор арта из символов Unicode Braille. Работает полностью в браузере.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='13' font-size='14'>⣿</text></svg>">
 
   <style>
-    :root{
-      --bg:#083826;
-      --bg2:#0e4d35;
-      --card:#0b3b2e;
-      --accent:#22c55e;
-      --muted:#a7e9c9;
+    :root {
+      --bg: #083826;
+      --bg-far: #0e4d35;
+      --panel: rgba(255, 255, 255, 0.04);
+      --line: rgba(255, 255, 255, 0.09);
+      --accent: #22c55e;
+      --muted: #a7e9c9;
+      --ink: #e6fff3;
+      --art-bg: #00120a;
+      --warn: #fbbf24;
+      --error: #fca5a5;
       color-scheme: dark;
     }
 
-    /* Важно: фон задаём на html и body и фиксируем, чтобы он не менялся при скролле */
+    *, *::before, *::after { box-sizing: border-box; }
+
     html, body {
-      height: 100%;
+      min-height: 100%;
       margin: 0;
-      font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
-      /* градиент, который будет зафиксирован и покрывать всю страницу */
-      background: linear-gradient(180deg, var(--bg) 0%, var(--bg2) 100%);
-      background-attachment: fixed;
-      background-repeat: no-repeat;
-      background-size: cover;
-      background-color: var(--bg); /* fallback */
-      color: #e6fff3;
+      color: var(--ink);
+      background: var(--bg) linear-gradient(180deg, var(--bg) 0%, var(--bg-far) 100%) fixed;
+      font: 15px/1.5 Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     }
 
-    /* ещё меньше отступов слева/справа */
-    .wrap{max-width:1300px;margin:6px auto;padding:2px}
-    .card-app{background:rgba(255,255,255,0.03);border-radius:12px;padding:14px;box-shadow:0 6px 30px rgba(2,6,23,0.45)}
-    h1{font-size:20px;margin-bottom:10px}
-    label.small{font-size:13px;color:var(--muted)}
-    .controls .form-control, .controls .form-select {background:transparent;border:1px solid rgba(255,255,255,0.06);color:inherit}
-    .btn-primary{background:var(--accent);border-color:var(--accent)}
-    canvas{background:#fff;border-radius:6px;max-width:100%;height:auto;display:block}
-    pre.output{white-space:pre;overflow:auto;padding:12px;border-radius:8px;background:rgba(0,18,10,0.9);color:#e6fff3;font-family:monospace;line-height:0.95;min-height:160px;max-height:700px}
-    .small-muted{font-size:12px;color:var(--muted)}
-    .preview-stack canvas{border:1px solid rgba(255,255,255,0.05);}
-    .val-box{width:56px;text-align:center}
-    @media(max-width:767.98px){
-      .wrap{padding:4px}
-      .card-app{padding:10px}
+    .wrap { max-width: 1300px; margin: 0 auto; padding: 16px; }
+    .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px; }
+
+    h1 { margin: 0 0 4px; font-size: 20px; }
+    .tagline { margin: 0 0 18px; color: var(--muted); font-size: 13px; }
+
+    .layout { display: grid; gap: 20px; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); align-items: start; }
+    @media (max-width: 900px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+
+    /* ---- controls ---- */
+    .field { margin-bottom: 14px; }
+    .row { display: grid; gap: 10px; grid-template-columns: 1fr 1fr; }
+    label { display: block; margin-bottom: 4px; color: var(--muted); font-size: 13px; }
+
+    input[type="file"], input[type="number"], select {
+      width: 100%;
+      padding: 7px 9px;
+      color: inherit;
+      background: rgba(0, 0, 0, 0.25);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      font: inherit;
+      font-size: 14px;
     }
+    input[type="number"]:disabled { opacity: 0.5; cursor: not-allowed; }
+    input[type="file"]::file-selector-button {
+      margin-right: 10px; padding: 5px 10px; color: var(--ink);
+      background: rgba(255, 255, 255, 0.08); border: 1px solid var(--line);
+      border-radius: 6px; font: inherit; font-size: 13px; cursor: pointer;
+    }
+
+    .slider { display: flex; gap: 10px; align-items: center; }
+    input[type="range"] { flex: 1; min-width: 0; accent-color: var(--accent); }
+    .readout {
+      width: 52px; flex: none; text-align: center; color: var(--muted);
+      font-size: 13px; font-variant-numeric: tabular-nums;
+    }
+
+    .check { display: flex; gap: 8px; align-items: center; }
+    .check input { accent-color: var(--accent); width: 16px; height: 16px; }
+    .check label { margin: 0; }
+
+    hr { margin: 18px 0; border: 0; border-top: 1px solid var(--line); }
+
+    .buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+    button {
+      padding: 8px 14px; color: var(--ink); background: transparent;
+      border: 1px solid var(--line); border-radius: 8px;
+      font: inherit; font-size: 14px; cursor: pointer;
+    }
+    button:hover { background: rgba(255, 255, 255, 0.07); }
+    button.primary { color: #04240f; background: var(--accent); border-color: var(--accent); font-weight: 600; }
+    button.primary:hover { filter: brightness(1.08); }
+    button:focus-visible, input:focus-visible, select:focus-visible {
+      outline: 2px solid var(--accent); outline-offset: 2px;
+    }
+
+    #status { margin: 12px 0 0; font-size: 13px; color: var(--muted); min-height: 1.5em; }
+    #status[data-kind="ok"] { color: var(--accent); }
+    #status[data-kind="warn"] { color: var(--warn); }
+    #status[data-kind="error"] { color: var(--error); }
+
+    .hint { margin: 10px 0 0; color: var(--muted); font-size: 12px; }
+
+    /* ---- previews ---- */
+    .stack { display: flex; flex-direction: column; gap: 16px; }
+    figure { margin: 0; }
+    figcaption { margin-bottom: 6px; color: var(--muted); font-size: 13px; }
+    canvas {
+      display: block; max-width: 100%; height: auto;
+      background: #000; border: 1px solid var(--line); border-radius: 8px;
+    }
+    /* the generator grid is tiny by design -- show the real pixels, not a blur */
+    #resCanvas { image-rendering: pixelated; width: 100%; }
+
+    #output {
+      margin: 0; padding: 12px; overflow: auto;
+      max-height: 70vh; min-height: 160px;
+      color: var(--ink); background: var(--art-bg);
+      border: 1px solid var(--line); border-radius: 8px;
+      font-family: "Cascadia Mono", "DejaVu Sans Mono", "Segoe UI Symbol", monospace;
+      /* line-height is a plain number so it resolves to px and the aspect-ratio
+         maths, the layout and the PNG export can all read the same value */
+      line-height: 1;
+      white-space: pre;
+      tab-size: 1;
+    }
+    #meta { margin: 8px 0 0; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+
+    footer { margin-top: 18px; color: var(--muted); font-size: 12px; }
+    footer a { color: var(--muted); }
   </style>
 </head>
 <body>
   <div class="wrap">
-    <div class="card-app">
-      <h1>Braille ASCII Art Generator — client-side</h1>
+    <main class="panel">
+      <h1>Braille Art Generator</h1>
+      <p class="tagline">Каждый символ кодирует блок 2×4 пикселя. Всё считается в браузере — изображение никуда не отправляется.</p>
 
-      <div class="row gx-3">
-        <!-- LEFT: controls -->
-        <div class="col-12 col-md-5">
-          <div class="mb-3">
-            <label class="small">Загрузить изображение</label>
-            <input id="file" class="form-control form-control-sm" type="file" accept="image/*">
+      <div class="layout">
+        <!-- ------------------------------ controls ------------------------------ -->
+        <section aria-label="Параметры">
+          <div class="field">
+            <label for="file">Изображение</label>
+            <input id="file" type="file" accept="image/*">
           </div>
 
-          <div class="controls">
-            <div class="row g-2 mb-2">
-              <div class="col-6">
-                <label class="small">Ширина в символах</label>
-                <input id="outWidth" type="number" class="form-control form-control-sm" min="1" value="80">
-              </div>
-              <div class="col-6">
-                <label class="small">Высота в символах</label>
-                <input id="outHeight" type="number" class="form-control form-control-sm" min="1" value="30">
-              </div>
+          <div class="field row">
+            <div>
+              <label for="outWidth">Ширина, символов</label>
+              <input id="outWidth" type="number" min="1" max="400" value="80">
             </div>
-
-            <div class="row g-2 mb-2 align-items-center">
-              <div class="col-6">
-                <div class="form-check">
-                  <input id="keepAspect" class="form-check-input" type="checkbox" checked>
-                  <label class="form-check-label small-muted" for="keepAspect">Сохранить соотношение</label>
-                </div>
-              </div>
-              <div class="col-6">
-                <label class="small">Размер шрифта (px)</label>
-                <input id="fontSize" type="number" class="form-control form-control-sm" min="6" max="48" value="12">
-              </div>
+            <div>
+              <label for="outHeight">Высота, символов</label>
+              <input id="outHeight" type="number" min="1" max="400" value="30">
             </div>
+          </div>
 
-            <div class="mb-2">
-              <label class="small">Порог (threshold) 0..255</label>
-              <div class="d-flex align-items-center gap-2">
-                <input id="threshold" type="range" class="form-range" min="0" max="255" value="128" style="flex:1">
-                <div id="thresholdVal" class="small-muted val-box">128</div>
-              </div>
-            </div>
+          <div class="field check">
+            <input id="keepAspect" type="checkbox" checked>
+            <label for="keepAspect">Сохранять пропорции (высота считается сама)</label>
+          </div>
 
-            <div class="mb-3">
-              <label class="small">Инвертировать</label>
-              <select id="invert" class="form-select form-select-sm">
+          <div class="field row">
+            <div>
+              <label for="invert">Инверсия</label>
+              <select id="invert">
                 <option value="0">Нет</option>
                 <option value="1">Да</option>
               </select>
             </div>
-
-            <hr style="border-color:rgba(255,255,255,0.03)" />
-            <div class="mb-2">
-              <label class="small">Яркость (brightness)</label>
-              <div class="d-flex align-items-center gap-2">
-                <input id="brightness" type="range" class="form-range" min="-100" max="100" value="0" style="flex:1">
-                <div id="brightnessVal" class="small-muted val-box">0</div>
-              </div>
-            </div>
-            <div class="mb-2">
-              <label class="small">Контраст (contrast)</label>
-              <div class="d-flex align-items-center gap-2">
-                <input id="contrast" type="range" class="form-range" min="-100" max="100" value="0" style="flex:1">
-                <div id="contrastVal" class="small-muted val-box">0</div>
-              </div>
-            </div>
-            <div class="mb-2">
-              <label class="small">Насыщенность (saturation)</label>
-              <div class="d-flex align-items-center gap-2">
-                <input id="saturation" type="range" class="form-range" min="-100" max="100" value="0" style="flex:1">
-                <div id="saturationVal" class="small-muted val-box">0</div>
-              </div>
-            </div>
-            <div class="mb-2">
-              <label class="small">Резкость (sharpness)</label>
-              <div class="d-flex align-items-center gap-2">
-                <input id="sharpness" type="range" class="form-range" min="0" max="5" step="0.1" value="0" style="flex:1">
-                <div id="sharpnessVal" class="small-muted val-box">0.0</div>
-              </div>
-            </div>
-
-            <div class="d-flex gap-2 flex-wrap mb-2 mt-2">
-              <button id="generate" class="btn btn-primary btn-sm">Сгенерировать</button>
-              <button id="downloadTxt" class="btn btn-outline-light btn-sm">Скачать .txt</button>
-              <button id="copy" class="btn btn-outline-light btn-sm">Копировать</button>
-              <button id="downloadPng" class="btn btn-outline-light btn-sm">Скачать PNG</button>
-            </div>
-
-            <div class="d-flex gap-2 mt-1">
-              <button id="resetEdits" class="btn btn-sm btn-secondary">Сбросить редактирование</button>
-            </div>
-
-            <div class="small-muted mt-2">Подсказка: каждый символ braille кодирует блок 2×4 пикселя. Редактируйте изображение слева — редакция применяется на правый (редактируемый) холст.</div>
-          </div>
-        </div>
-
-        <!-- RIGHT: previews and output (vertical stack) -->
-        <div class="col-12 col-md-7">
-          <div class="d-flex flex-column gap-3 preview-stack">
             <div>
-              <label class="small">Исходное изображение (preview)</label>
-              <canvas id="srcCanvas" width="360" height="240"></canvas>
-            </div>
-
-            <div>
-              <label class="small">Редактируемое изображение (отсюда будет генерироваться Braille)</label>
-              <canvas id="editCanvas" width="720" height="480"></canvas>
-            </div>
-
-            <div>
-              <label class="small">Масштабированный холст (для предпросмотра перед генерацией)</label>
-              <canvas id="resCanvas" width="360" height="240"></canvas>
-            </div>
-
-            <div>
-              <label class="small">Результат (текст с символами Braille)</label>
-              <pre id="output" class="output" contenteditable></pre>
+              <label for="fontSize">Кегль вывода, px</label>
+              <input id="fontSize" type="number" min="6" max="48" value="12">
             </div>
           </div>
-        </div>
+
+          <div class="field">
+            <label for="threshold">Порог, 0–255</label>
+            <div class="slider">
+              <input id="threshold" type="range" min="0" max="255" value="128">
+              <span class="readout" id="thresholdVal">128</span>
+            </div>
+          </div>
+
+          <hr>
+
+          <div class="field">
+            <label for="brightness">Яркость</label>
+            <div class="slider">
+              <input id="brightness" type="range" min="-100" max="100" value="0">
+              <span class="readout" id="brightnessVal">0</span>
+            </div>
+          </div>
+          <div class="field">
+            <label for="contrast">Контраст</label>
+            <div class="slider">
+              <input id="contrast" type="range" min="-100" max="100" value="0">
+              <span class="readout" id="contrastVal">0</span>
+            </div>
+          </div>
+          <div class="field">
+            <label for="saturation">Насыщенность</label>
+            <div class="slider">
+              <input id="saturation" type="range" min="-100" max="100" value="0">
+              <span class="readout" id="saturationVal">0</span>
+            </div>
+          </div>
+          <div class="field">
+            <label for="sharpness">Резкость</label>
+            <div class="slider">
+              <input id="sharpness" type="range" min="0" max="5" step="0.1" value="0">
+              <span class="readout" id="sharpnessVal">0.0</span>
+            </div>
+          </div>
+
+          <div class="buttons">
+            <button id="generate" class="primary" type="button">Сгенерировать</button>
+            <button id="copy" type="button">Копировать</button>
+            <button id="downloadTxt" type="button">Скачать .txt</button>
+            <button id="downloadPng" type="button">Скачать PNG</button>
+            <button id="resetEdits" type="button">Сбросить коррекцию</button>
+          </div>
+
+          <p id="status" role="status" aria-live="polite"></p>
+        </section>
+
+        <!-- ------------------------------ previews ------------------------------ -->
+        <section class="stack" aria-label="Предпросмотр и результат">
+          <figure>
+            <figcaption>Оригинал</figcaption>
+            <canvas id="srcCanvas" width="360" height="240"></canvas>
+          </figure>
+
+          <figure>
+            <figcaption>После коррекции</figcaption>
+            <canvas id="editCanvas" width="360" height="240"></canvas>
+          </figure>
+
+          <figure>
+            <figcaption>Пиксели, из которых считается арт</figcaption>
+            <canvas id="resCanvas" width="160" height="120"></canvas>
+          </figure>
+
+          <figure>
+            <figcaption>Результат</figcaption>
+            <pre id="output" tabindex="0"></pre>
+            <p id="meta"></p>
+          </figure>
+        </section>
       </div>
 
-      <div class="mt-3 small-muted">Работает полностью на клиенте — можно заливать на GitHub Pages (github.io). Ограничения: нет multi-threading на github.io.</div>
-    </div>
+      <footer>
+        <a href="https://github.com/Jareltis/Braille_Art_Generator">Исходный код</a> · GPL-3.0-or-later
+      </footer>
+    </main>
   </div>
 
-  <!-- Подключаем JS: ваш внешний скрипт (оставьте рядом в репозитории) -->
-  <script src="braille-generator.js"></script>
-
-  <!-- Дополнительный скрипт для отображения значений и кнопки сброса -->
-  <script>
-    (function(){
-      function $(id){return document.getElementById(id)}
-      const pairs = [
-        ['brightness','brightnessVal', '0'],
-        ['contrast','contrastVal', '0'],
-        ['saturation','saturationVal', '0'],
-        ['sharpness','sharpnessVal', '0.0']
-      ];
-      pairs.forEach(([rangeId,valId,def])=>{
-        const r = $(rangeId), v = $(valId);
-        if(!r || !v) return;
-        const fmt = rangeId === 'sharpness' ? (x=>parseFloat(x).toFixed(1)) : (x=>parseInt(x));
-        v.textContent = fmt(r.value);
-        r.addEventListener('input', ()=>{ v.textContent = fmt(r.value); });
-      });
-
-      // threshold already handled in main script, but ensure display exists
-      const th = $('threshold'); const thv = $('thresholdVal');
-      if(th && thv){ thv.textContent = th.value; th.addEventListener('input', ()=> thv.textContent = th.value); }
-
-      // reset button: set all ranges to defaults and dispatch input events so main script applies changes
-      const reset = $('resetEdits');
-      if(reset){
-        reset.addEventListener('click', ()=>{
-          pairs.forEach(([rangeId,valId,def])=>{
-            const r = $(rangeId); const v = $(valId);
-            if(!r || !v) return;
-            r.value = def;
-            // update displayed value
-            v.textContent = (rangeId === 'sharpness') ? parseFloat(def).toFixed(1) : parseInt(def);
-            // dispatch input event so main script applies adjustments
-            r.dispatchEvent(new Event('input', {bubbles:true}));
-          });
-        });
-      }
-    })();
-  </script>
-
-  <!-- Подключение Bootstrap JS (если понадобится, необязательно) -->
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script type="module" src="src/main.js"></script>
 </body>
 </html>
