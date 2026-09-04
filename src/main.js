@@ -17,6 +17,8 @@ import { clearSettings, loadSettings, saveSettings } from './ui/settings.js';
 import { createCropper } from './ui/crop.js';
 import { createDotEditor } from './ui/dots.js';
 import { DEFAULT_TEXT_FONT, TEXT_FONTS, renderText } from './ui/text.js';
+import { createCamera } from './ui/camera.js';
+import { createSketchPad } from './ui/draw.js';
 import { createPipeline } from './ui/pipeline.js';
 
 const MAX_COLS = 400;
@@ -50,6 +52,11 @@ const dom = {
   textInput: el('textInput'),
   textFont: el('textFont'),
   textBold: el('textBold'),
+  camera: el('camera'),
+  cameraCapture: el('cameraCapture'),
+  drawCanvas: el('drawCanvas'),
+  brushErase: el('brushErase'),
+  drawClear: el('drawClear'),
   resetAll: el('resetAll'),
   srcMeta: el('srcMeta'),
   gridMeta: el('gridMeta'),
@@ -105,6 +112,8 @@ let smoothScaling = true;
 let cropRect = null;
 let cropper = null;
 let dotEditor = null;
+let camera = null;
+let sketchPad = null;
 
 // Requests are answered out of order once they are asynchronous; a reply is
 // only applied while it is still the newest of its kind.
@@ -759,15 +768,30 @@ function useTextSource() {
 }
 
 const scheduleTextSource = coalesce(useTextSource);
+const scheduleSketch = coalesce(useSketchSource);
+
+const SOURCE_KINDS = ['image', 'text', 'camera', 'draw'];
 
 function setSourceKind(kind) {
-  const next = kind === 'text' ? 'text' : 'image';
+  const next = SOURCE_KINDS.includes(kind) ? kind : 'image';
   dom.sourceKind.value = next;
   dom.app.dataset.source = next;
+
+  // Holding the camera open in another mode would leave the light on for
+  // nothing, so the stream is released the moment it stops being the subject.
+  if (next !== 'camera' && camera?.isRunning()) camera.stop();
 
   if (next === 'text') {
     useTextSource();
     return;
+  }
+  if (next === 'draw') {
+    useSketchSource();
+    return;
+  }
+  if (next === 'camera') {
+    startCamera();
+    // Whatever was captured last stays the subject until a new frame is taken.
   }
 
   source = imageSource;
@@ -775,6 +799,9 @@ function setSourceKind(kind) {
   describeSource();
   if (source) {
     changed();
+  } else if (next === 'camera') {
+    dom.output.textContent = '';
+    artText = '';
   } else {
     dom.output.textContent = '';
     artText = '';
@@ -882,6 +909,43 @@ async function copyArt() {
   );
 }
 
+/** Sources that are their own canvas: what is drawn is what is encoded. */
+const LIVE_SOURCES = new Set(['draw']);
+
+function useSketchSource() {
+  source = sketchPad.canvas;
+  previewReady = false;
+  describeSource();
+  changed();
+}
+
+async function startCamera() {
+  try {
+    await camera.start();
+    setStatus('Камера включена. Наведите и снимите кадр.', 'ok');
+  } catch (error) {
+    // Refusing permission or having no camera is an ordinary answer, not a
+    // fault: say so and fall back rather than leaving a dead mode on screen.
+    setStatus(error.message, 'warn');
+  }
+}
+
+function captureFrame() {
+  const frame = camera.capture(createCanvas);
+  if (!frame) {
+    setStatus('Кадр не получен — камера ещё не запущена.', 'warn');
+    return;
+  }
+  source = frame;
+  imageSource = frame;
+  previewReady = false;
+  cropRect = null;
+  cropper?.set(null);
+  describeSource();
+  changed();
+  setStatus(`Снят кадр ${frame.width}×${frame.height}.`, 'ok');
+}
+
 function init() {
   controls.threshold = bindRange(el('threshold'), el('thresholdVal'), { onChange: () => changed({ affectsPreview: false }) });
   controls.brightness = bindRange(el('brightness'), el('brightnessVal'), { onChange: changed });
@@ -903,6 +967,26 @@ function init() {
     setSourceKind(dom.sourceKind.value);
     persist();
   });
+  camera = createCamera(dom.camera);
+  sketchPad = createSketchPad(dom.drawCanvas, () => {
+    // The pad is the source, so every stroke invalidates what was sampled.
+    previewReady = false;
+    scheduleSketch();
+  });
+
+  controls.brushSize = bindRange(el('brushSize'), el('brushSizeVal'), {
+    onChange: () => sketchPad.setBrush(controls.brushSize.value),
+  });
+  sketchPad.setBrush(controls.brushSize.value);
+
+  dom.cameraCapture.addEventListener('click', captureFrame);
+  dom.brushErase.addEventListener('click', () => {
+    const on = !sketchPad.isErasing();
+    sketchPad.setErasing(on);
+    dom.brushErase.setAttribute('aria-pressed', String(on));
+  });
+  dom.drawClear.addEventListener('click', () => sketchPad.clear());
+
   dom.textInput.addEventListener('input', () => { scheduleTextSource(); persist(); });
   dom.textFont.addEventListener('change', () => { useTextSource(); persist(); });
   dom.textBold.addEventListener('change', () => { useTextSource(); persist(); });

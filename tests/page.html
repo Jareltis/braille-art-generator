@@ -643,6 +643,104 @@ async function run() {
     $('platform').dispatchEvent(new Event('change', { bubbles: true }));
   }
 
+  {
+    // --- the sketch pad -----------------------------------------------------
+    const BLANK = String.fromCharCode(0x2800);
+    const NL = String.fromCharCode(10);
+    const inkCount = () => [...$('output').textContent.split(NL).join('')].filter((c) => c !== BLANK).length;
+
+    $('sourceKind').value = 'draw';
+    $('sourceKind').dispatchEvent(new Event('change', { bubbles: true }));
+
+    check('the pad takes over the source pane', $('app').dataset.source, 'draw');
+    ok('the pad is shown', $('drawCanvas').offsetParent !== null);
+    ok('the file preview steps aside', $('srcCanvas').offsetParent === null);
+    ok('brush controls appear', $('brushSize').offsetParent !== null);
+    ok('cropping is not offered for a drawing', $('cropToggle').offsetParent === null);
+
+    // The previous source's art is still on screen for a moment; waiting for
+    // length alone would measure that instead of the empty pad.
+    ok('an untouched pad encodes to nothing', await until(() => inkCount() === 0),
+       `${inkCount()} inked cells`);
+
+    // Draw a stroke across the pad and watch it turn into dots.
+    const pad = $('drawCanvas');
+    const padPoint = (fx, fy) => {
+      const box = pad.getBoundingClientRect();
+      const ratio = pad.width / pad.height;
+      const shown = box.width / box.height > ratio
+        ? { w: box.height * ratio, h: box.height }
+        : { w: box.width, h: box.width / ratio };
+      return {
+        clientX: box.left + (box.width - shown.w) / 2 + shown.w * fx,
+        clientY: box.top + (box.height - shown.h) / 2 + shown.h * fy,
+        pointerId: 11,
+        button: 0,
+        bubbles: true,
+        cancelable: true,
+      };
+    };
+    const drawStroke = async (points) => {
+      pad.dispatchEvent(new win.PointerEvent('pointerdown', padPoint(...points[0])));
+      for (const point of points.slice(1)) {
+        pad.dispatchEvent(new win.PointerEvent('pointermove', padPoint(...point)));
+      }
+      pad.dispatchEvent(new win.PointerEvent('pointerup', padPoint(...points.at(-1))));
+      await wait(200);
+    };
+
+    await drawStroke([[0.15, 0.5], [0.4, 0.3], [0.6, 0.7], [0.85, 0.5]]);
+    ok('a stroke becomes braille', await until(() => inkCount() > 20), `${inkCount()} inked cells`);
+    const thinInk = inkCount();
+
+    // A wider brush must lay down more.
+    $('brushSize').value = '50';
+    $('brushSize').dispatchEvent(new Event('input', { bubbles: true }));
+    await drawStroke([[0.15, 0.2], [0.85, 0.2]]);
+    ok('a wider brush lays down more', await until(() => inkCount() > thinInk),
+       `${thinInk} then ${inkCount()}`);
+    const withStrokes = inkCount();
+
+    // Erasing takes it away again.
+    $('brushErase').click();
+    check('the eraser reports being on', $('brushErase').getAttribute('aria-pressed'), 'true');
+    await drawStroke([[0.15, 0.2], [0.85, 0.2]]);
+    ok('erasing removes dots', await until(() => inkCount() < withStrokes),
+       `${withStrokes} then ${inkCount()}`);
+    $('brushErase').click();
+
+    $('drawClear').click();
+    ok('clearing empties the pad', await until(() => inkCount() === 0));
+
+    // --- the camera ---------------------------------------------------------
+    // Chrome is launched with a synthetic device, so this exercises the real
+    // getUserMedia path without needing a webcam.
+    $('sourceKind').value = 'camera';
+    $('sourceKind').dispatchEvent(new Event('change', { bubbles: true }));
+
+    check('the camera takes the pane', $('app').dataset.source, 'camera');
+    ok('the video is shown', $('camera').offsetParent !== null);
+    ok('a capture button is offered', $('cameraCapture').offsetParent !== null);
+
+    const streaming = await until(() => $('camera').videoWidth > 0, 20000);
+    ok('the stream starts', streaming, $('status').textContent);
+
+    if (streaming) {
+      $('cameraCapture').click();
+      ok('a frame is captured', await until(() => /Снят кадр/.test($('status').textContent)),
+         $('status').textContent);
+      ok('the frame becomes the source', /^\d+×\d+$/.test($('srcMeta').textContent), $('srcMeta').textContent);
+      ok('and it encodes to something', await until(() => inkCount() > 0), `${inkCount()} inked cells`);
+    }
+
+    // Leaving the camera has to release it, or the light stays on.
+    $('sourceKind').value = 'text';
+    $('sourceKind').dispatchEvent(new Event('change', { bubbles: true }));
+    await wait(200);
+    ok('leaving the camera releases the device',
+       $('camera').srcObject === null || $('camera').srcObject.getTracks().every((t) => t.readyState === 'ended'));
+  }
+
   const failed = log.filter((l) => l.startsWith('FAIL')).length;
   out(`${log.join('\n')}\n${failed ? `\n${failed} FAILED` : '\nAll e2e checks passed.'}`);
 }

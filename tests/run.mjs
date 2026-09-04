@@ -80,6 +80,9 @@ function runPage(name) {
       '--disable-gpu',
       '--no-sandbox',
       '--disable-dev-shm-usage',
+      // a synthetic camera, so the webcam source can be exercised headlessly
+      '--use-fake-ui-for-media-stream',
+      '--use-fake-device-for-media-stream',
       `http://127.0.0.1:${PORT}/tests/${name}.html`,
     ], { stdio: 'ignore' });
 
