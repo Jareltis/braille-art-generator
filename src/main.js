@@ -15,6 +15,7 @@ import {
 import { clearSettings, loadSettings, saveSettings } from './ui/settings.js';
 import { createCropper } from './ui/crop.js';
 import { createDotEditor } from './ui/dots.js';
+import { DEFAULT_TEXT_FONT, TEXT_FONTS, renderText } from './ui/text.js';
 import { createPipeline } from './ui/pipeline.js';
 
 const MAX_COLS = 400;
@@ -42,6 +43,10 @@ const dom = {
   dotEdit: el('dotEdit'),
   dotUndo: el('dotUndo'),
   dotHint: el('dotHint'),
+  sourceKind: el('sourceKind'),
+  textInput: el('textInput'),
+  textFont: el('textFont'),
+  textBold: el('textBold'),
   resetAll: el('resetAll'),
   srcMeta: el('srcMeta'),
   gridMeta: el('gridMeta'),
@@ -82,7 +87,8 @@ const dom = {
 const pipeline = createPipeline();
 const controls = {};
 
-let source = null;            // the original image, at full resolution
+let source = null;            // whatever is being encoded: a photo or drawn lettering
+let imageSource = null;       // the last loaded file, kept while text is in use
 let sourceUrl = null;         // object URL backing `source`
 let previewReady = false;
 let previewBackground = null; // background the preview source was composited over
@@ -170,10 +176,14 @@ function syncEdgeControls() {
   controls.edgeRadius.input.disabled = off;
 }
 
+/** A loaded file reports naturalWidth; drawn lettering is a canvas and reports width. */
+const sourceW = () => source.naturalWidth || source.width;
+const sourceH = () => source.naturalHeight || source.height;
+
 /** Dimensions of what is actually being encoded. */
 function sourceSize() {
-  const w = source.naturalWidth;
-  const h = source.naturalHeight;
+  const w = sourceW();
+  const h = sourceH();
   return cropRect ? { w: w * cropRect.w, h: h * cropRect.h } : { w, h };
 }
 
@@ -202,7 +212,7 @@ async function buildPreviewSource() {
 
   // The original pane always shows the whole frame: the crop rectangle needs
   // something to be drawn against.
-  const whole = fitWithin(source.naturalWidth, source.naturalHeight, PREVIEW_LIMIT.w, PREVIEW_LIMIT.h);
+  const whole = fitWithin(sourceW(), sourceH(), PREVIEW_LIMIT.w, PREVIEW_LIMIT.h);
   const full = drawScaled(source, whole.w, whole.h, background, { smooth: smoothScaling });
   dom.srcCanvas.width = whole.w;
   dom.srcCanvas.height = whole.h;
@@ -315,7 +325,9 @@ function loadFile(file) {
     // Release the previous URL only once the replacement has decoded.
     if (sourceUrl) URL.revokeObjectURL(sourceUrl);
     source = image;
+    imageSource = image;
     sourceUrl = url;
+    setSourceKind('image');
     previewReady = false;
     cropRect = null;
     cropper?.set(null);
@@ -499,12 +511,14 @@ const PERSISTED_RANGES = [
 ];
 const PERSISTED_FIELDS = [
   'preset', 'platform', 'dither', 'invert', 'edgeMode', 'outWidth', 'outHeight', 'fontSize', 'layout',
+  'sourceKind', 'textInput', 'textFont',
 ];
 
 function collectSettings() {
   const values = {
     mode: dom.app.dataset.mode,
     keepAspect: dom.keepAspect.checked,
+    textBold: dom.textBold.checked,
     smooth: smoothScaling,
   };
   for (const id of PERSISTED_FIELDS) values[id] = el(id).value;
@@ -530,6 +544,7 @@ function applySettings(values) {
     if (Number.isFinite(Number(values[name]))) controls[name].set(values[name]);
   }
   if (typeof values.keepAspect === 'boolean') dom.keepAspect.checked = values.keepAspect;
+  if (typeof values.textBold === 'boolean') dom.textBold.checked = values.textBold;
   if (typeof values.smooth === 'boolean') smoothScaling = values.smooth;
 
   setLayout(dom.layout.value);
@@ -541,7 +556,16 @@ function resetEverything() {
   for (const control of Object.values(controls)) control.reset();
   for (const id of PERSISTED_FIELDS) {
     const node = el(id);
-    node.value = node.dataset.default ?? node.getAttribute('value') ?? node.options?.[0]?.value ?? '';
+    if (node instanceof HTMLSelectElement) {
+      // A select has no defaultValue; the option marked default is the answer,
+      // and the first option otherwise.
+      const preferred = [...node.options].find((option) => option.defaultSelected);
+      node.value = (preferred ?? node.options[0])?.value ?? '';
+    } else {
+      // defaultValue is the value attribute on an input and the original text
+      // content on a textarea -- reading the attribute would empty the latter.
+      node.value = node.defaultValue;
+    }
   }
   dom.keepAspect.checked = true;
   smoothScaling = true;
@@ -551,7 +575,7 @@ function resetEverything() {
   syncEdgeControls();
   syncPlatform();
   syncRows();
-  changed();
+  setSourceKind(dom.sourceKind.value);
   setStatus('Настройки сброшены.', 'info');
 }
 
@@ -673,6 +697,64 @@ function setEditing(on) {
     : '';
 }
 
+/* ------------------------------------------------------------------------ *
+ * Where the picture comes from
+ *
+ * Lettering is drawn to a canvas and then handed to the same pipeline as a
+ * photograph. A canvas is a valid drawImage source, so edges, dithering,
+ * cropping, the exports and dot editing all work on text without knowing it is
+ * text -- which is why there is no bitmap font here.
+ * ------------------------------------------------------------------------ */
+function fillFonts() {
+  dom.textFont.replaceChildren(
+    ...Object.entries(TEXT_FONTS).map(([key, font]) => {
+      const isDefault = key === DEFAULT_TEXT_FONT;
+      return new Option(font.label, key, isDefault, isDefault);
+    }),
+  );
+}
+
+function describeSource() {
+  dom.srcMeta.textContent = source ? `${sourceW()}×${sourceH()}` : '';
+}
+
+function useTextSource() {
+  source = renderText(dom.textInput.value, {
+    font: dom.textFont.value,
+    bold: dom.textBold.checked,
+  });
+  previewReady = false;
+  cropRect = null;
+  cropper?.set(null);
+  if (dotEditor?.isEnabled()) setEditing(false);
+  describeSource();
+  changed();
+}
+
+const scheduleTextSource = coalesce(useTextSource);
+
+function setSourceKind(kind) {
+  const next = kind === 'text' ? 'text' : 'image';
+  dom.sourceKind.value = next;
+  dom.app.dataset.source = next;
+
+  if (next === 'text') {
+    useTextSource();
+    return;
+  }
+
+  source = imageSource;
+  previewReady = false;
+  describeSource();
+  if (source) {
+    changed();
+  } else {
+    dom.output.textContent = '';
+    artText = '';
+    setStatus('Выберите файл, перетащите изображение или вставьте из буфера.');
+  }
+}
+
 function init() {
   controls.threshold = bindRange(el('threshold'), el('thresholdVal'), { onChange: () => changed({ affectsPreview: false }) });
   controls.brightness = bindRange(el('brightness'), el('brightnessVal'), { onChange: changed });
@@ -686,8 +768,17 @@ function init() {
 
   fillPresets();
   fillPlatforms();
+  fillFonts();
 
   applySettings(loadSettings());
+
+  dom.sourceKind.addEventListener('change', () => {
+    setSourceKind(dom.sourceKind.value);
+    persist();
+  });
+  dom.textInput.addEventListener('input', () => { scheduleTextSource(); persist(); });
+  dom.textFont.addEventListener('change', () => { useTextSource(); persist(); });
+  dom.textBold.addEventListener('change', () => { useTextSource(); persist(); });
 
   dom.preset.addEventListener('change', () => applyPreset(dom.preset.value));
   dom.platform.addEventListener('change', () => {
@@ -876,6 +967,8 @@ function init() {
   syncEdgeControls();
   syncPlatform();
   syncRows();
+  if (dom.sourceKind.value === 'text') setSourceKind('text');
+  else dom.app.dataset.source = 'image';
   setStatus(
     pipeline.offThread
       ? 'Загрузите изображение. Вычисления идут в фоновом потоке.'

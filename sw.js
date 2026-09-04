@@ -33,6 +33,8 @@ const ASSETS = [
   './src/ui/settings.js',
   './src/worker/pipeline.worker.js',
   './src/worker/protocol.js',
+  './src/ui/dots.js',
+  './src/ui/text.js',
 ];
 
 self.addEventListener('install', (event) => {

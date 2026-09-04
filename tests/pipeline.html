@@ -14,6 +14,7 @@ import { CONTENT_PRESETS } from '../src/core/presets.js';
 import { EDGE_MODES } from '../src/core/edges.js';
 import { createCanvas, drawScaled, readImageData } from '../src/ui/canvas.js';
 import { FULL_FRAME, isWholeImage } from '../src/ui/crop.js';
+import { DEFAULT_TEXT_FONT, TEXT_FONTS, renderText } from '../src/ui/text.js';
 import { brailleToSvg } from '../src/ui/export.js';
 import {
   PLATFORMS, calibrationOf, clearCalibration, forPlatform, messageLength, ruler, saveCalibration,
@@ -282,6 +283,46 @@ async function run() {
   const pageSource = await (await fetch('/index.html')).text();
   ok('the shell list includes the entry module', listed.includes('/src/main.js'));
   ok('the page links the manifest', pageSource.includes('rel="manifest"'));
+
+  // --- text as a source image ----------------------------------------------
+  const lettering = renderText('AB', { font: 'display', bold: true });
+  ok('text renders to a canvas', lettering instanceof HTMLCanvasElement);
+  ok('the canvas is large enough to reduce from', lettering.width > 100 && lettering.height > 100,
+     `${lettering.width}×${lettering.height}`);
+
+  const letteringPixels = readImageData(lettering);
+  let lit = 0;
+  let dark = 0;
+  for (let i = 0; i < letteringPixels.data.length; i += 4) {
+    if (letteringPixels.data[i] > 200) lit++;
+    if (letteringPixels.data[i] < 40) dark++;
+  }
+  ok('letters are drawn light on dark', lit > 0 && dark > lit,
+     `${lit} light, ${dark} dark`);
+  check('the canvas is opaque', letteringPixels.data[3], 255);
+
+  ok('a longer string is wider', renderText('AAAAAA').width > renderText('A').width);
+  ok('a second line makes it taller', renderText('A\nB').height > renderText('A').height);
+  ok('every offered font has a stack',
+     Object.values(TEXT_FONTS).every((font) => font.stack && font.label));
+  ok('the default font is one of them', DEFAULT_TEXT_FONT in TEXT_FONTS);
+
+  // Empty input must not produce a zero-sized canvas that later divides by zero.
+  const blank = renderText('');
+  ok('empty text still yields a usable canvas', blank.width >= 1 && blank.height >= 1,
+     `${blank.width}×${blank.height}`);
+
+  // Lettering must survive the ordinary pipeline, since that is the whole point
+  // of drawing it to a canvas rather than carrying a bitmap font.
+  const asArt = imageDataToBraille(
+    readImageData(drawScaled(lettering, 60, 20, '#000000')),
+    { threshold: 128, method: 'threshold' },
+  );
+  const inkedCells = [...asArt.split(String.fromCharCode(10)).join('')]
+    .filter((ch) => ch !== String.fromCharCode(0x2800)).length;
+  ok('lettering encodes to braille through the normal path', inkedCells > 20,
+     `${inkedCells} inked cells`);
+  log.push(`INFO  lettering row: ${asArt.split(String.fromCharCode(10))[2]}`);
 
   // --- worker must agree with the main thread exactly ----------------------
   const pipe = createPipeline();

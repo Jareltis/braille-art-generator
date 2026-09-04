@@ -508,6 +508,80 @@ async function run() {
   check('undo history goes with it', $('dotUndo').disabled, true);
   ok('the art follows the controls again', $('output').textContent !== frozen);
 
+  // --- lettering as a source ----------------------------------------------
+  const BLANK_CELL = String.fromCharCode(0x2800);
+  const inkedCount = () => [...$('output').textContent.split(String.fromCharCode(10)).join('')]
+    .filter((ch) => ch !== BLANK_CELL).length;
+
+  const imageMeta = $('srcMeta').textContent;
+  const artBeforeText = $('output').textContent;
+  check('the app starts on the image source', $('app').dataset.source, 'image');
+  check('text controls are hidden while on an image', $('textInput').offsetParent, null);
+
+  $('sourceKind').value = 'text';
+  $('sourceKind').dispatchEvent(new Event('change', { bubbles: true }));
+
+  check('switching swaps which controls are shown', $('app').dataset.source, 'text');
+  ok('the file picker steps aside', $('file').offsetParent === null);
+  ok('the text box appears', $('textInput').offsetParent !== null);
+  ok('the font list is populated from the module', $('textFont').options.length >= 4,
+     `${$('textFont').options.length} fonts`);
+
+  // The image's art is still on screen for a frame or two, so wait for it to be
+  // replaced before judging -- counting too early passes on stale content.
+  ok('the default lettering is not empty', $('textInput').value.trim().length > 0,
+     JSON.stringify($('textInput').value));
+  ok('lettering produces art',
+     await until(() => $('output').textContent !== artBeforeText && inkedCount() > 30),
+     `${inkedCount()} inked cells`);
+  const helloArt = $('output').textContent;
+  ok('the source pane reports the drawn size', /^\d+×\d+$/.test($('srcMeta').textContent),
+     $('srcMeta').textContent);
+
+  $('textInput').value = 'IIIIII';
+  $('textInput').dispatchEvent(new Event('input', { bubbles: true }));
+  ok('editing the text redraws the art', await until(() => $('output').textContent !== helloArt));
+  const narrowArt = $('output').textContent;
+
+  $('textBold').checked = false;
+  $('textBold').dispatchEvent(new Event('change', { bubbles: true }));
+  ok('the weight changes the art', await until(() => $('output').textContent !== narrowArt));
+
+  // Everything downstream must still apply, since lettering is just a canvas.
+  $('modeAdvanced').click();
+  $('edgeMode').value = 'xdog';
+  $('edgeMode').dispatchEvent(new Event('change', { bubbles: true }));
+  const outlined = await until(() => $('output').textContent !== narrowArt);
+  ok('edge detection works on lettering too', outlined);
+  $('edgeMode').value = 'none';
+  $('edgeMode').dispatchEvent(new Event('change', { bubbles: true }));
+  await wait(200);
+
+  // --- switching back ------------------------------------------------------
+  $('sourceKind').value = 'image';
+  $('sourceKind').dispatchEvent(new Event('change', { bubbles: true }));
+  ok('the previously loaded image comes back',
+     await until(() => $('srcMeta').textContent === imageMeta),
+     `${$('srcMeta').textContent}, expected ${imageMeta}`);
+  ok('and it renders again', await until(() => inkedCount() > 0));
+
+  // --- the choice is remembered -------------------------------------------
+  $('sourceKind').value = 'text';
+  $('sourceKind').dispatchEvent(new Event('change', { bubbles: true }));
+  $('textInput').value = 'ЗАПОМНИ';
+  $('textInput').dispatchEvent(new Event('input', { bubbles: true }));
+  await wait(400);
+
+  const backAgain = new Promise((r) => frame.addEventListener('load', r, { once: true }));
+  frame.src = '../index.html';
+  await backAgain;
+  await until(() => $('status').textContent.length > 0);
+
+  check('the source kind survives a reload', $('app').dataset.source, 'text');
+  check('the lettering survives a reload', $('textInput').value, 'ЗАПОМНИ');
+  ok('and it draws itself without a file', await until(() => inkedCount() > 30),
+     `${inkedCount()} inked cells`);
+
   const failed = log.filter((l) => l.startsWith('FAIL')).length;
   out(`${log.join('\n')}\n${failed ? `\n${failed} FAILED` : '\nAll e2e checks passed.'}`);
 }

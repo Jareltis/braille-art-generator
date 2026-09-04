@@ -116,6 +116,15 @@
 
     /* one DOM tree; the mode only decides what is on screen */
     [data-mode="simple"] [data-advanced] { display: none !important; }
+    [data-source="image"] [data-source-text] { display: none !important; }
+    [data-source="text"] [data-source-image] { display: none !important; }
+
+    textarea {
+      width: 100%; min-height: 74px; padding: 8px 9px; resize: vertical;
+      color: inherit; background: rgba(0, 0, 0, 0.26);
+      border: 1px solid var(--line); border-radius: 8px;
+      font: inherit; font-size: 15px; line-height: 1.35;
+    }
 
     .field { margin-bottom: 13px; }
     .field:last-child { margin-bottom: 0; }
@@ -337,7 +346,7 @@
   </style>
 </head>
 <body>
-  <div class="app" id="app" data-mode="simple" data-layout="grid">
+  <div class="app" id="app" data-mode="simple" data-layout="grid" data-source="image">
 
     <header class="topbar">
       <div class="brand">Braille&nbsp;<span>Art</span>&nbsp;Generator</div>
@@ -360,8 +369,38 @@
       <aside class="sidebar">
 
         <div class="field">
-          <label for="file">Изображение</label>
-          <input id="file" type="file" accept="image/*">
+          <label for="sourceKind">Источник</label>
+          <select id="sourceKind">
+            <option value="image">Изображение</option>
+            <option value="text">Текст</option>
+          </select>
+        </div>
+
+        <div data-source-image>
+          <div class="field">
+            <label for="file">Файл</label>
+            <input id="file" type="file" accept="image/*">
+          </div>
+        </div>
+
+        <div data-source-text>
+          <div class="field">
+            <label for="textInput">Надпись</label>
+            <textarea id="textInput" rows="2" spellcheck="false">ПРИВЕТ</textarea>
+          </div>
+          <div class="field row">
+            <div>
+              <label for="textFont">Шрифт</label>
+              <select id="textFont"></select>
+            </div>
+            <div>
+              <label>Начертание</label>
+              <div class="check">
+                <input id="textBold" type="checkbox" checked>
+                <label for="textBold">Жирное</label>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div class="field buttons">
