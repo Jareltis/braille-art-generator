@@ -30,6 +30,7 @@ only ever hands out static files.
 | **Image adjustment** | brightness, contrast, saturation, sharpness |
 | **Output** | width and height in cells, proportions kept automatically, inversion |
 | **Presets** | photographs, line art, logos, pixel art — each sets every control it covers |
+| **Detect the kind** | measures the picture and picks the preset for it, saying which way it went |
 | **Targets** | message limit in view, copying inside a code fence, width measured against your own client |
 | **Fitting** | trim blank margins, find the widest size that fits, split into several messages |
 | **Source** | a file, lettering in large braille type, the camera, or a drawing |
@@ -216,6 +217,40 @@ Below 1 the flat-field response is `l·(1−τ)` — proportional to brightness 
 an even mid-grey answers with ink and dark areas silt up with strokes that are
 not edges.
 
+### Which kind of picture is this
+
+Choosing between the presets means knowing which one applies, which is a
+question about the picture rather than about the person holding it. **Detect
+automatically** measures the picture and applies the preset that fits, and says
+which one it settled on, because it is a guess and a guess should be
+overrulable.
+
+Four measurements do the work, and each threshold sits in the middle of a
+measured gap rather than snug against one edge:
+
+- **Repeated columns.** Pixel art is nearly always shown enlarged, and
+  enlarging without smoothing duplicates every column: 96% of them, and still
+  88% after the file has been through JPEG. A logo built of flat shapes reaches
+  54%, a line drawing 21%, and six photographs 0–6%.
+- **The ends of the scale.** Ink on paper lives at black and white: 77% of a
+  logo and 90% of a line drawing sit near one end or the other, against 2–37%
+  for everything photographic.
+- **How much answers strongly.** That separates a drawing from a logo once both
+  are known to be ink: a drawing is mostly strokes and a logo mostly fill —
+  16% against 3%.
+- Anything else is a photograph, which is both the commonest thing brought here
+  and the least damaged by the guess being wrong.
+
+The sample behind those numbers is small and honest about it: six photographs
+and drawings, plus synthetic pixel art, a synthetic logo and a synthetic line
+drawing, each also measured after a round trip through JPEG. Three of the four
+kinds therefore rest on synthetic evidence.
+
+One earlier feature was measured and dropped. Regularity of the spacing between
+column changes reads 100% on clean pixel art and 0% on the same image saved once
+as JPEG, because compression scatters extra changes between the block
+boundaries. A feature that a single save destroys is worse than no feature.
+
 ### Colour
 
 A braille cell is a single glyph and can carry one colour however many of its
@@ -370,6 +405,7 @@ src/
     adjust.js         tone and unsharp masking
     pixels.js         luma, clamping, fitting, cell geometry
     presets.js        control values per kind of image
+    classify.js       which of those kinds a picture is
   worker/
     pipeline.worker.js  the same core modules, off the main thread
     protocol.js         pixels across the thread boundary

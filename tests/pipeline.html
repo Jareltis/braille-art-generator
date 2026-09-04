@@ -3,6 +3,18 @@
 <head><meta charset="utf-8"><title>0.2 smoke</title></head>
 <body>
 <pre id="r">running</pre>
+<script>
+// Registered before the module below, and separate from it on purpose: a module
+// that fails to parse never runs its own handlers, and the run then dies as a
+// bare timeout with nothing said. This turns that into a message.
+window.addEventListener('error', (event) => {
+  const where = event.filename ? ` at ${event.filename}:${event.lineno}` : '';
+  fetch('/result', { method: 'POST', body: `THREW: ${event.message}${where}` });
+});
+window.addEventListener('unhandledrejection', (event) => {
+  fetch('/result', { method: 'POST', body: `REJECTION: ${event.reason?.stack ?? event.reason}` });
+});
+</script>
 <script type="module">
 import { binarize, encode, imageDataToBraille, toLuminance, tonePlane, trimBlank } from '../src/core/braille.js';
 import { DITHER_METHODS, DEFAULT_DITHER } from '../src/core/dither.js';
@@ -13,6 +25,7 @@ import { applyAdjustments } from '../src/core/adjust.js';
 import { gaussianBlur } from '../src/core/blur.js';
 import { sobel, xdog, applyEdges, gradient, thin, lineMap, structureMap, hysteresis, responseAt, cleanThresholds } from '../src/core/edges.js';
 import { CONTENT_PRESETS } from '../src/core/presets.js';
+import { IMAGE_KINDS, classifyImage, imageFeatures } from '../src/core/classify.js';
 import { EDGE_MODES } from '../src/core/edges.js';
 import { createCanvas, drawScaled, readImageData } from '../src/ui/canvas.js';
 import { STRUCTURE_FULL, reduceMax, reduceStats, withDetail } from '../src/core/sample.js';
@@ -1063,6 +1076,110 @@ async function run() {
   let identical = true;
   for (let i = 0; i < preview.data.length; i++) if (preview.data[i] !== expectedPreview.data[i]) identical = false;
   check('worker preview matches main thread', identical, true);
+
+  // --- what kind of picture is this ----------------------------------------
+  // Four kinds, and the sample they were calibrated on is small and partly
+  // synthetic. So each check states the margin it passed by: a rule that only
+  // just holds is a rule about this fixture rather than about pictures.
+  {
+    const painted = (w, h, paint) => {
+      const canvas = createCanvas(w, h);
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      paint(ctx, w, h);
+      return readImageData(canvas);
+    };
+
+    const pixelArt = () => {
+      const small = createCanvas(16, 16);
+      const s = small.getContext('2d');
+      const palette = ['#1b1b2f', '#e94560', '#f5f5f5', '#16213e', '#0f3460'];
+      for (let y = 0; y < 16; y++) {
+        for (let x = 0; x < 16; x++) {
+          s.fillStyle = palette[(x * 3 + y * 5 + ((x * y) % 4)) % palette.length];
+          s.fillRect(x, y, 1, 1);
+        }
+      }
+      return painted(256, 256, (ctx, w, h) => {
+        // Sharp, as pixel art is always shown: this is the evidence itself.
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(small, 0, 0, w, h);
+      });
+    };
+
+    const logo = () => painted(256, 256, (ctx, w, h) => {
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h);
+      ctx.fillStyle = '#2b6cb0'; ctx.beginPath(); ctx.arc(128, 110, 70, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(128, 110, 35, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#1a202c'; ctx.fillRect(60, 200, 136, 23);
+    });
+
+    const drawing = () => painted(256, 256, (ctx, w, h) => {
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h);
+      ctx.strokeStyle = '#111111'; ctx.lineWidth = 2;
+      for (let i = 0; i < 14; i++) {
+        ctx.beginPath();
+        ctx.moveTo(20 + i * 6, 30);
+        ctx.bezierCurveTo(200, 50 + i * 10, 40, 150 + i * 4, 230 - i * 5, 230);
+        ctx.stroke();
+      }
+      for (let i = 0; i < 30; i++) {
+        ctx.beginPath(); ctx.moveTo(30, 40 + i * 3); ctx.lineTo(100, 45 + i * 3); ctx.stroke();
+      }
+    });
+
+    // Continuous tone with texture everywhere, which is what a photograph is
+    // to every one of these measures.
+    const photo = () => painted(256, 256, (ctx, w, h) => {
+      const image = ctx.createImageData(w, h);
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const i = (y * w + x) * 4;
+          const shade = 90 + 60 * Math.sin(x / 40) * Math.cos(y / 55) + (Math.random() - 0.5) * 50;
+          image.data[i] = shade + 12; image.data[i + 1] = shade; image.data[i + 2] = shade - 18;
+          image.data[i + 3] = 255;
+        }
+      }
+      ctx.putImageData(image, 0, 0);
+    });
+
+    for (const [want, make] of [['pixel', pixelArt], ['logo', logo], ['lineart', drawing], ['photo', photo]]) {
+      const { kind, features } = classifyImage(make());
+      check(`${want} is recognised`, kind, want);
+      ok(`  and by how much: ${want}`, true,
+         `twins ${(features.twins * 100).toFixed(0)}%, ends ${(features.extremes * 100).toFixed(0)}%,`
+         + ` busy ${(features.busy * 100).toFixed(0)}%, flat ${(features.flat * 100).toFixed(0)}%`);
+    }
+
+    // Every kind the detector can name has a preset to apply.
+    ok('every kind has a preset', IMAGE_KINDS.every((kind) => CONTENT_PRESETS[kind]),
+       IMAGE_KINDS.filter((kind) => !CONTENT_PRESETS[kind]).join(', ') || IMAGE_KINDS.join(', '));
+
+    // Pixel art is known by its repeated columns, and the whole point of the
+    // measurement is that saving the file must not destroy the evidence. An
+    // earlier attempt keyed on the regularity of the spacing instead; it read
+    // 100% clean and 0% after one JPEG, which is why it is not here.
+    const asJpeg = (imageData) => new Promise((resolve) => {
+      const canvas = createCanvas(imageData.width, imageData.height);
+      canvas.getContext('2d').putImageData(imageData, 0, 0);
+      const img = new Image();
+      img.onload = () => {
+        const back = createCanvas(imageData.width, imageData.height);
+        const ctx = back.getContext('2d', { willReadFrequently: true });
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(img, 0, 0);
+        resolve(readImageData(back));
+      };
+      img.src = canvas.toDataURL('image/jpeg', 0.85);
+    });
+    const saved = classifyImage(await asJpeg(pixelArt()));
+    check('and it survives being saved as jpeg', saved.kind, 'pixel');
+
+    // Features stay in their own units whatever comes in.
+    const odd = imageFeatures(painted(1, 40, (ctx) => { ctx.fillStyle = '#888'; ctx.fillRect(0, 0, 1, 40); }));
+    ok('a one-pixel column does not divide by zero',
+       Object.values(odd).every((v) => Number.isFinite(v) && v >= 0 && v <= 1),
+       Object.entries(odd).map(([k, v]) => `${k} ${v.toFixed(2)}`).join(', '));
+  }
 
   const failed = log.filter((l) => l.startsWith('FAIL')).length;
   out(`${log.join('\n')}\n${failed ? `\n${failed} FAILED` : '\nAll pipeline checks passed.'}`);

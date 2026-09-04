@@ -74,6 +74,9 @@ export const en = {
     // --- size and output ---
     'preset.label': 'Kind of image',
     'preset.none': '— leave as is —',
+    'preset.auto': 'Detect automatically',
+    'preset.auto.hint': 'Measures the picture and picks a kind for it. A guess, and it says which way it went — pick a kind by hand to overrule it.',
+    'preset.detected': 'Looks like: {kind}. Its settings are in.',
     'preset.photo': 'Photographs',
     'preset.photo.hint': 'Error diffusion carries half-tones a threshold has no way to show',
     'preset.lineart': 'Drawings, anime, diagrams',

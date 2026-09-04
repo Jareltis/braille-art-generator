@@ -9,6 +9,7 @@ import {
 import { cellHex, colourRuns } from './core/colour.js';
 import { DEFAULT_DITHER } from './core/dither.js';
 import { CONTENT_PRESETS } from './core/presets.js';
+import { classifyImage } from './core/classify.js';
 import { fitWithin } from './core/pixels.js';
 import { createCanvas, drawScaled, putImageData, readImageData } from './ui/canvas.js';
 import { bindRange, clampInt, coalesce } from './ui/controls.js';
@@ -429,6 +430,9 @@ function loadFile(file) {
     syncRows();
     dom.srcMeta.textContent = `${image.naturalWidth}×${image.naturalHeight}`;
     setStatus(t('source.loaded', { w: image.naturalWidth, h: image.naturalHeight }));
+    // A new picture is a new question, so the detector answers it again --
+    // after the loaded message, whose place it takes.
+    if (dom.preset.value === AUTO_PRESET) detectPreset();
     schedulePreview();
     scheduleRender();
   }, { once: true });
@@ -495,11 +499,52 @@ function updateMeta(text, sampled = null) {
   dom.meta.classList.toggle('over', over);
 }
 
+/** Not a preset but a way of choosing one, so it lives beside them, not among them. */
+const AUTO_PRESET = 'auto';
+
+/** How large a raster the detector reads. Enough to judge by, cheap to make. */
+const STUDY_SIZE = 384;
+
 function fillPresets() {
   dom.preset.replaceChildren(new Option(t('preset.none'), ''));
+  dom.preset.append(new Option(t('preset.auto'), AUTO_PRESET));
   for (const key of Object.keys(CONTENT_PRESETS)) {
     dom.preset.append(new Option(t(`preset.${key}`), key));
   }
+}
+
+const hintFor = (key) => {
+  if (key === AUTO_PRESET) return t('preset.auto.hint');
+  return CONTENT_PRESETS[key] ? t(`preset.${key}.hint`) : '';
+};
+
+/**
+ * Look at the picture, and set the controls the way its kind wants them.
+ *
+ * The answer is announced rather than applied quietly: it is a guess, and a
+ * guess that says what it saw can be overruled by picking a kind by hand.
+ */
+function detectPreset() {
+  dom.presetHint.textContent = hintFor(AUTO_PRESET);
+  if (!source) return null;
+
+  const scale = Math.min(1, STUDY_SIZE / Math.max(sourceW(), sourceH()));
+  // Sharp scaling on purpose. Smoothing would blur away the repeated columns
+  // that give enlarged pixel art away, which is the one thing it is known by.
+  const study = drawScaled(
+    source,
+    Math.max(8, Math.round(sourceW() * scale)),
+    Math.max(8, Math.round(sourceH() * scale)),
+    backgroundFor(isInverted()),
+    { smooth: false, crop: cropRect },
+  );
+
+  const { kind } = classifyImage(readImageData(study));
+  applyPreset(kind);
+  // applyPreset writes that kind's own hint; the chosen kind is still auto.
+  dom.presetHint.textContent = hintFor(AUTO_PRESET);
+  setStatus(t('preset.detected', { kind: t(`preset.${kind}`) }), 'info');
+  return kind;
 }
 
 /**
@@ -508,7 +553,7 @@ function fillPresets() {
  */
 function applyPreset(key) {
   const preset = CONTENT_PRESETS[key];
-  dom.presetHint.textContent = preset ? t(`preset.${key}.hint`) : '';
+  dom.presetHint.textContent = hintFor(key);
   if (!preset) return;
 
   const chosen = preset.settings;
@@ -649,7 +694,7 @@ function applySettings(values) {
   if (typeof values.smooth === 'boolean') smoothScaling = values.smooth;
 
   setLayout(dom.layout.value);
-  dom.presetHint.textContent = CONTENT_PRESETS[dom.preset.value] ? t(`preset.${dom.preset.value}.hint`) : '';
+  dom.presetHint.textContent = hintFor(dom.preset.value);
 }
 
 function resetEverything() {
@@ -1179,7 +1224,10 @@ function init() {
   dom.textFont.addEventListener('change', () => { useTextSource(); persist(); });
   dom.textBold.addEventListener('change', () => { useTextSource(); persist(); });
 
-  dom.preset.addEventListener('change', () => applyPreset(dom.preset.value));
+  dom.preset.addEventListener('change', () => {
+    if (dom.preset.value === AUTO_PRESET) detectPreset();
+    else applyPreset(dom.preset.value);
+  });
   dom.platform.addEventListener('change', () => {
     syncPlatform();
     changed({ affectsPreview: false });

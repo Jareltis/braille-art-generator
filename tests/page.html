@@ -4,6 +4,18 @@
 <body>
 <pre id="r">running</pre>
 <iframe id="f" style="width:1280px;height:900px;border:0"></iframe>
+<script>
+// Registered before the module below, and separate from it on purpose: a module
+// that fails to parse never runs its own handlers, and the run then dies as a
+// bare timeout with nothing said. This turns that into a message.
+window.addEventListener('error', (event) => {
+  const where = event.filename ? ` at ${event.filename}:${event.lineno}` : '';
+  fetch('/result', { method: 'POST', body: `THREW: ${event.message}${where}` });
+});
+window.addEventListener('unhandledrejection', (event) => {
+  fetch('/result', { method: 'POST', body: `REJECTION: ${event.reason?.stack ?? event.reason}` });
+});
+</script>
 <script type="module">
 const log = [];
 const out = (t) => {
@@ -332,6 +344,54 @@ async function run() {
      `${overlay?.querySelector('canvas')?.width}px`);
   overlay?.click();
   check('clicking again closes it', frame.contentDocument.querySelector('.inspect'), null);
+
+  mark('the kind of picture is detected');
+  // --- the kind of picture is detected --------------------------------------
+  // Auto is not a preset but a way of choosing one, so what it must do is set
+  // the same controls the chosen kind sets and say which kind it chose.
+  {
+    const strokes = async () => {
+      const c = document.createElement('canvas');
+      c.width = 240; c.height = 240;
+      const cx = c.getContext('2d');
+      cx.fillStyle = '#ffffff'; cx.fillRect(0, 0, 240, 240);
+      cx.strokeStyle = '#111111'; cx.lineWidth = 2;
+      for (let i = 0; i < 14; i++) {
+        cx.beginPath();
+        cx.moveTo(20 + i * 6, 30);
+        cx.bezierCurveTo(190, 50 + i * 10, 40, 150 + i * 4, 220 - i * 5, 220);
+        cx.stroke();
+      }
+      for (let i = 0; i < 30; i++) {
+        cx.beginPath(); cx.moveTo(30, 40 + i * 3); cx.lineTo(100, 45 + i * 3); cx.stroke();
+      }
+      const b = await new Promise((r) => c.toBlob(r, 'image/png'));
+      return new File([b], 'drawing.png', { type: 'image/png' });
+    };
+
+    // frame.contentWindow rather than the win binding declared further down:
+    // this file is one long scope, and reaching forward into it is a dead zone.
+    const page = frame.contentWindow;
+    const dropped = new page.DataTransfer();
+    dropped.items.add(await strokes());
+    page.dispatchEvent(new page.DragEvent('drop', { dataTransfer: dropped, bubbles: true, cancelable: true }));
+    ok('a drawing loads', await until(() => $('srcMeta').textContent === '240×240'),
+       `srcMeta = ${$('srcMeta').textContent}`);
+
+    $('preset').value = 'auto';
+    $('preset').dispatchEvent(new Event('change', { bubbles: true }));
+
+    const named = [...$('preset').options].find((option) => option.value === 'lineart').text;
+    ok('it says which kind it settled on',
+       await until(() => $('status').textContent.includes(named)), $('status').textContent);
+    check('and sets the method that kind wants', $('dither').value, 'threshold');
+    check('and its detector', $('edgeMode').value, 'xdog');
+    // The choice on the dropdown is still auto: a kind was applied, not picked.
+    check('the choice stays on auto', $('preset').value, 'auto');
+    ok('and the hint explains auto, not the kind it found',
+       $('presetHint').textContent.length > 0 && !$('presetHint').textContent.includes('XDoG'),
+       $('presetHint').textContent);
+  }
 
   mark('every setting travels');
   // --- every setting travels ----------------------------------------------
