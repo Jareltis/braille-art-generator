@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>index.html e2e</title></head>
+<body>
+<pre id="r">running</pre>
+<iframe id="f" src="../index.html" style="width:1200px;height:900px;border:0"></iframe>
+<script type="module">
+const log = [];
+const out = (t) => {
+  document.getElementById('r').textContent = t;
+  fetch('/result', { method: 'POST', body: t });
+};
+const check = (name, got, want) => log.push(`${got === want ? 'PASS' : 'FAIL'}  ${name}: ${got}${got === want ? '' : ` (want ${want})`}`);
+const ok = (name, cond, detail = '') => log.push(`${cond ? 'PASS' : 'FAIL'}  ${name}${detail ? ': ' + detail : ''}`);
+
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+async function until(fn, timeout = 15000) {
+  const start = Date.now();
+  while (Date.now() - start < timeout) {
+    if (fn()) return true;
+    await wait(100);
+  }
+  return false;
+}
+
+async function run() {
+  const frame = document.getElementById('f');
+  await new Promise((r) => frame.addEventListener('load', r, { once: true }));
+  const doc = frame.contentDocument;
+  const $ = (id) => doc.getElementById(id);
+
+  await until(() => $('status').textContent.length > 0);
+  ok('page initialises', $('status').textContent.length > 0, $('status').textContent);
+  ok('worker is in use on the real page', $('status').textContent.includes('фоновом потоке'));
+  check('height field starts derived', $('outHeight').disabled, true);
+  check('default method is floyd-steinberg', $('dither').value, 'floyd-steinberg');
+
+  // Build a 200x100 gradient and hand it to the real file input.
+  const c = document.createElement('canvas');
+  c.width = 200; c.height = 100;
+  const ctx = c.getContext('2d');
+  const grad = ctx.createLinearGradient(0, 0, 200, 100);
+  grad.addColorStop(0, '#000'); grad.addColorStop(1, '#fff');
+  ctx.fillStyle = grad; ctx.fillRect(0, 0, 200, 100);
+  const blob = await new Promise((r) => c.toBlob(r, 'image/png'));
+
+  const dt = new DataTransfer();
+  dt.items.add(new File([blob], 'gradient.png', { type: 'image/png' }));
+  $('file').files = dt.files;
+  $('file').dispatchEvent(new Event('change', { bubbles: true }));
+
+  // Nothing was clicked: the art must appear on its own.
+  const appeared = await until(() => $('output').textContent.length > 0);
+  ok('art generates automatically after load, with no click', appeared);
+
+  const art = $('output').textContent;
+  const lines = art.split('\n');
+  check('width matches the field', lines[0].length, Number($('outWidth').value));
+  check('height matches the field', lines.length, Number($('outHeight').value));
+  // 200x100 source at 80 cols: rows follow the measured glyph aspect
+  ok('rows derived from the 2:1 source', lines.length > 15 && lines.length < 30, `${lines.length} rows`);
+  ok('meta line filled in', /символов/.test($('meta').textContent), $('meta').textContent);
+  ok('output is real braille', /^[⠀-⣿]+$/.test(lines[0]));
+  ok('gradient produced varied density', new Set(art.replace(/\n/g, '')).size > 10,
+     `${new Set(art.replace(/\n/g, '')).size} distinct glyphs`);
+  log.push(`INFO  row 8: ${lines[8].slice(0, 30)}`);
+
+  // Changing a control must re-render without touching the button.
+  const before = $('output').textContent;
+  $('dither').value = 'bayer4';
+  $('dither').dispatchEvent(new Event('change', { bubbles: true }));
+  const changed = await until(() => $('output').textContent !== before);
+  ok('switching method re-renders live', changed);
+  log.push(`INFO  bayer4 row 8: ${$('output').textContent.split('\n')[8].slice(0, 30)}`);
+
+  // Auto threshold
+  const beforeThreshold = $('threshold').value;
+  $('autoThreshold').click();
+  const picked = await until(() => $('threshold').value !== beforeThreshold || /подобран/.test($('status').textContent));
+  ok('auto threshold responds', picked, `${beforeThreshold} -> ${$('threshold').value}`);
+
+  // Preview canvases must have been painted at the source size
+  check('source preview sized from the image', $('srcCanvas').width, 200);
+  check('adjusted preview sized from the image', $('editCanvas').width, 200);
+  ok('generator preview is the cell grid', $('resCanvas').width === Number($('outWidth').value) * 2,
+     `${$('resCanvas').width}x${$('resCanvas').height}`);
+
+  const failed = log.filter((l) => l.startsWith('FAIL')).length;
+  out(`${log.join('\n')}\n${failed ? `\n${failed} FAILED` : '\nAll e2e checks passed.'}`);
+}
+
+run().catch((err) => out(`THREW: ${err?.stack ?? err}\n\n--- progress ---\n${log.join('\n')}`));
+</script>
+</body>
+</html>

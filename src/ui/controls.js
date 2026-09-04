@@ -42,6 +42,10 @@ export function bindRange(input, readout, { decimals = 0, onChange } = {}) {
   return {
     input,
     get value() { return Number.parseFloat(input.value); },
+    set(value) {
+      input.value = value;
+      sync();
+    },
     reset() {
       input.value = input.defaultValue;
       sync();

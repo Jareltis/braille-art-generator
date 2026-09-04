@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>0.2 smoke</title></head>
+<body>
+<pre id="r">running</pre>
+<script type="module">
+import { binarize, imageDataToBraille, toLuma } from '../src/core/braille.js';
+import { DITHER_METHODS, DEFAULT_DITHER } from '../src/core/dither.js';
+import { otsuThreshold } from '../src/core/otsu.js';
+import { applyAdjustments } from '../src/core/adjust.js';
+import { createPipeline } from '../src/ui/pipeline.js';
+
+const out = (t) => {
+  document.getElementById('r').textContent = t;
+  fetch('/result', { method: 'POST', body: t });
+};
+const log = [];
+const check = (name, got, want) => log.push(`${got === want ? 'PASS' : 'FAIL'}  ${name}: ${got}${got === want ? '' : ` (want ${want})`}`);
+const near = (name, got, lo, hi) => log.push(`${got >= lo && got <= hi ? 'PASS' : 'FAIL'}  ${name}: ${got.toFixed(3)} (want ${lo}..${hi})`);
+const coverage = (bits) => bits.reduce((a, b) => a + b, 0) / bits.length;
+
+window.addEventListener('error', (e) => out(`WINDOW ERROR: ${e.message}\n${e.error?.stack ?? ''}\n\n--- progress ---\n${log.join('\n')}`));
+window.addEventListener('unhandledrejection', (e) => out(`UNHANDLED REJECTION: ${e.reason?.stack ?? e.reason}\n\n--- progress ---\n${log.join('\n')}`));
+
+async function run() {
+  const W = 64, H = 64;
+  const flat = (v) => { const p = new Float32Array(W * H); p.fill(v); return p; };
+
+  // --- the point of dithering: render a tone a threshold cannot ------------
+  const gray64 = flat(64);
+  check('hard threshold cannot render 25% gray', coverage(DITHER_METHODS.threshold(gray64, W, H, 128)), 0);
+  near('floyd-steinberg renders 25% gray', coverage(DITHER_METHODS['floyd-steinberg'](gray64, W, H, 128)), 0.20, 0.30);
+  near('bayer4 renders 25% gray', coverage(DITHER_METHODS.bayer4(gray64, W, H, 128)), 0.20, 0.30);
+  near('atkinson renders a mid tone', coverage(DITHER_METHODS.atkinson(gray64, W, H, 128)), 0.10, 0.35);
+
+  const gray192 = flat(192);
+  check('hard threshold saturates 75% gray', coverage(DITHER_METHODS.threshold(gray192, W, H, 128)), 1);
+  near('floyd-steinberg renders 75% gray', coverage(DITHER_METHODS['floyd-steinberg'](gray192, W, H, 128)), 0.70, 0.80);
+
+  // --- a linear ramp must come out roughly half lit ------------------------
+  const ramp = new Float32Array(W * H);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) ramp[y * W + x] = (x / (W - 1)) * 255;
+  for (const name of Object.keys(DITHER_METHODS)) {
+    near(`${name}: gradient coverage`, coverage(DITHER_METHODS[name](ramp, W, H, 128)), 0.42, 0.58);
+  }
+
+  // --- bayer is position-only; error diffusion is not ----------------------
+  const full = DITHER_METHODS.bayer4(ramp, W, H, 128);
+  const firstRows = DITHER_METHODS.bayer4(ramp.slice(0, W * 4), W, 4, 128);
+  let same = true;
+  for (let i = 0; i < W * 4; i++) if (full[i] !== firstRows[i]) same = false;
+  check('bayer4 depends only on position', same, true);
+
+  // --- inversion is an exact complement ------------------------------------
+  const normal = binarize(ramp, W, H, { threshold: 128, invert: false, method: 'atkinson' });
+  const flipped = binarize(ramp, W, H, { threshold: 128, invert: true, method: 'atkinson' });
+  let complement = true;
+  for (let i = 0; i < normal.length; i++) if (normal[i] === flipped[i]) complement = false;
+  check('invert is an exact complement', complement, true);
+
+  check('unknown method rejected', (() => {
+    try { binarize(ramp, W, H, { method: 'nope' }); return false; } catch (e) { return e instanceof RangeError; }
+  })(), true);
+  check('default method', DEFAULT_DITHER, 'floyd-steinberg');
+
+  // --- Otsu ----------------------------------------------------------------
+  const bimodal = new Float32Array(W * H);
+  for (let i = 0; i < bimodal.length; i++) bimodal[i] = i % 2 ? 200 : 50;
+  near('otsu splits 50/200 between the modes', otsuThreshold(bimodal), 50, 199);
+  check('otsu on a flat plane stays in range', otsuThreshold(flat(77)) >= 0, true);
+
+  // --- worker must agree with the main thread exactly ----------------------
+  const pipe = createPipeline();
+  check('worker is available', pipe.offThread, true);
+
+  const makeImage = () => {
+    const img = new ImageData(W, H);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const i = (y * W + x) * 4, v = Math.round(((x + y) / (W + H - 2)) * 255);
+      img.data[i] = img.data[i + 1] = img.data[i + 2] = v; img.data[i + 3] = 255;
+    }
+    return img;
+  };
+  const params = { brightness: 10, contrast: 20, saturation: 0, sharpness: 1.5 };
+  const options = { threshold: 120, invert: false, method: 'atkinson' };
+
+  const expectedText = imageDataToBraille(applyAdjustments(makeImage(), params), options);
+  const fromWorker = await pipe.generate(makeImage(), params, options);
+  check('worker output matches main thread byte for byte', fromWorker.text === expectedText, true);
+  check('worker returns the pixels it encoded', fromWorker.pixels.width, W);
+  log.push(`INFO  sample row: ${fromWorker.text.split('\n')[8].slice(0, 24)}`);
+
+  const expectedOtsu = otsuThreshold(toLuma(applyAdjustments(makeImage(), params)));
+  check('worker otsu matches main thread', await pipe.otsu(makeImage(), params), expectedOtsu);
+
+  // --- preview round-trip through the worker -------------------------------
+  await pipe.setPreview(makeImage());
+  const preview = await pipe.preview(params);
+  check('worker preview returns full-size pixels', preview.width * preview.height, W * H);
+  const expectedPreview = applyAdjustments(makeImage(), params);
+  let identical = true;
+  for (let i = 0; i < preview.data.length; i++) if (preview.data[i] !== expectedPreview.data[i]) identical = false;
+  check('worker preview matches main thread', identical, true);
+
+  const failed = log.filter((l) => l.startsWith('FAIL')).length;
+  out(`${log.join('\n')}\n${failed ? `\n${failed} FAILED` : '\nAll 0.2 checks passed.'}`);
+}
+
+run().catch((err) => out(`THREW: ${err?.stack ?? err}\n\n--- progress ---\n${log.join('\n')}`));
+</script>
+</body>
+</html>

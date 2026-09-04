@@ -2,6 +2,7 @@
 // The encoder. No DOM, no canvas: ImageData in, text out.
 
 import { luma } from './pixels.js';
+import { DITHER_METHODS, DEFAULT_DITHER } from './dither.js';
 
 /**
  * U+2800 BRAILLE PATTERN BLANK. An empty cell is still a braille glyph rather
@@ -30,8 +31,6 @@ const DOT_BITS = Object.freeze([
   Object.freeze([3, 4, 5, 7]), // dots 4, 5, 6, 8
 ]);
 
-export const BINARIZE_METHODS = Object.freeze(['threshold']);
-
 /** ImageData to one luma sample per pixel, 0..255. */
 export function toLuma(imageData) {
   const { data } = imageData;
@@ -45,17 +44,16 @@ export function toLuma(imageData) {
 /**
  * Luma plane to one bit per pixel, 1 meaning "dot raised".
  *
- * Dithering (Floyd-Steinberg, Atkinson, Bayer) plugs in here in 0.2; `method`
- * exists now so callers are already written against the final shape.
+ * The chosen method decides which pixels land on the bright side; inversion is
+ * applied here afterwards, so no dithering method has to know about it.
  */
-export function binarize(plane, { threshold = 128, invert = false, method = 'threshold' } = {}) {
-  if (!BINARIZE_METHODS.includes(method)) {
-    throw new RangeError(`unknown binarize method: ${method}`);
-  }
-  const bits = new Uint8Array(plane.length);
-  for (let p = 0; p < plane.length; p++) {
-    const lit = plane[p] > threshold;
-    bits[p] = (invert ? !lit : lit) ? 1 : 0;
+export function binarize(plane, width, height, { threshold = 128, invert = false, method = DEFAULT_DITHER } = {}) {
+  const dither = DITHER_METHODS[method];
+  if (!dither) throw new RangeError(`unknown dither method: ${method}`);
+
+  const bits = dither(plane, width, height, threshold);
+  if (invert) {
+    for (let i = 0; i < bits.length; i++) bits[i] ^= 1;
   }
   return bits;
 }
@@ -89,14 +87,15 @@ export function bitsToBraille(bits, cols, rows) {
  * grid unambiguous and stops silent cropping of a trailing partial row.
  */
 export function imageDataToBraille(imageData, options = {}) {
-  const cols = imageData.width / CELL_W;
-  const rows = imageData.height / CELL_H;
+  const { width, height } = imageData;
+  const cols = width / CELL_W;
+  const rows = height / CELL_H;
   if (!Number.isInteger(cols) || !Number.isInteger(rows)) {
     throw new RangeError(
-      `image must be a multiple of ${CELL_W}x${CELL_H}, got ${imageData.width}x${imageData.height}`,
+      `image must be a multiple of ${CELL_W}x${CELL_H}, got ${width}x${height}`,
     );
   }
-  return bitsToBraille(binarize(toLuma(imageData), options), cols, rows);
+  return bitsToBraille(binarize(toLuma(imageData), width, height, options), cols, rows);
 }
 
 /**
