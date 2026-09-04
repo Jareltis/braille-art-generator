@@ -12,6 +12,8 @@ import { gaussianBlur } from '../src/core/blur.js';
 import { sobel, xdog, applyEdges } from '../src/core/edges.js';
 import { CONTENT_PRESETS } from '../src/core/presets.js';
 import { EDGE_MODES } from '../src/core/edges.js';
+import { createCanvas, drawScaled, readImageData } from '../src/ui/canvas.js';
+import { FULL_FRAME, isWholeImage } from '../src/ui/crop.js';
 import { brailleToSvg } from '../src/ui/export.js';
 import {
   PLATFORMS, calibrationOf, clearCalibration, forPlatform, messageLength, ruler, saveCalibration,
@@ -209,6 +211,77 @@ async function run() {
      `${doc.documentElement.getAttribute('width')}px wide`);
   check('svg height covers both rows', doc.documentElement.getAttribute('height'), '32');
   ok('svg stays small: it draws lines, not a shape per dot', svg.length < 1000, `${svg.length} bytes`);
+
+  // --- cropping ------------------------------------------------------------
+  // Four flat quadrants, so a selection can be checked by colour alone.
+  const quad = createCanvas(100, 100);
+  const qx = quad.getContext('2d');
+  qx.fillStyle = '#ff0000'; qx.fillRect(0, 0, 50, 50);
+  qx.fillStyle = '#00ff00'; qx.fillRect(50, 0, 50, 50);
+  qx.fillStyle = '#0000ff'; qx.fillRect(0, 50, 50, 50);
+  qx.fillStyle = '#ffffff'; qx.fillRect(50, 50, 50, 50);
+
+  const dominant = (image) => {
+    const seen = new Map();
+    for (let i = 0; i < image.data.length; i += 4) {
+      const key = `${image.data[i]},${image.data[i + 1]},${image.data[i + 2]}`;
+      seen.set(key, (seen.get(key) ?? 0) + 1);
+    }
+    return [...seen.entries()].sort((a, b) => b[1] - a[1])[0];
+  };
+
+  const whole = readImageData(drawScaled(quad, 20, 20, '#000000'));
+  const topLeft = readImageData(drawScaled(quad, 20, 20, '#000000', { crop: { x: 0, y: 0, w: 0.5, h: 0.5 } }));
+  const bottomRight = readImageData(drawScaled(quad, 20, 20, '#000000', { crop: { x: 0.5, y: 0.5, w: 0.5, h: 0.5 } }));
+
+  check('the top-left selection is entirely red', dominant(topLeft)[0], '255,0,0');
+  check('nothing but the selection survives', dominant(topLeft)[1], 400);
+  check('the bottom-right selection is entirely white', dominant(bottomRight)[0], '255,255,255');
+  ok('no selection keeps all four quadrants', dominant(whole)[1] < 400,
+     `largest run ${dominant(whole)[1]} of 400`);
+
+  // A selection is cut from the original before any scaling, so detail is not
+  // first thrown away and then magnified.
+  const detail = createCanvas(400, 400);
+  const dx = detail.getContext('2d');
+  dx.fillStyle = '#000'; dx.fillRect(0, 0, 400, 400);
+  dx.fillStyle = '#fff';
+  for (let i = 0; i < 40; i++) dx.fillRect(i * 10, 0, 5, 400);
+  const zoomed = readImageData(drawScaled(detail, 40, 40, '#000000', { crop: { x: 0, y: 0, w: 0.1, h: 0.1 } }));
+  const spread = dominant(zoomed);
+  ok('a tight selection is sampled from the original, not from a preview',
+     spread[1] < 1600, `largest flat run ${spread[1]} of 1600`);
+
+  check('FULL_FRAME covers everything', isWholeImage(FULL_FRAME), true);
+  check('null counts as the whole frame', isWholeImage(null), true);
+  check('a real selection does not', isWholeImage({ x: 0.1, y: 0.1, w: 0.5, h: 0.5 }), false);
+
+  // --- offline shell -------------------------------------------------------
+  const manifest = await (await fetch('/manifest.webmanifest')).json();
+  check('the manifest names the app', manifest.name, 'Braille Art Generator');
+  check('the manifest opens standalone', manifest.display, 'standalone');
+  check('the manifest scopes itself relatively', manifest.scope, './');
+  ok('the manifest offers a maskable icon',
+     manifest.icons.some((icon) => icon.purpose === 'maskable'));
+
+  const swSource = await (await fetch('/sw.js')).text();
+  const listed = [...swSource.matchAll(/'(\.\/[^']*)'/g)].map((m) => m[1].replace('./', '/'));
+  ok('the service worker precaches the whole shell', listed.length > 15, `${listed.length} entries`);
+
+  // Every precached URL must actually exist, or install() rejects and the app
+  // silently never works offline.
+  const statuses = await Promise.all(listed.map(async (url) => {
+    const response = await fetch(url, { method: 'GET' });
+    return { url, ok: response.ok };
+  }));
+  const broken = statuses.filter((entry) => !entry.ok).map((entry) => entry.url);
+  ok('every precached URL resolves', broken.length === 0, broken.join(', ') || `${statuses.length} checked`);
+
+  // The list drifts the moment a module is added, so compare it with what the
+  // page actually imports.
+  const pageSource = await (await fetch('/index.html')).text();
+  ok('the shell list includes the entry module', listed.includes('/src/main.js'));
+  ok('the page links the manifest', pageSource.includes('rel="manifest"'));
 
   // --- worker must agree with the main thread exactly ----------------------
   const pipe = createPipeline();

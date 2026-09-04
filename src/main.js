@@ -13,6 +13,7 @@ import {
   PLATFORMS, calibrationOf, clearCalibration, forPlatform, messageLength, ruler, saveCalibration,
 } from './ui/platforms.js';
 import { clearSettings, loadSettings, saveSettings } from './ui/settings.js';
+import { createCropper } from './ui/crop.js';
 import { createPipeline } from './ui/pipeline.js';
 
 const MAX_COLS = 400;
@@ -34,6 +35,9 @@ const dom = {
   modeSimple: el('modeSimple'),
   modeAdvanced: el('modeAdvanced'),
   layout: el('layout'),
+  cropper: el('cropper'),
+  cropToggle: el('cropToggle'),
+  cropReset: el('cropReset'),
   resetAll: el('resetAll'),
   srcMeta: el('srcMeta'),
   gridMeta: el('gridMeta'),
@@ -83,6 +87,10 @@ let artText = '';
 /** Set by presets rather than by a control of its own: only pixel art wants it
  *  off, and the preset that needs it says so in its hint. */
 let smoothScaling = true;
+
+/** Selected region in fractions of the source, or null for the whole frame. */
+let cropRect = null;
+let cropper = null;
 
 // Requests are answered out of order once they are asynchronous; a reply is
 // only applied while it is still the newest of its kind.
@@ -155,8 +163,16 @@ function syncEdgeControls() {
   controls.edgeRadius.input.disabled = off;
 }
 
+/** Dimensions of what is actually being encoded. */
+function sourceSize() {
+  const w = source.naturalWidth;
+  const h = source.naturalHeight;
+  return cropRect ? { w: w * cropRect.w, h: h * cropRect.h } : { w, h };
+}
+
 function rowsFor(cols) {
-  const onScreen = rowsForAspect(cols, source.naturalWidth, source.naturalHeight, outputMetrics().cellAspect);
+  const area = sourceSize();
+  const onScreen = rowsForAspect(cols, area.w, area.h, outputMetrics().cellAspect);
   // Every chat client sets its own line height, so art that looks right here can
   // arrive stretched. The per-platform scale is the correction, and it is
   // measured by the person sending it rather than guessed here.
@@ -176,14 +192,22 @@ function resolveGrid() {
  */
 async function buildPreviewSource() {
   const background = backgroundFor(isInverted());
-  const { w, h } = fitWithin(source.naturalWidth, source.naturalHeight, PREVIEW_LIMIT.w, PREVIEW_LIMIT.h);
-  const scaled = drawScaled(source, w, h, background, { smooth: smoothScaling });
 
-  dom.srcCanvas.width = w;
-  dom.srcCanvas.height = h;
-  dom.srcCanvas.getContext('2d').drawImage(scaled, 0, 0);
+  // The original pane always shows the whole frame: the crop rectangle needs
+  // something to be drawn against.
+  const whole = fitWithin(source.naturalWidth, source.naturalHeight, PREVIEW_LIMIT.w, PREVIEW_LIMIT.h);
+  const full = drawScaled(source, whole.w, whole.h, background, { smooth: smoothScaling });
+  dom.srcCanvas.width = whole.w;
+  dom.srcCanvas.height = whole.h;
+  dom.srcCanvas.getContext('2d').drawImage(full, 0, 0);
+  cropper?.refresh();
 
-  await pipeline.setPreview(readImageData(scaled));
+  // Everything downstream works on the selection alone.
+  const area = sourceSize();
+  const fit = fitWithin(area.w, area.h, PREVIEW_LIMIT.w, PREVIEW_LIMIT.h);
+  const selected = drawScaled(source, fit.w, fit.h, background, { smooth: smoothScaling, crop: cropRect });
+
+  await pipeline.setPreview(readImageData(selected));
   previewBackground = background;
   previewReady = true;
 }
@@ -214,7 +238,7 @@ async function render() {
   // Sample the ORIGINAL straight to the grid size. Generation used to run off
   // the <=800x600 preview, so anything larger was upscaled from detail that had
   // already been thrown away.
-  const target = drawScaled(source, cols * CELL_W, rows * CELL_H, backgroundFor(isInverted()), { smooth: smoothScaling });
+  const target = drawScaled(source, cols * CELL_W, rows * CELL_H, backgroundFor(isInverted()), { smooth: smoothScaling, crop: cropRect });
 
   const token = ++generateToken;
   const { text, pixels } = await pipeline.generate(readImageData(target), readAdjustments(), readOptions());
@@ -280,6 +304,8 @@ function loadFile(file) {
     source = image;
     sourceUrl = url;
     previewReady = false;
+    cropRect = null;
+    cropper?.set(null);
     syncRows();
     dom.srcMeta.textContent = `${image.naturalWidth}×${image.naturalHeight}`;
     setStatus(`Загружено ${image.naturalWidth}\u00d7${image.naturalHeight} px, считаю\u2026`);
@@ -309,7 +335,7 @@ async function autoThreshold() {
   const { cols, rows } = resolveGrid();
   // Measure the histogram of the pixels that will actually be encoded, not of
   // the preview -- downscaling changes the distribution.
-  const target = drawScaled(source, cols * CELL_W, rows * CELL_H, backgroundFor(isInverted()), { smooth: smoothScaling });
+  const target = drawScaled(source, cols * CELL_W, rows * CELL_H, backgroundFor(isInverted()), { smooth: smoothScaling, crop: cropRect });
   const threshold = await pipeline.otsu(readImageData(target), readAdjustments());
   controls.threshold.set(threshold);
   setStatus(`Порог подобран: ${threshold}.`, 'ok');
@@ -589,6 +615,22 @@ function inspect(canvasId) {
   document.body.append(overlay);
 }
 
+/**
+ * Offline support.
+ *
+ * Skipped inside a frame: a worker registered from there would be scoped to a
+ * page that is not the app, and the test suite loads index.html in an iframe.
+ * Registration is best-effort -- opened from the filesystem, or with site data
+ * blocked, it simply fails and the app carries on online-only.
+ */
+function registerServiceWorker() {
+  if (!('serviceWorker' in navigator)) return;
+  if (window.top !== window.self) return;
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => { /* offline stays unavailable */ });
+  });
+}
+
 function init() {
   controls.threshold = bindRange(el('threshold'), el('thresholdVal'), { onChange: () => changed({ affectsPreview: false }) });
   controls.brightness = bindRange(el('brightness'), el('brightnessVal'), { onChange: changed });
@@ -654,8 +696,28 @@ function init() {
     persist();
   });
 
+  cropper = createCropper(dom.cropper, dom.srcCanvas, (rect) => {
+    cropRect = rect;
+    previewReady = false;
+    setStatus(rect ? 'Область выбрана.' : 'Взят весь кадр.', 'info');
+    changed();
+  });
+
+  dom.cropToggle.addEventListener('click', () => {
+    const on = !cropper.isActive();
+    cropper.setActive(on);
+    dom.cropToggle.setAttribute('aria-pressed', String(on));
+    if (on) setStatus('Тяните рамку по «Оригиналу», чтобы выбрать область.', 'info');
+  });
+
+  dom.cropReset.addEventListener('click', () => cropper.reset());
+
   for (const shot of document.querySelectorAll('[data-inspect]')) {
-    shot.addEventListener('click', () => inspect(shot.dataset.inspect));
+    shot.addEventListener('click', () => {
+      // While a selection is being dragged, a click means crop, not zoom.
+      if (cropper.isActive() && shot.dataset.inspect === 'srcCanvas') return;
+      inspect(shot.dataset.inspect);
+    });
     shot.addEventListener('keydown', (event) => {
       if (event.key !== 'Enter' && event.key !== ' ') return;
       event.preventDefault();
@@ -665,6 +727,7 @@ function init() {
 
   acceptDroppedFiles();
   acceptPastedImages();
+  registerServiceWorker();
 
   dom.file.addEventListener('change', () => {
     const file = dom.file.files?.[0];

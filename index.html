@@ -3,10 +3,13 @@
 <html lang="ru">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Braille Art Generator</title>
   <meta name="description" content="Генератор арта из символов Unicode Braille. Работает полностью в браузере.">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='13' font-size='14'>⣿</text></svg>">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#072e20">
 
   <style>
     :root {
@@ -48,7 +51,13 @@
       display: grid;
       grid-template-rows: auto minmax(0, 1fr);
       gap: 10px;
-      padding: 10px 12px 12px;
+      /* installed on a phone there is no browser chrome to keep clear of the
+         notch, so the insets have to be honoured here */
+      padding:
+        calc(10px + env(safe-area-inset-top))
+        calc(12px + env(safe-area-inset-right))
+        calc(12px + env(safe-area-inset-bottom))
+        calc(12px + env(safe-area-inset-left));
     }
 
     .topbar {
@@ -233,6 +242,27 @@
       background: rgba(0, 0, 0, 0.32);
       border-radius: 6px;
     }
+    .canvas-wrap { position: relative; min-width: 0; min-height: 0; display: grid; }
+
+    /* ---- crop selection ---- */
+    .cropper { position: absolute; inset: 0; overflow: hidden; cursor: crosshair; touch-action: none; }
+    .crop-frame {
+      position: absolute;
+      border: 1px solid var(--accent);
+      /* one huge spread dims everything outside the selection; the overlay
+         clips it, so no separate mask elements are needed */
+      box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.6);
+      cursor: move;
+    }
+    .crop-handle {
+      position: absolute; width: 11px; height: 11px;
+      background: var(--accent); border: 1px solid rgba(0,0,0,0.45); border-radius: 3px;
+    }
+    .crop-nw { left: -6px; top: -6px; cursor: nwse-resize; }
+    .crop-ne { right: -6px; top: -6px; cursor: nesw-resize; }
+    .crop-sw { left: -6px; bottom: -6px; cursor: nesw-resize; }
+    .crop-se { right: -6px; bottom: -6px; cursor: nwse-resize; }
+    button[aria-pressed="true"] { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
     #resCanvas { image-rendering: pixelated; }
 
     .shot-art { background: var(--art-bg); }
@@ -329,6 +359,11 @@
         <div class="field">
           <label for="file">Изображение</label>
           <input id="file" type="file" accept="image/*">
+        </div>
+
+        <div class="field buttons">
+          <button id="cropToggle" type="button" aria-pressed="false">Обрезать</button>
+          <button id="cropReset" type="button">Весь кадр</button>
         </div>
 
         <div class="field">
@@ -530,7 +565,10 @@
         <div class="panes">
           <figure class="shot" tabindex="0" role="button" data-inspect="srcCanvas" aria-label="Увеличить: оригинал">
             <figcaption><b>Оригинал</b><span id="srcMeta"></span></figcaption>
-            <canvas id="srcCanvas" width="360" height="240"></canvas>
+            <div class="canvas-wrap">
+              <canvas id="srcCanvas" width="360" height="240"></canvas>
+              <div class="cropper" id="cropper" hidden></div>
+            </div>
           </figure>
 
           <figure class="shot" tabindex="0" role="button" data-inspect="editCanvas" aria-label="Увеличить: после коррекции">

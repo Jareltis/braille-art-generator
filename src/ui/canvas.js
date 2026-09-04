@@ -19,24 +19,43 @@ export function context2d(canvas) {
  * The background is laid down first, so transparent pixels composite onto it
  * instead of reading as black.
  *
+ * `crop` selects a region, given in fractions of the source so it does not have
+ * to be recomputed when the preview is drawn at a different size. It is cut at
+ * full resolution before anything is scaled, so cropping costs no detail.
+ *
  * `smooth: false` skips both the halving chain and interpolation. Pixel art
  * needs that: averaging neighbouring pixels is exactly what destroys a grid
  * that was drawn one pixel at a time.
  */
-export function drawScaled(source, w, h, background, { smooth = true } = {}) {
+export function drawScaled(source, w, h, background, { smooth = true, crop = null } = {}) {
+  const sourceW = source.naturalWidth || source.width;
+  const sourceH = source.naturalHeight || source.height;
+
+  let current = source;
+  let cw = sourceW;
+  let ch = sourceH;
+
+  if (crop) {
+    cw = Math.max(1, Math.round(crop.w * sourceW));
+    ch = Math.max(1, Math.round(crop.h * sourceH));
+    const cut = createCanvas(cw, ch);
+    context2d(cut).drawImage(
+      source,
+      crop.x * sourceW, crop.y * sourceH, crop.w * sourceW, crop.h * sourceH,
+      0, 0, cw, ch,
+    );
+    current = cut;
+  }
+
   if (!smooth) {
     const out = createCanvas(w, h);
     const ctx = context2d(out);
     ctx.fillStyle = background;
     ctx.fillRect(0, 0, w, h);
     ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(source, 0, 0, w, h);
+    ctx.drawImage(current, 0, 0, cw, ch, 0, 0, w, h);
     return out;
   }
-
-  let current = source;
-  let cw = source.naturalWidth || source.width;
-  let ch = source.naturalHeight || source.height;
 
   // Bounded: every pass halves at least one axis, so it cannot spin.
   for (let guard = 0; guard < 16 && (cw > w * 2 || ch > h * 2); guard++) {

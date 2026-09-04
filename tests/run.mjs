@@ -60,7 +60,10 @@ const server = createServer(async (req, res) => {
     return;
   }
 
-  const rel = normalize(path).replace(/^[\\/]+/, '');
+  // A static host answers / with index.html; the server has to as well, or
+  // the precache test reports the app's own start_url as broken.
+  const wanted = path.endsWith('/') ? `${path}index.html` : path;
+  const rel = normalize(wanted).replace(/^[\\/]+/, '');
   try {
     const body = await readFile(join(root, rel));
     res.writeHead(200, { 'Content-Type': MIME[extname(rel)] || 'application/octet-stream' });

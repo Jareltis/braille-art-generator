@@ -338,6 +338,87 @@ async function run() {
   check('reset returns the method to the default', $('dither').value, 'floyd-steinberg');
   check('reset returns the layout to 2x2', $('app').dataset.layout, 'grid');
 
+  // --- cropping ------------------------------------------------------------
+  // A wide source, so cropping to a square changes the row count visibly.
+  const wide = new win.DataTransfer();
+  wide.items.add(await makeFile(400, 200, 'wide.png'));
+  win.dispatchEvent(new win.DragEvent('drop', { dataTransfer: wide, bubbles: true, cancelable: true }));
+  await until(() => $('srcMeta').textContent === '400×200');
+  await until(() => $('output').textContent.length > 0);
+
+  const rowsBefore = $('output').textContent.split(String.fromCharCode(10)).length;
+
+  check('the crop overlay is hidden until asked for', $('cropper').hidden, true);
+  check('the crop button starts unpressed', $('cropToggle').getAttribute('aria-pressed'), 'false');
+  $('cropToggle').click();
+  check('the crop button reports being on', $('cropToggle').getAttribute('aria-pressed'), 'true');
+  check('the crop overlay appears', $('cropper').hidden, false);
+
+  // Where the bitmap actually sits inside its box -- object-fit letterboxes it,
+  // so pointer coordinates have to be measured against the picture.
+  const picture = () => {
+    const canvas = $('srcCanvas');
+    const box = canvas.getBoundingClientRect();
+    const ratio = canvas.width / canvas.height;
+    const w = box.width / box.height > ratio ? box.height * ratio : box.width;
+    const h = box.width / box.height > ratio ? box.height : box.width / ratio;
+    return { left: box.left + (box.width - w) / 2, top: box.top + (box.height - h) / 2, w, h };
+  };
+
+  const drag = async (fromX, fromY, toX, toY) => {
+    const area = picture();
+    const at = (fx, fy) => ({
+      clientX: area.left + area.w * fx,
+      clientY: area.top + area.h * fy,
+      pointerId: 1,
+      button: 0,
+      bubbles: true,
+      cancelable: true,
+    });
+    const overlay = $('cropper');
+    overlay.dispatchEvent(new win.PointerEvent('pointerdown', at(fromX, fromY)));
+    overlay.dispatchEvent(new win.PointerEvent('pointermove', at(toX, toY)));
+    overlay.dispatchEvent(new win.PointerEvent('pointerup', at(toX, toY)));
+    await wait(250);
+  };
+
+  // Take a tall slice of the left side. The start point is kept clear of the
+  // corners: within the handle grab radius a drag means "resize", not "draw".
+  await drag(0.02, 0.20, 0.48, 0.98);
+
+  await until(() => $('output').textContent.split(String.fromCharCode(10)).length !== rowsBefore);
+  const rowsCropped = $('output').textContent.split(String.fromCharCode(10)).length;
+  ok('cropping to a taller shape adds rows', rowsCropped > rowsBefore * 1.4,
+     `${rowsBefore} rows before, ${rowsCropped} after`);
+
+  ok('the grid is sampled at the cropped shape',
+     /^(\d+)×(\d+)$/.test($('gridMeta').textContent), $('gridMeta').textContent);
+
+  $('cropReset').click();
+  const rowsRestored = await until(() =>
+    $('output').textContent.split(String.fromCharCode(10)).length === rowsBefore)
+    ? rowsBefore
+    : $('output').textContent.split(String.fromCharCode(10)).length;
+  check('taking the whole frame restores the shape', rowsRestored, rowsBefore);
+
+  // A click without a drag must not select a sliver of nothing.
+  await drag(0.4, 0.4, 0.4, 0.4);
+  check('a bare click keeps the whole frame',
+    $('output').textContent.split(String.fromCharCode(10)).length, rowsBefore);
+
+  $('cropToggle').click();
+  check('the overlay closes again', $('cropper').hidden, true);
+
+  // --- offline shell -------------------------------------------------------
+  ok('the page declares a manifest',
+     frame.contentDocument.querySelector('link[rel="manifest"]') !== null);
+  ok('the page declares a theme colour',
+     frame.contentDocument.querySelector('meta[name="theme-color"]') !== null);
+  // Registering from a frame would scope a worker to a page that is not the
+  // app, so the guard must hold here.
+  check('no service worker is registered from inside a frame',
+    (await win.navigator.serviceWorker?.getRegistrations?.() ?? []).length, 0);
+
   const failed = log.filter((l) => l.startsWith('FAIL')).length;
   out(`${log.join('\n')}\n${failed ? `\n${failed} FAILED` : '\nAll e2e checks passed.'}`);
 }
