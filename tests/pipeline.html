@@ -455,6 +455,35 @@ async function run() {
   const darkCoverage = coverage(DITHER_METHODS['floyd-steinberg'](tonePlane(grey(64), {}).plane, W, H, thresholdToLinear(128)));
   near('a quarter-tone likewise', darkCoverage, 0.03, 0.07);
 
+  // And not only for error diffusion. This was checked for floyd-steinberg
+  // alone, which is how the ordered methods went on pivoting their tile around
+  // a threshold that had moved: from 0.9, when tone went to linear light, until
+  // a scoring experiment ranked them implausibly high and gave them away. A
+  // flat linear 128 was coming out at 81% coverage instead of 50%.
+  {
+    const level = thresholdToLinear(128);
+    for (const [method, slack] of [['floyd-steinberg', 0.02], ['bluenoise', 0.02], ['bayer4', 0.05]]) {
+      for (const value of [26, 128, 204]) {
+        const flat = new Float32Array(W * H).fill(value);
+        const got = coverage(DITHER_METHODS[method](flat, W, H, level, level));
+        near(`${method} holds a flat ${value}`, got, value / 255 - slack, value / 255 + slack);
+      }
+    }
+
+    // Atkinson is the exception and always was: it passes on six eighths of the
+    // error and drops the rest, which is the whole point of it -- more contrast,
+    // cleaner whites, tone deliberately not preserved.
+    const flat = new Float32Array(W * H).fill(153);
+    const atkinsonCoverage = coverage(DITHER_METHODS.atkinson(flat, W, H, level, level));
+    ok('atkinson lightens on purpose', atkinsonCoverage > 153 / 255 + 0.05,
+       `${(atkinsonCoverage * 100).toFixed(0)}% where the tone asks for ${(100 * 153 / 255).toFixed(0)}%`);
+
+    // The control still does something: moved off centre it darkens.
+    const darker = coverage(DITHER_METHODS.bluenoise(flat, W, H, level + 60, level));
+    ok('and the threshold control still bites', darker < 153 / 255 - 0.1,
+       `${(darker * 100).toFixed(0)}% once the control is raised`);
+  }
+
   // Lightness is the perceptual scale: even steps of sRGB give even steps of L*,
   // while linear luminance bends hard. This is why edges are detected in one and
   // dots are counted in the other.

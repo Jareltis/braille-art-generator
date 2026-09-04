@@ -136,7 +136,17 @@ coarse.
   void-and-cluster, spreading thresholds so that no scale carries a repeating
   structure. Error-diffusion texture with position independence.
 - **Bayer 4×4** is the classic ordered matrix, with the crosshatch that comes
-  with it.
+  with it. Its sixteen levels are the reason it holds a flat tone to within
+  about three percent where the others are exact.
+
+In both ordered methods the tile *is* the ladder of thresholds, spanning the
+whole range, so a flat value lands above as many rungs as it is bright and
+coverage comes out equal to the value. The threshold control shifts that ladder
+rather than sitting at its centre: with no error being fed back there is nothing
+to correct a bias, which is exactly how they drifted for nine versions after
+tone moved to linear light — a flat mid-grey came out at 81% coverage instead of
+50%, while error diffusion sailed through the same change because it corrects
+itself.
 - **Local threshold (Sauvola)** picks a threshold per neighbourhood instead of
   one for the frame. A single number cannot serve a photograph lit from one
   side: whatever it is, one end of the frame is crushed.

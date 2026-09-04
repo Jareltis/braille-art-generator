@@ -92,21 +92,34 @@ const BAYER_4 = Object.freeze([
 ]);
 
 /**
- * Ordered dithering: no error travels between pixels, the threshold itself is
- * modulated by a fixed tile. Gives a regular crosshatch instead of the organic
- * grain of error diffusion, and unlike the others it is position-independent,
- * so panning or re-cropping cannot change existing pixels.
+ * Ordered dithering: no error travels between pixels, the tile *is* the ladder
+ * of thresholds. Gives a regular crosshatch instead of the organic grain of
+ * error diffusion, and unlike the others it is position-independent, so panning
+ * or re-cropping cannot change existing pixels.
+ *
+ * The tile spans the whole range, so a flat value lands above exactly as many
+ * of its rungs as the value is bright: coverage equals the value, which is what
+ * reproduces the tone. The control cannot be the centre of that ladder -- with
+ * no error being fed back there is nothing to correct the bias it would add --
+ * so like Sauvola it shifts the ladder instead.
+ *
+ * It used to centre the tile on the threshold, which was right while the plane
+ * was gamma-encoded and the centred control sat at 128. Tone moved to linear
+ * light in 0.9 and the centred control became 55, so the ladder was pivoting a
+ * third of the way up its own range: measured, a flat linear 128 came out at
+ * 81% coverage instead of 50%, and 26 came out at 38% instead of 10%. Error
+ * diffusion survived that move because it feeds its error back; these have no
+ * such second chance, and no test was watching them.
  */
-function bayer4(plane, width, height, threshold) {
+function bayer4(plane, width, height, threshold, neutral = threshold) {
+  const shift = threshold - neutral;
   const bits = new Uint8Array(plane.length);
   for (let y = 0; y < height; y++) {
     const row = (y % 4) * 4;
     for (let x = 0; x < width; x++) {
-      // (m + 0.5) / 16 - 0.5 spans -0.5..0.5; times 255 it reproduces the
-      // canonical full-range ordered dither when threshold is 128.
-      const bias = ((BAYER_4[row + (x % 4)] + 0.5) / 16 - 0.5) * 255;
+      const rung = ((BAYER_4[row + (x % 4)] + 0.5) / 16) * 255;
       const i = y * width + x;
-      bits[i] = plane[i] > threshold + bias ? 1 : 0;
+      bits[i] = plane[i] > rung + shift ? 1 : 0;
     }
   }
   return bits;
@@ -186,15 +199,18 @@ function sauvola(plane, width, height, threshold, neutral = threshold) {
  * scale carries a repeating structure, which removes the crosshatch a Bayer
  * matrix leaves without giving up the position-only property.
  */
-function blueNoise(plane, width, height, threshold) {
+function blueNoise(plane, width, height, threshold, neutral = threshold) {
   const matrix = blueNoiseMatrix();
+  const shift = threshold - neutral;
   const bits = new Uint8Array(plane.length);
   for (let y = 0; y < height; y++) {
     const row = (y % BLUE_NOISE_SIZE) * BLUE_NOISE_SIZE;
     for (let x = 0; x < width; x++) {
-      const bias = (matrix[row + (x % BLUE_NOISE_SIZE)] - 0.5) * 255;
+      // The matrix is already 0..1 across its whole tile, so it is the ladder
+      // itself. See bayer4 for why the control shifts it rather than centring it.
+      const rung = matrix[row + (x % BLUE_NOISE_SIZE)] * 255;
       const i = y * width + x;
-      bits[i] = plane[i] > threshold + bias ? 1 : 0;
+      bits[i] = plane[i] > rung + shift ? 1 : 0;
     }
   }
   return bits;
