@@ -59,9 +59,9 @@ function workerPipeline(worker) {
       const { threshold } = await send('otsu', { image, params, options }, transferOf(image));
       return threshold;
     },
-    async variants(imageData, params, options, want) {
+    async variants(imageData, params, options, want, seed) {
       const image = pack(imageData);
-      const result = await send('variants', { image, params, options, want }, transferOf(image));
+      const result = await send('variants', { image, params, options, want, seed }, transferOf(image));
       return result.variants;
     },
   };
@@ -93,8 +93,8 @@ function inlinePipeline() {
       const chosen = otsuThreshold(plane);
       return Math.round(linear ? linearToThreshold(chosen) : chosen);
     },
-    async variants(imageData, params, options, want) {
-      return variantsOf(applyAdjustments(imageData, params), options, want);
+    async variants(imageData, params, options, want, seed) {
+      return variantsOf(applyAdjustments(imageData, params), options, want, seed);
     },
   };
 }

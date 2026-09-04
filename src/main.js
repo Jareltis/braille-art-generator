@@ -10,7 +10,7 @@ import { cellHex, colourRuns } from './core/colour.js';
 import { DEFAULT_DITHER } from './core/dither.js';
 import { CONTENT_PRESETS } from './core/presets.js';
 import { classifyImage } from './core/classify.js';
-import { VARIANT_RECIPES } from './core/variants.js';
+import { DRAWS_PER_FAMILY, VARIANT_FAMILIES } from './core/variants.js';
 import { fitWithin } from './core/pixels.js';
 import { createCanvas, drawScaled, putImageData, readImageData } from './ui/canvas.js';
 import { bindRange, clampInt, coalesce } from './ui/controls.js';
@@ -782,6 +782,7 @@ function acceptPastedImages() {
 function applyRecipe(recipe) {
   dom.dither.value = recipe.method;
   controls.detail.set(recipe.detail);
+  if (recipe.threshold != null) controls.threshold.set(recipe.threshold);
   dom.edgeMode.value = recipe.edge.mode;
   if (recipe.edge.mode !== 'none') {
     controls.edgeAmount.set(Math.round((recipe.edge.amount ?? 1) * 100));
@@ -913,10 +914,12 @@ async function suggestVariants() {
   const opener = document.activeElement;
 
   dom.suggest.disabled = true;
-  setStatus(t('offer.working', { count: VARIANT_RECIPES.length }));
+  setStatus(t('offer.working', { count: VARIANT_FAMILIES.length * DRAWS_PER_FAMILY }));
   try {
     const offers = await pipeline.variants(
       readImageData(target), readAdjustments(), { ...readOptions(), grid: { cols, rows } }, 4,
+      // A fresh draw every press: pressing again is meant to be worth doing.
+      (Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0,
     );
     dom.suggest.disabled = false;
     showOffers(offers, { opener, onDismiss: () => setStatus(before.text, before.kind) });

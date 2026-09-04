@@ -232,10 +232,27 @@ not edges.
 
 The controls span more combinations than anyone will sit and try, and which one
 suits a given picture is not obvious even to someone who knows what every
-control does. **Suggest** renders a spread of ten recipes, scores each against
-the picture, and puts the best four on the table. Nothing is applied until one
-is taken; Escape leaves everything as it was, down to the message in the status
-line.
+control does. **Suggest** renders a spread, scores each against the picture, and
+puts the best four on the table. Nothing is applied until one is taken; Escape
+leaves everything as it was, down to the message in the status line.
+
+The spread is drawn rather than listed, so pressing again is worth doing. Drawing
+freely from the whole parameter space would mostly produce rubbish, so the draw
+happens inside **families** — ways of working rather than settings: carry the
+half-tones, lay an even grain, cut hard for contrast, threshold locally, draw the
+lines, mix lines with tone. Which family a tile comes from is settled first and
+only its dials are random: method within the family, detail, edge radius and
+weight, and the threshold within about twenty levels of where it stands.
+
+Then the four squares go to four *different* families where it can manage it,
+which is what keeps a press from being the same tool four times with the dials
+nudged. It is a reach, not a promise: a family takes a square only by scoring
+within 55% of the best on the table, and on some pictures only three ever do —
+then the fourth goes to the next best rather than to something nobody would
+choose. Measured over six pictures at both widths, four distinct families came up
+in 33 draws out of 36, and the weakest tile shown never fell below 58% of its
+best. A press costs eighteen encodings, under a second in the worker at these
+sizes.
 
 Scoring is done the way a person does it — by leaning back. Up close the art is
 a field of dots; at a distance the dots merge and either the picture is there or

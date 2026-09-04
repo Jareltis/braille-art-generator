@@ -21,7 +21,7 @@ const RADIUS = 3;
 const INITIAL_FRACTION = 0.1;
 
 /** Deterministic, so the pattern is identical in every session and in tests. */
-function seededRandom(seed) {
+export function seededRandom(seed) {
   let state = seed >>> 0;
   return () => {
     // Numerical Recipes LCG; the top bits are the usable ones.

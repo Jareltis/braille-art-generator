@@ -27,7 +27,11 @@ import { sobel, xdog, applyEdges, gradient, thin, lineMap, structureMap, hystere
 import { CONTENT_PRESETS } from '../src/core/presets.js';
 import { IMAGE_KINDS, classifyImage, imageFeatures } from '../src/core/classify.js';
 import { VIEWING_BLUR, scoreArt, similarity, toneAgreement } from '../src/core/score.js';
-import { DISTINCT, VARIANT_RECIPES, chooseVariants, difference, referenceFor } from '../src/core/variants.js';
+import {
+  DISTINCT, DRAWS_PER_FAMILY, QUALITY_FLOOR, VARIANT_FAMILIES,
+  chooseVariants, difference, referenceFor, sampleRecipes, variantsOf,
+} from '../src/core/variants.js';
+import { seededRandom } from '../src/core/bluenoise.js';
 import { EDGE_MODES } from '../src/core/edges.js';
 import { createCanvas, drawScaled, readImageData } from '../src/ui/canvas.js';
 import { STRUCTURE_FULL, reduceMax, reduceStats, withDetail } from '../src/core/sample.js';
@@ -1269,7 +1273,8 @@ async function run() {
 
     const grid = { cols: 30, rows: 10 };
     const reference = referenceFor(pixels, grid.cols, grid.rows);
-    const chosen = chooseVariants(pixels, { grid, threshold: 128 }, reference, 4);
+    const options = { grid, threshold: 128 };
+    const chosen = chooseVariants(pixels, options, reference, 4, seededRandom(1));
 
     check('four are offered', chosen.length, 4);
     ok('best first', chosen.every((entry, i) => i === 0 || chosen[i - 1].score >= entry.score),
@@ -1289,14 +1294,64 @@ async function run() {
     ok('each carries the art itself', chosen.every((entry) => entry.text.split(String.fromCharCode(10)).length === grid.rows),
        chosen.map((entry) => entry.text.split(String.fromCharCode(10)).length).join(', '));
 
-    // Every recipe has to be nameable, in both languages, or a tile comes up
-    // blank precisely when the search happens to pick it.
+    // Every family has to be nameable, in both languages, or a tile comes up
+    // blank precisely when the draw happens to land on it.
     for (const locale of Object.keys(LOCALES)) {
       setLocale(locale);
-      const unnamed = VARIANT_RECIPES.filter((recipe) => t(`variant.${recipe.key}`) === `variant.${recipe.key}`);
-      check(`${locale}: every recipe has a name`, unnamed.map((r) => r.key).join(','), '');
+      const unnamed = VARIANT_FAMILIES.filter((family) => t(`variant.${family.key}`) === `variant.${family.key}`);
+      check(`${locale}: every family has a name`, unnamed.map((f) => f.key).join(','), '');
     }
     setLocale('ru');
+
+    // --- drawn, not listed --------------------------------------------------
+    // The point of drawing the spread is that pressing again is worth doing,
+    // and the point of drawing it inside families is that what comes back is
+    // still sensible. Both have to hold at once, so both are checked.
+    const offersFor = (seed) => variantsOf(pixels, options, 4, seed);
+
+    const first = offersFor(11);
+    const shape = (offers) => offers.map((o) => `${o.key}:${o.score.toFixed(4)}`).join(' ');
+    check('the same seed draws the same offers', shape(offersFor(11)), shape(first));
+
+    let moved = 0;
+    for (const seed of [12, 13, 14, 15, 16]) {
+      const again = offersFor(seed);
+      if (again.some((offer, i) => offer.text !== first[i]?.text)) moved++;
+    }
+    ok('a different draw offers something different', moved >= 4, `${moved} of 5 draws differed`);
+
+    // Different tools, not one tool four times with the dials nudged. Four
+    // distinct ways of working is what it reaches for, but not a promise it
+    // can make: a family only takes a square by clearing the quality floor,
+    // and on some pictures only three ever do. Then the fourth square goes to
+    // the next best rather than to something nobody would choose -- which is
+    // the trade the floor exists to make. Measured over six real pictures at
+    // two widths, four families came up in 33 draws out of 36.
+    const seeds = [11, 12, 13, 14, 15, 16, 17, 18];
+    let leastFamilies = VARIANT_FAMILIES.length;
+    let allFour = 0;
+    let worstScore = 1;
+    for (const seed of seeds) {
+      const offers = offersFor(seed);
+      const families = new Set(offers.map((o) => o.key)).size;
+      leastFamilies = Math.min(leastFamilies, families);
+      if (families === 4) allFour++;
+      const best = Math.max(...offers.map((o) => o.score));
+      worstScore = Math.min(worstScore, Math.min(...offers.map((o) => o.score)) / (best || 1));
+    }
+    ok('a draw never falls back on one or two ways of working', leastFamilies >= 3,
+       `the narrowest draw offered ${leastFamilies} families`);
+    ok('and mostly manages four', allFour >= seeds.length / 2, `${allFour} of ${seeds.length} draws`);
+    ok('while none of them is far behind the best on the table', worstScore >= QUALITY_FLOOR - 0.001,
+       `weakest sat at ${(worstScore * 100).toFixed(0)}% of its best, floor is ${QUALITY_FLOOR * 100}%`);
+
+    // Each family must be able to produce a recipe every time it is asked.
+    const drawn = sampleRecipes(seededRandom(7));
+    check('every family is drawn', drawn.length, VARIANT_FAMILIES.length * DRAWS_PER_FAMILY);
+    ok('and every draw is a usable recipe',
+       drawn.every((recipe) => DITHER_METHODS[recipe.method] && recipe.detail >= 0 && recipe.detail <= 100
+                    && EDGE_MODES.includes(recipe.edge.mode)),
+       drawn.filter((recipe) => !DITHER_METHODS[recipe.method]).map((r) => r.method).join(',') || 'all sound');
   }
 
   const failed = log.filter((l) => l.startsWith('FAIL')).length;

@@ -46,9 +46,9 @@ const handlers = {
     return { payload: { text, colours, cols, rows, image: out }, transfer };
   },
 
-  variants({ image, params, options, want }) {
+  variants({ image, params, options, want, seed }) {
     const pixels = applyAdjustments(unpack(image), params);
-    return { payload: { variants: variantsOf(pixels, options, want) } };
+    return { payload: { variants: variantsOf(pixels, options, want, seed) } };
   },
 
   otsu({ image, params, options }) {
