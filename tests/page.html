@@ -14,6 +14,16 @@ const check = (name, got, want) => log.push(`${got === want ? 'PASS' : 'FAIL'}  
 const ok = (name, cond, detail = '') => log.push(`${cond ? 'PASS' : 'FAIL'}  ${name}${detail ? ': ' + detail : ''}`);
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const frame = document.getElementById('f');
+
+let reloads = 0;
+async function reopen(fragment = '') {
+  const loaded = new Promise((r) => frame.addEventListener('load', r, { once: true }));
+  reloads += 1;
+  frame.src = `../index.html?run=${reloads}${fragment}`;
+  await loaded;
+}
+
 async function until(fn, timeout = 15000) {
   const start = Date.now();
   while (Date.now() - start < timeout) {
@@ -23,14 +33,18 @@ async function until(fn, timeout = 15000) {
   return false;
 }
 
+const started = Date.now();
+const mark = (name) => {
+  const line = `${name} at ${((Date.now() - started) / 1000).toFixed(1)}s`;
+  log.push(`INFO  ${line}`);
+  fetch('/progress', { method: 'POST', body: line });
+};
+
 async function run() {
-  const frame = document.getElementById('f');
   // The app remembers its settings now, and every test page shares this origin.
   // Start each run from a clean slate, or one run's preset leaks into the next.
   localStorage.clear();
-  const loaded = new Promise((r) => frame.addEventListener('load', r, { once: true }));
-  frame.src = '../index.html';
-  await loaded;
+  await reopen();
   const $ = (id) => frame.contentDocument.getElementById(id);
 
   await until(() => $('status').textContent.length > 0);
@@ -82,6 +96,7 @@ async function run() {
   ok('switching method re-renders live', changed);
   log.push(`INFO  bayer4 row 8: ${$('output').textContent.split('\n')[8].slice(0, 30)}`);
 
+  mark('edge controls');
   // --- edge controls -------------------------------------------------------
   const BLANK = String.fromCharCode(0x2800);
   const NEWLINE = String.fromCharCode(10);
@@ -130,6 +145,7 @@ async function run() {
   ok('generator preview is the cell grid', $('resCanvas').width === Number($('outWidth').value) * 2,
      `${$('resCanvas').width}x${$('resCanvas').height}`);
 
+  mark('presets');
   // --- presets -------------------------------------------------------------
   ok('preset list is populated from the module', $('preset').options.length >= 5,
      `${$('preset').options.length} options`);
@@ -152,6 +168,7 @@ async function run() {
   $('preset').dispatchEvent(new Event('change', { bubbles: true }));
   check('re-applying a preset resets what it covers', $('contrast').value, '0');
 
+  mark('platforms');
   // --- platforms -----------------------------------------------------------
   ok('platform list is populated from the module', $('platform').options.length >= 4,
      `${$('platform').options.length} options`);
@@ -168,6 +185,7 @@ async function run() {
      await until(() => metaFlat().includes('Discord: ') && metaFlat().includes('из 2 000')),
      metaFlat());
 
+  mark('calibration');
   // --- calibration ---------------------------------------------------------
   check('calibration panel starts closed', $('calibratePanel').hidden, true);
   $('calibrate').click();
@@ -197,6 +215,7 @@ async function run() {
   ok('vertical scale changes the row count', tallRows > plainRows, `${tallRows} scaled vs ${plainRows} plain`);
   ok('resetting forgets the measurement', /не измерена/.test($('platformState').textContent));
 
+  mark('SVG');
   // --- SVG -----------------------------------------------------------------
   let svgFailed = null;
   frame.contentWindow.addEventListener('error', (e) => { svgFailed = e.message; });
@@ -208,6 +227,7 @@ async function run() {
   $('platform').value = 'none';
   $('platform').dispatchEvent(new Event('change', { bubbles: true }));
 
+  mark('layout: the whole point of the redesign');
   // --- layout: the whole point of the redesign -----------------------------
   const PANES = ['srcCanvas', 'editCanvas', 'resCanvas', 'output'];
   const fitsViewport = () => {
@@ -262,6 +282,7 @@ async function run() {
   frame.style.height = '900px';
   await wait(250);
 
+  mark('simple vs advanced');
   // --- simple vs advanced --------------------------------------------------
   const shown = (id) => $(id).offsetParent !== null;
   check('starts in simple mode', $('app').dataset.mode, 'simple');
@@ -281,6 +302,7 @@ async function run() {
   check('the switch reports its state', $('modeAdvanced').getAttribute('aria-pressed'), 'true');
   ok('all four panes still fit in advanced mode', fitsViewport(), paneSizes());
 
+  mark('inspect overlay');
   // --- inspect overlay -----------------------------------------------------
   $('srcCanvas').closest('[data-inspect]').click();
   const overlay = frame.contentDocument.querySelector('.inspect');
@@ -291,6 +313,7 @@ async function run() {
   overlay?.click();
   check('clicking again closes it', frame.contentDocument.querySelector('.inspect'), null);
 
+  mark('settings survive a reload');
   // --- settings survive a reload ------------------------------------------
   $('contrast').value = '33';
   $('contrast').dispatchEvent(new Event('input', { bubbles: true }));
@@ -299,9 +322,7 @@ async function run() {
   await setLayout('focus');
   await wait(400);
 
-  const reloaded = new Promise((r) => frame.addEventListener('load', r, { once: true }));
-  frame.src = '../index.html';
-  await reloaded;
+  await reopen();
   await until(() => $('status').textContent.length > 0);
 
   check('the mode is remembered', $('app').dataset.mode, 'advanced');
@@ -309,6 +330,7 @@ async function run() {
   check('a dropdown value is remembered', $('dither').value, 'atkinson');
   check('the chosen layout is remembered', $('app').dataset.layout, 'focus');
 
+  mark('dropping and pasting');
   // --- dropping and pasting ------------------------------------------------
   const makeFile = async (w, h, name) => {
     const c = document.createElement('canvas');
@@ -335,6 +357,7 @@ async function run() {
 
   ok('the grid caption reports the sampled size', /\d+×\d+/.test($('gridMeta').textContent), $('gridMeta').textContent);
 
+  mark('reset');
   // --- reset ---------------------------------------------------------------
   $('modeAdvanced').click();
   $('resetAll').click();
@@ -343,6 +366,7 @@ async function run() {
   check('reset returns the method to the default', $('dither').value, 'floyd-steinberg');
   check('reset returns the layout to 2x2', $('app').dataset.layout, 'grid');
 
+  mark('cropping');
   // --- cropping ------------------------------------------------------------
   // A wide source, so cropping to a square changes the row count visibly.
   const wide = new win.DataTransfer();
@@ -414,6 +438,7 @@ async function run() {
   $('cropToggle').click();
   check('the overlay closes again', $('cropper').hidden, true);
 
+  mark('offline shell');
   // --- offline shell -------------------------------------------------------
   ok('the page declares a manifest',
      frame.contentDocument.querySelector('link[rel="manifest"]') !== null);
@@ -424,6 +449,7 @@ async function run() {
   check('no service worker is registered from inside a frame',
     (await win.navigator.serviceWorker?.getRegistrations?.() ?? []).length, 0);
 
+  mark('editing dots by hand');
   // --- editing dots by hand ------------------------------------------------
   const artLines = () => $('output').textContent.split(String.fromCharCode(10));
   const cellAt = (row, col) => artLines()[row].charCodeAt(col) - 0x2800;
@@ -496,6 +522,7 @@ async function run() {
   const changedCells = [...artLines()[4]].filter((ch, i) => ch !== rowBefore[i]).length;
   ok('dragging paints a run of cells', changedCells >= 3, `${changedCells} cells changed`);
 
+  mark('editing freezes regeneration');
   // --- editing freezes regeneration ---------------------------------------
   const frozen = $('output').textContent;
   $('threshold').value = '90';
@@ -504,6 +531,7 @@ async function run() {
   check('moving a control does not wipe the edits', $('output').textContent, frozen);
   ok('and it says why', /не пересчитывается/.test($('status').textContent), $('status').textContent);
 
+  mark('an explicit recalculation is allowed to discard them');
   // --- an explicit recalculation is allowed to discard them ----------------
   $('generate').click();
   await until(() => $('output').textContent !== frozen);
@@ -513,6 +541,7 @@ async function run() {
   check('undo history goes with it', $('dotUndo').disabled, true);
   ok('the art follows the controls again', $('output').textContent !== frozen);
 
+  mark('lettering as a source');
   // --- lettering as a source ----------------------------------------------
   const BLANK_CELL = String.fromCharCode(0x2800);
   const inkedCount = () => [...$('output').textContent.split(String.fromCharCode(10)).join('')]
@@ -562,6 +591,7 @@ async function run() {
   $('edgeMode').dispatchEvent(new Event('change', { bubbles: true }));
   await wait(200);
 
+  mark('switching back');
   // --- switching back ------------------------------------------------------
   $('sourceKind').value = 'image';
   $('sourceKind').dispatchEvent(new Event('change', { bubbles: true }));
@@ -570,6 +600,7 @@ async function run() {
      `${$('srcMeta').textContent}, expected ${imageMeta}`);
   ok('and it renders again', await until(() => inkedCount() > 0));
 
+  mark('the choice is remembered');
   // --- the choice is remembered -------------------------------------------
   $('sourceKind').value = 'text';
   $('sourceKind').dispatchEvent(new Event('change', { bubbles: true }));
@@ -577,9 +608,7 @@ async function run() {
   $('textInput').dispatchEvent(new Event('input', { bubbles: true }));
   await wait(400);
 
-  const backAgain = new Promise((r) => frame.addEventListener('load', r, { once: true }));
-  frame.src = '../index.html';
-  await backAgain;
+  await reopen();
   await until(() => $('status').textContent.length > 0);
 
   check('the source kind survives a reload', $('app').dataset.source, 'text');
@@ -588,6 +617,7 @@ async function run() {
      `${inkedCount()} inked cells`);
 
   {
+    mark('making it fit');
     // --- making it fit ------------------------------------------------------
     // Lettering is used as the source: it is drawn with padding, so there are
     // guaranteed blank margins for trimming to find.
@@ -619,6 +649,7 @@ async function run() {
     ok('turning it off restores the full frame',
        await until(() => lines()[0].length === untrimmedWidth));
 
+    mark('fitting to a message limit');
     // --- fitting to a message limit ----------------------------------------
     check('there is nothing to fit without a target', $('fitLimit').disabled, true);
 
@@ -649,6 +680,7 @@ async function run() {
   }
 
   {
+    mark('the sketch pad');
     // --- the sketch pad -----------------------------------------------------
     const BLANK = String.fromCharCode(0x2800);
     const NL = String.fromCharCode(10);
@@ -717,6 +749,7 @@ async function run() {
     $('drawClear').click();
     ok('clearing empties the pad', await until(() => inkCount() === 0));
 
+    mark('the camera');
     // --- the camera ---------------------------------------------------------
     // Chrome is launched with a synthetic device, so this exercises the real
     // getUserMedia path without needing a webcam.
@@ -747,6 +780,7 @@ async function run() {
   }
 
   {
+    mark('colour on the page');
     // --- colour on the page -------------------------------------------------
     const colourFile = new win.DataTransfer();
     const paint = document.createElement('canvas');
@@ -789,6 +823,7 @@ async function run() {
   }
 
   {
+    mark('switching language');
     // --- switching language -------------------------------------------------
     const label = (forId) => frame.contentDocument.querySelector(`label[for="${forId}"]`).textContent;
 
@@ -810,15 +845,14 @@ async function run() {
 
     // The choice has to outlast a reload, like every other setting.
     await wait(400);
-    const again = new Promise((r) => frame.addEventListener('load', r, { once: true }));
-    frame.src = '../index.html';
-    await again;
+    await reopen();
     await until(() => $('status').textContent.length > 0);
     check('the language is remembered', $('language').value, 'en');
     check('and applied on load', label('threshold'), 'Threshold');
   }
 
   {
+    mark('reachable without a pointer');
     // --- reachable without a pointer ---------------------------------------
     const BLANK = String.fromCharCode(0x2800);
     const NL = String.fromCharCode(10);
@@ -843,6 +877,7 @@ async function run() {
     await until(() => $('srcMeta').textContent === '320×160');
     await until(() => inkCount() > 0);
 
+    mark('cropping');
     // --- cropping -----------------------------------------------------------
     $('cropToggle').click();
     check('the crop layer can be focused', frame.contentDocument.activeElement, $('cropper'));
@@ -861,6 +896,7 @@ async function run() {
     $('cropToggle').click();
     check('the layer stops taking focus when off', $('cropper').hasAttribute('tabindex'), false);
 
+    mark('editing dots');
     // --- editing dots -------------------------------------------------------
     $('dotEdit').click();
     check('the art takes focus for editing', frame.contentDocument.activeElement, $('output'));
@@ -898,6 +934,7 @@ async function run() {
     $('dotEdit').click();
     check('the cursor goes away with the mode', $('dotCursor').hidden, true);
 
+    mark('drawing');
     // --- drawing ------------------------------------------------------------
     $('sourceKind').value = 'draw';
     $('sourceKind').dispatchEvent(new Event('change', { bubbles: true }));
@@ -919,6 +956,7 @@ async function run() {
     await wait(200);
     check('a lifted pen leaves no trail', inkCount(), drawn);
 
+    mark('the enlarged view is a dialog');
     // --- the enlarged view is a dialog --------------------------------------
     $('sourceKind').value = 'image';
     $('sourceKind').dispatchEvent(new Event('change', { bubbles: true }));
@@ -941,6 +979,50 @@ async function run() {
     await wait(80);
     check('escape closes it', frame.contentDocument.querySelector('.inspect'), null);
     check('and focus comes back', frame.contentDocument.activeElement, figure);
+  }
+
+  {
+    mark('the address bar follows the settings');
+    // --- the address bar follows the settings -------------------------------
+    $('modeAdvanced').click();
+    $('dither').value = 'bayer4';
+    $('dither').dispatchEvent(new Event('change', { bubbles: true }));
+    $('outWidth').value = '73';
+    $('outWidth').dispatchEvent(new Event('input', { bubbles: true }));
+    await wait(400);
+
+    const hash = () => frame.contentWindow.location.hash;
+    ok('the fragment carries the width', /(^|[#&])w=73([&]|$)/.test(hash()), hash());
+    ok('and the method', /(^|[#&])d=bayer4([&]|$)/.test(hash()), hash());
+    check('the settings are not in the query string', /w=73/.test(frame.contentWindow.location.search), false);
+
+    // A fragment is never sent to the server, which is the point of using one.
+    ok('the path itself stays clean', frame.contentWindow.location.pathname.endsWith('index.html'),
+       frame.contentWindow.location.pathname);
+    check('the fragment holds every setting', /m=|l=|t=/.test(hash()), true);
+
+    mark('and a link sets them up again');
+    // --- and a link sets them up again --------------------------------------
+    await reopen('#w=37&d=atkinson&t=201&m=advanced&col=1&lang=ru');
+    await until(() => $('status').textContent.length > 0);
+
+    check('the width comes from the link', $('outWidth').value, '37');
+    check('so does the method', $('dither').value, 'atkinson');
+    check('and the threshold', $('threshold').value, '201');
+    check('and the mode', $('app').dataset.mode, 'advanced');
+    check('and a checkbox', $('colour').checked, true);
+    check('and the language', $('language').value, 'ru');
+    ok('and it says where they came from', /из ссылки/.test($('status').textContent), $('status').textContent);
+
+    // The link outranks whatever this browser had stored: following one is a
+    // deliberate act.
+    ok('a stored setting is overridden by the link', $('dither').value !== 'bayer4');
+
+    await reopen();
+    await until(() => $('status').textContent.length > 0);
+    check('without a link, storage is used again', $('outWidth').value, '37');
+    $('language').value = 'ru';
+    $('language').dispatchEvent(new Event('change', { bubbles: true }));
   }
 
   const failed = log.filter((l) => l.startsWith('FAIL')).length;

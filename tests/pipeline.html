@@ -18,6 +18,7 @@ import { createCanvas, drawScaled, readImageData } from '../src/ui/canvas.js';
 import { FULL_FRAME, isWholeImage } from '../src/ui/crop.js';
 import { DEFAULT_TEXT_FONT, TEXT_FONTS, renderText } from '../src/ui/text.js';
 import { FALLBACK, LOCALES, formatNumber, setLocale, t } from '../src/i18n/index.js';
+import { fromHash, textFits, toHash } from '../src/ui/link.js';
 import { brailleToAnsi, brailleToHtml, brailleToSvg } from '../src/ui/export.js';
 import { cellColours, cellHex, colourRuns } from '../src/core/colour.js';
 import {
@@ -649,6 +650,60 @@ async function run() {
     check('a missing key shows itself', t('no.such.key'), 'no.such.key');
 
     setLocale('en');
+  }
+
+  {
+    // --- settings in a link -------------------------------------------------
+    const settings = {
+      mode: 'advanced', layout: 'focus', language: 'ru', sourceKind: 'text',
+      preset: 'lineart', platform: 'discord', dither: 'atkinson', invert: '1',
+      edgeMode: 'xdog', outWidth: '120', outHeight: '44', fontSize: '14',
+      threshold: 90, brightness: -10, contrast: 25, saturation: 0, sharpness: 1.5,
+      edgeAmount: 60, edgeRadius: 1.4,
+      keepAspect: true, trimBlank: false, colour: true, smooth: false, textBold: true,
+      textFont: 'display', textInput: 'HELLO',
+    };
+
+    const hash = toHash(settings);
+    const back = fromHash(hash);
+
+    ok('the keys are short and readable', hash.startsWith('m=advanced&l=focus'), hash.slice(0, 40));
+    ok('nothing is lost on the way back',
+       Object.keys(settings).every((key) => String(back[key]) === String(settings[key])),
+       Object.keys(settings).filter((key) => String(back[key]) !== String(settings[key])).join(', '));
+
+    // Booleans have to come back as booleans, not as the strings "1" and "0":
+    // applySettings tests their type.
+    check('true survives as true', back.keepAspect, true);
+    check('false survives as false', back.trimBlank, false);
+    ok('and they are written compactly', hash.includes('ka=1') && hash.includes('tr=0'));
+
+    check('a leading hash is accepted', fromHash('#w=42').outWidth, '42');
+    check('so is a bare fragment', fromHash('w=42').outWidth, '42');
+    check('an empty one yields nothing', Object.keys(fromHash('')).length, 0);
+
+    // A link written by a later version should still work here, minus whatever
+    // this version cannot do.
+    const mixed = fromHash('w=42&nosuchkey=7&d=bayer4');
+    check('unknown keys are ignored', Object.keys(mixed).sort().join(','), 'dither,outWidth');
+    check('and the known ones still arrive', mixed.dither, 'bayer4');
+
+    // One bad escape should not throw away the rest of the link.
+    const damaged = fromHash('w=42&txt=%E0%A4%A&d=atkinson');
+    check('a malformed value is skipped, not fatal', damaged.outWidth, '42');
+    check('and the rest is kept', damaged.dither, 'atkinson');
+
+    check('empty values are left out', toHash({ outWidth: '', dither: 'atkinson' }), 'd=atkinson');
+    ok('values are escaped', toHash({ textInput: 'a b&c=d' }).includes('a%20b%26c%3Dd'),
+       toHash({ textInput: 'a b&c=d' }));
+    check('a round trip survives the escaping', fromHash(toHash({ textInput: 'a b&c=d' })).textInput, 'a b&c=d');
+
+    // Lettering long enough to make the link useless is left out of it.
+    const wordy = { outWidth: '80', textInput: 'x'.repeat(500) };
+    ok('very long lettering is dropped', !toHash(wordy).includes('txt='), toHash(wordy));
+    check('and the caller can say so', textFits(wordy), false);
+    check('while ordinary lettering fits', textFits({ textInput: 'HELLO' }), true);
+    ok('the rest of the settings still travel', toHash(wordy).includes('w=80'));
   }
 
   // --- offline shell -------------------------------------------------------

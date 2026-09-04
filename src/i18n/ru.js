@@ -155,11 +155,6 @@ export const ru = {
 
     // --- actions ---
     'action.copy': 'Копировать',
-    'action.txt': '.txt',
-    'action.png': 'PNG',
-    'action.svg': 'SVG',
-    'action.html': 'HTML',
-    'action.ansi': 'ANSI',
     'action.regenerate': 'Пересчитать',
     'dots.edit': 'Правка точек',
     'dots.undo': 'Отменить',
@@ -199,6 +194,11 @@ export const ru = {
     'draw.keys': 'Стрелки двигают перо, Shift — шире шаг, Enter опускает и поднимает перо.',
     'dots.keys': 'С клавиатуры: стрелки двигают курсор по точкам, Shift — по ячейкам, Space ставит и снимает точку, Ctrl+Z отменяет.',
     'inspect.label': 'Увеличенный просмотр',
+
+    'action.link': 'Ссылка',
+    'status.linkCopied': 'Ссылка скопирована: она откроет генератор с этими же настройками.',
+    'status.linkNoText': 'Ссылка скопирована. Надпись в неё не поместилась — слишком длинная.',
+    'status.linkApplied': 'Настройки взяты из ссылки.',
 
     // --- meta ---
     'meta.size': '{cols}×{rows} символов',

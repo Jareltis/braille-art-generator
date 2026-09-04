@@ -21,6 +21,7 @@ import {
   saveCalibration, splitForPlatform,
 } from './ui/platforms.js';
 import { clearSettings, loadSettings, saveSettings } from './ui/settings.js';
+import { fromHash, shareUrl, textFits, updateHash } from './ui/link.js';
 import { createCropper } from './ui/crop.js';
 import { createDotEditor } from './ui/dots.js';
 import { DEFAULT_TEXT_FONT, TEXT_FONTS, renderText } from './ui/text.js';
@@ -54,6 +55,7 @@ const dom = {
   fitLimit: el('fitLimit'),
   colour: el('colour'),
   language: el('language'),
+  copyLink: el('copyLink'),
   downloadHtml: el('downloadHtml'),
   downloadAnsi: el('downloadAnsi'),
   dotEdit: el('dotEdit'),
@@ -116,6 +118,7 @@ let sourceUrl = null;         // object URL backing `source`
 let previewReady = false;
 let previewBackground = null; // background the preview source was composited over
 let artText = '';
+let linkOpened = false;
 
 /** Set by presets rather than by a control of its own: only pixel art wants it
  *  off, and the preset that needs it says so in its hint. */
@@ -583,7 +586,13 @@ function collectSettings() {
   return values;
 }
 
-const persist = coalesce(() => saveSettings(collectSettings()));
+const persist = coalesce(() => {
+  const settings = collectSettings();
+  saveSettings(settings);
+  // replaceState, not pushState: the back button should not fill up with every
+  // position a slider passed through.
+  updateHash(settings);
+});
 
 /** Restore a stored blob, ignoring anything unrecognised rather than trusting it. */
 function applySettings(values) {
@@ -1079,7 +1088,13 @@ function init() {
 
   // A stored choice beats the browser's preference. applyTranslations runs for
   // the first time here, before anything is listening for changes.
-  initLocale(loadSettings().language ?? preferredLocale());
+  // A link is a deliberate act, so it outranks whatever this browser had saved.
+  const fromLink = fromHash(window.location.hash);
+  const stored = loadSettings();
+  const opening = { ...stored, ...fromLink };
+  linkOpened = Object.keys(fromLink).length > 0;
+
+  initLocale(opening.language ?? preferredLocale());
   onLocaleChange(retranslate);
 
   fillLanguages();
@@ -1092,7 +1107,11 @@ function init() {
     persist();
   });
 
-  applySettings(loadSettings());
+  applySettings(opening);
+  // A link sets the panel, and the panel is a thing this app remembers. Leaving
+  // it unsaved would show one state and store another, and the next plain visit
+  // would silently undo what the link asked for.
+  if (linkOpened) persist();
 
   dom.sourceKind.addEventListener('change', () => {
     setSourceKind(dom.sourceKind.value);
@@ -1292,6 +1311,16 @@ function init() {
     setStatus(t('reset.editsDone'), 'info');
   });
 
+  dom.copyLink.addEventListener('click', async () => {
+    const settings = collectSettings();
+    try {
+      await copyText(shareUrl(settings));
+      setStatus(textFits(settings) ? t('status.linkCopied') : t('status.linkNoText'), 'ok');
+    } catch (error) {
+      fail(error);
+    }
+  });
+
   dom.downloadTxt.addEventListener('click', () => {
     if (requireArt()) downloadText(artText, 'braille.txt');
   });
@@ -1323,6 +1352,10 @@ function init() {
   syncRows();
   if (dom.sourceKind.value === 'text') setSourceKind('text');
   else dom.app.dataset.source = 'image';
+  if (linkOpened) {
+    setStatus(t('status.linkApplied'), 'ok');
+    return;
+  }
   setStatus(
     pipeline.offThread
       ? t('status.start')

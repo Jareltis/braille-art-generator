@@ -38,6 +38,7 @@ only ever hands out static files.
 | **Two modes** | simple keeps five controls; advanced reveals everything |
 | **One screen** | original, adjusted image, sampled pixels and the art are all visible at once |
 | **Layouts** | 2×2 by default, strip on top, art-first, single row |
+| **Sharing** | a link that reopens the generator with the same settings |
 | **Keyboard** | cropping, dot editing and drawing all work without a pointer |
 | **Languages** | English and Russian, chosen from the browser and remembered |
 | **Offline** | installs as an app and works with no network |
@@ -207,6 +208,24 @@ While editing is on the art stops following the controls. That is the bargain:
 either it tracks the parameters or it is yours to touch up. Silently discarding
 a minute of work because a slider moved would be worse than refusing to
 recalculate.
+
+### A link that carries the settings
+
+The **Link** button copies a URL that opens the generator with the same recipe:
+size, method, threshold, edges, tone, target, language, mode, layout. The
+picture is not in it — only the settings.
+
+They travel in the fragment rather than the query string, and a fragment is
+never sent to the server, so on a static host a shared link discloses nothing to
+whoever runs it. The keys are short but readable on purpose: `w=120` is the
+width, and it can be changed by hand.
+
+The address bar keeps up on its own, through `replaceState` rather than
+`pushState` — the back button should not fill with every position a slider
+passed through. A link outranks whatever this browser had stored, because
+following one is a deliberate act. Lettering long enough to make the URL useless
+is left out of it, and the message says so. A key this version does not know is
+ignored rather than refused, so a link written by a later one still works.
 
 ### Keyboard
 

@@ -21,8 +21,8 @@ import { fileURLToPath } from 'node:url';
 
 const testsDir = dirname(fileURLToPath(import.meta.url));
 const root = resolve(testsDir, '..');
-const PORT = 8199;
-const TIMEOUT_MS = 150_000;   // the page suite drives a lot of waiting now
+const FIRST_PORT = 8199;
+const TIMEOUT_MS = 120_000;   // generous: a healthy run is a few seconds
 
 const CHROME_CANDIDATES = [
   process.env.CHROME,
@@ -51,6 +51,16 @@ let deliver = null;
 
 const server = createServer(async (req, res) => {
   const path = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+
+  // Progress, so a run that never finishes still says how far it got. Without
+  // it a timeout reports nothing at all, which is the least useful failure.
+  if (req.method === 'POST' && path === '/progress') {
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    res.writeHead(204).end();
+    console.log(`  ${Buffer.concat(chunks).toString('utf8')}`);
+    return;
+  }
 
   if (req.method === 'POST' && path === '/result') {
     const chunks = [];
@@ -83,7 +93,7 @@ function runPage(name) {
       // a synthetic camera, so the webcam source can be exercised headlessly
       '--use-fake-ui-for-media-stream',
       '--use-fake-device-for-media-stream',
-      `http://127.0.0.1:${PORT}/tests/${name}.html`,
+      `http://127.0.0.1:${port}/tests/${name}.html`,
     ], { stdio: 'ignore' });
 
     const finish = (text, ok) => {
@@ -104,7 +114,24 @@ const pages = requested.length
   ? requested
   : (await readdir(testsDir)).filter((f) => f.endsWith('.html')).map((f) => f.replace(/\.html$/, '')).sort();
 
-server.listen(PORT, '127.0.0.1');
+/**
+ * Take the first free port rather than insisting on one.
+ *
+ * Two runs at once -- easily done when one is left in the background -- would
+ * otherwise kill the second with EADDRINUSE and report zero checks, which reads
+ * as a broken suite rather than as a busy port.
+ */
+const port = await new Promise((resolve, reject) => {
+  let candidate = FIRST_PORT;
+  const attempt = () => {
+    server.once('error', (error) => {
+      if (error.code !== 'EADDRINUSE' || candidate > FIRST_PORT + 20) reject(error);
+      else { candidate += 1; attempt(); }
+    });
+    server.listen(candidate, '127.0.0.1', () => resolve(candidate));
+  };
+  attempt();
+});
 
 let failures = 0;
 for (const name of pages) {

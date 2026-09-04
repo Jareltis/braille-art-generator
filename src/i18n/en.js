@@ -156,11 +156,6 @@ export const en = {
 
     // --- actions ---
     'action.copy': 'Copy',
-    'action.txt': '.txt',
-    'action.png': 'PNG',
-    'action.svg': 'SVG',
-    'action.html': 'HTML',
-    'action.ansi': 'ANSI',
     'action.regenerate': 'Recalculate',
     'dots.edit': 'Edit dots',
     'dots.undo': 'Undo',
@@ -200,6 +195,11 @@ export const en = {
     'draw.keys': 'Arrows move the pen, Shift takes a wider step, Enter puts it down and lifts it.',
     'dots.keys': 'From the keyboard: arrows move by dot, Shift by cell, Space sets and clears, Ctrl+Z undoes.',
     'inspect.label': 'Enlarged view',
+
+    'action.link': 'Link',
+    'status.linkCopied': 'Link copied: it opens the generator with these same settings.',
+    'status.linkNoText': 'Link copied. The lettering was too long to fit in it.',
+    'status.linkApplied': 'Settings taken from the link.',
 
     // --- meta ---
     'meta.size': '{cols}×{rows} cells',
