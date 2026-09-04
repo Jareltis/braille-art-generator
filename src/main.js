@@ -214,6 +214,7 @@ const readOptions = () => ({
     mode: dom.edgeMode.value,
     amount: controls.edgeAmount.value / 100,
     radius: controls.edgeRadius.value,
+    clean: controls.edgeClean.value / 100,
   },
 });
 
@@ -222,6 +223,7 @@ function syncEdgeControls() {
   const off = dom.edgeMode.value === 'none';
   controls.edgeAmount.input.disabled = off;
   controls.edgeRadius.input.disabled = off;
+  controls.edgeClean.input.disabled = off;
 }
 
 /** A loaded file reports naturalWidth; drawn lettering is a canvas and reports width. */
@@ -516,6 +518,7 @@ function applyPreset(key) {
   controls.threshold.set(chosen.threshold);
   controls.edgeAmount.set(chosen.edgeAmount);
   controls.edgeRadius.set(chosen.edgeRadius);
+  controls.edgeClean.set(chosen.edgeClean);
   controls.brightness.set(chosen.brightness);
   controls.contrast.set(chosen.contrast);
   controls.saturation.set(chosen.saturation);
@@ -594,6 +597,7 @@ function setLayout(name) {
  * ------------------------------------------------------------------------ */
 const PERSISTED_RANGES = [
   'detail', 'threshold', 'brightness', 'contrast', 'saturation', 'sharpness', 'edgeAmount', 'edgeRadius',
+  'edgeClean',
 ];
 const PERSISTED_FIELDS = [
   'preset', 'platform', 'dither', 'invert', 'edgeMode', 'outWidth', 'outHeight', 'fontSize', 'layout',
@@ -1116,6 +1120,7 @@ function init() {
   controls.detail = bindRange(el('detail'), el('detailVal'), { onChange: () => changed({ affectsPreview: false }) });
   controls.edgeAmount = bindRange(el('edgeAmount'), el('edgeAmountVal'), { onChange: () => changed({ affectsPreview: false }) });
   controls.edgeRadius = bindRange(el('edgeRadius'), el('edgeRadiusVal'), { decimals: 1, onChange: () => changed({ affectsPreview: false }) });
+  controls.edgeClean = bindRange(el('edgeClean'), el('edgeCleanVal'), { onChange: () => changed({ affectsPreview: false }) });
 
   controls.calibratedScale = bindRange(el('calibratedScale'), el('calibratedScaleVal'), { decimals: 2 });
 

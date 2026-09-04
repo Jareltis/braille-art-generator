@@ -185,6 +185,32 @@ meme templates that is the wrong question — what matters is the line.
   touches, and eleven pixels of slope became three dots of solid ink where one
   line belonged.
 
+Both detectors answer to texture as readily as to a boundary, and no single
+threshold tells them apart, because a blade of grass really is a sharp little
+edge. **Clean-up** separates them by company rather than by strength: the
+strongest responses are seeds, and a fainter one is kept only where it can be
+traced back to a seed. A contour is a faint stretch continuing from a strong
+one; texture is a speck whose neighbours are specks too.
+
+Measured across six photographs and drawings, on a hillside it halves the ink —
+37% of the frame down to 18% — while the median run of connected ink grows from
+12 pixels to 30: less of it, in longer strokes. On a clean graphic the speckled
+background disappears completely and the lettering is untouched, with the number
+of separate pieces falling from 280 to 58.
+
+It has a limit worth stating: it separates the weak-but-connected from the
+weak-and-alone, so texture that answers as strongly as a contour is beyond it.
+On a photograph of a forest, Sobel's dust is genuinely strong — every needle is
+a real step edge — and cleaning barely moves it.
+
+Two other approaches were measured and dropped. Surround inhibition eats strokes
+from the middle outward, a strong stroke being its own surround, and the annulus
+form that avoids that removes almost nothing from a photograph, where the ring
+is as busy under a contour as anywhere else. Flow-based DoG was planned and then
+not built: it addresses fragmented contours, and the measurement showed the
+opposite problem — 93–97% of XDoG's ink was already in long strokes. There was
+no fragmentation to fix, only too much ink.
+
 τ is deliberately 1 rather than the ≈0.98 the XDoG paper uses for stylisation.
 Below 1 the flat-field response is `l·(1−τ)` — proportional to brightness — so
 an even mid-grey answers with ink and dark areas silt up with strokes that are

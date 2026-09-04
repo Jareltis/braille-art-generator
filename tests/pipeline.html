@@ -11,7 +11,7 @@ import { otsuThreshold } from '../src/core/otsu.js';
 import { lightness, linearToThreshold, luminance, thresholdToLinear } from '../src/core/gamma.js';
 import { applyAdjustments } from '../src/core/adjust.js';
 import { gaussianBlur } from '../src/core/blur.js';
-import { sobel, xdog, applyEdges, gradient, thin, lineMap, structureMap } from '../src/core/edges.js';
+import { sobel, xdog, applyEdges, gradient, thin, lineMap, structureMap, hysteresis, responseAt, cleanThresholds } from '../src/core/edges.js';
 import { CONTENT_PRESETS } from '../src/core/presets.js';
 import { EDGE_MODES } from '../src/core/edges.js';
 import { createCanvas, drawScaled, readImageData } from '../src/ui/canvas.js';
@@ -316,6 +316,66 @@ async function run() {
     // either side of a feature.
     ok('the structure map stays broad', columns(structureMap(soft, W, H), peak(wide) * 0.1) >= 8,
        `${columns(structureMap(soft, W, H), peak(wide) * 0.1)} columns`);
+  }
+
+  // --- cleaning ------------------------------------------------------------
+  // Texture and contour answer at the same strength, so no single threshold
+  // separates them. What separates them is company: a contour continues, a
+  // speck stands alone.
+  {
+    // A strong line down the middle, and faint specks scattered either side --
+    // the shape of the problem stripped to its bones. The specks are faint on
+    // purpose: this separates the weak-but-connected from the weak-and-alone,
+    // and texture that answers as strongly as a contour is beyond it. That is
+    // a real limit, and the reason the photographs still need a slider.
+    const speckled = new Float32Array(W * H);
+    for (let y = 0; y < H; y++) speckled[y * W + 32] = 200;
+    for (let y = 2; y < H; y += 7) {
+      for (let x = 5; x < W; x += 11) {
+        if (Math.abs(x - 32) < 3) continue;
+        speckled[y * W + x] = 120;
+      }
+    }
+
+    const lit = (plane) => plane.reduce((n, v) => n + (v > 0 ? 1 : 0), 0);
+    const before = lit(speckled);
+    const cleaned = hysteresis(speckled, W, H, 150, 100);
+    check('the line survives whole', lit(cleaned), H);
+    ok('and the specks are gone', lit(cleaned) < before, `${before} lit, ${lit(cleaned)} left`);
+
+    // A speck that touches the line is a continuation, not a speck: the whole
+    // point is that the test is connectivity rather than strength.
+    const attached = Float32Array.from(speckled);
+    attached[10 * W + 33] = 120;
+    const grown = hysteresis(attached, W, H, 150, 100);
+    check('a weak point touching a strong one is kept', grown[10 * W + 33], 120);
+    // The same value standing on its own is not. Placed away from the specks,
+    // or it would be touching one of them and kept for the right reason.
+    const alone = Float32Array.from(speckled);
+    const nowhere = 40 * W + 8;
+    alone[nowhere] = 120;
+    check('the same value alone is dropped', hysteresis(alone, W, H, 150, 100)[nowhere], 0);
+
+    // Eight-connected, or every diagonal continuation breaks.
+    const diagonal = new Float32Array(W * H);
+    diagonal[10 * W + 10] = 200;
+    diagonal[11 * W + 11] = 120;
+    check('a diagonal neighbour counts as touching', hysteresis(diagonal, W, H, 150, 100)[11 * W + 11], 120);
+
+    // Thresholds come from the picture, not from a constant.
+    check('the percentile ignores silence', responseAt(speckled, 0.5), 200);
+    check('an empty map has no threshold', responseAt(flat(0), 0.5), Infinity);
+    const strong = cleanThresholds(speckled, 1), gentle = cleanThresholds(speckled, 0);
+    ok('more cleaning seeds from higher up', strong.high >= gentle.high,
+       `${gentle.high} at 0, ${strong.high} at 1`);
+
+    // Wired in, and off by default so an older link renders what it rendered.
+    const stepped = new Float32Array(W * H);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) stepped[y * W + x] = x < W / 2 ? 0 : 255;
+    const plain = lineMap(stepped, W, H, { mode: 'xdog', radius: 1 });
+    const swept = lineMap(stepped, W, H, { mode: 'xdog', radius: 1, clean: 0.9 });
+    check('clean 0 changes nothing', lit(lineMap(stepped, W, H, { mode: 'xdog', radius: 1, clean: 0 })), lit(plain));
+    ok('a real edge survives cleaning', lit(swept) > 0, `${lit(swept)} pixels of line`);
   }
 
   // --- mixing --------------------------------------------------------------

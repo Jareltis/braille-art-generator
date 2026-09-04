@@ -140,6 +140,8 @@ export const en = {
     'edges.sobel': 'Sobel — gradient',
     'edges.amount': 'Fill ↔ lines',
     'edges.radius': 'Stroke width',
+    'edges.clean': 'Clean-up',
+    'edges.clean.hint': 'A faint line is kept where it continues a strong one and dropped where it stands alone. Texture answers as specks, a contour as a stretch.',
 
     'adjust.group': 'Image adjustment',
     'adjust.brightness': 'Brightness',

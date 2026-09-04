@@ -333,6 +333,42 @@ async function run() {
   overlay?.click();
   check('clicking again closes it', frame.contentDocument.querySelector('.inspect'), null);
 
+  mark('every setting travels');
+  // --- every setting travels ----------------------------------------------
+  // A control that changes the art has to reach the link, or a shared recipe
+  // arrives incomplete. The detail slider did not, from the version that
+  // introduced it until this test was written: it was saved to storage and
+  // quietly left out of the fragment, so the link rendered something else on
+  // the other end. Checked by moving each control rather than by comparing two
+  // lists, which is what let the two lists drift apart in the first place.
+  {
+    $('edgeMode').value = 'xdog';
+    $('edgeMode').dispatchEvent(new Event('change', { bubbles: true }));
+
+    // brushSize belongs to the drawing tool and calibratedScale to the
+    // platform ruler; neither describes the art, and neither is in the link on
+    // purpose.
+    const settings = ['threshold', 'detail', 'edgeAmount', 'edgeRadius', 'edgeClean',
+                      'brightness', 'contrast', 'saturation', 'sharpness'];
+    const missing = [];
+    for (const id of settings) {
+      const input = $(id);
+      const was = frame.contentWindow.location.hash;
+      const step = Number(input.step) || 1;
+      const moved = Number(input.value) === Number(input.max)
+        ? Number(input.value) - step
+        : Number(input.value) + step;
+      input.value = String(moved);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      if (!await until(() => frame.contentWindow.location.hash !== was, 3000)) missing.push(id);
+    }
+    ok('every control that changes the art is in the link', missing.length === 0,
+       missing.length ? `left out: ${missing.join(', ')}` : `${settings.length} controls`);
+
+    $('edgeMode').value = 'none';
+    $('edgeMode').dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
   mark('settings survive a reload');
   // --- settings survive a reload ------------------------------------------
   $('contrast').value = '33';
