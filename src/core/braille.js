@@ -2,6 +2,8 @@
 // The encoder. No DOM, no canvas: ImageData in, text out.
 
 import { lightness, luminance, thresholdToLinear } from './gamma.js';
+import { CELL_H, CELL_W } from './pixels.js';
+import { cellColours } from './colour.js';
 import { DITHER_METHODS, DEFAULT_DITHER } from './dither.js';
 import { applyEdges } from './edges.js';
 
@@ -12,8 +14,7 @@ import { applyEdges } from './edges.js';
  */
 export const BRAILLE_BLANK = 0x2800;
 
-export const CELL_W = 2;
-export const CELL_H = 4;
+export { CELL_W, CELL_H } from './pixels.js';
 
 /**
  * Bit index of each dot, addressed as DOT_BITS[column][row].
@@ -119,7 +120,7 @@ export function bitsToBraille(bits, cols, rows) {
  * The caller produces that exact size; refusing anything else keeps the cell
  * grid unambiguous and stops silent cropping of a trailing partial row.
  */
-export function imageDataToBraille(imageData, options = {}) {
+export function encode(imageData, options = {}) {
   const { width, height } = imageData;
   const cols = width / CELL_W;
   const rows = height / CELL_H;
@@ -133,8 +134,19 @@ export function imageDataToBraille(imageData, options = {}) {
   // Where the control sits when centred, so a method that picks its own
   // threshold knows what "no adjustment" means in the plane's units.
   const neutral = thresholdFor(128, linear);
-  return bitsToBraille(binarize(plane, width, height, { ...options, threshold, neutral }), cols, rows);
+  const bits = binarize(plane, width, height, { ...options, threshold, neutral });
+
+  return {
+    text: bitsToBraille(bits, cols, rows),
+    // Colour takes no part in choosing the dots; it only tints them afterwards.
+    colours: options.colour ? cellColours(imageData, bits, cols, rows) : null,
+    cols,
+    rows,
+  };
 }
+
+/** The text alone, which is what most callers want. */
+export const imageDataToBraille = (imageData, options = {}) => encode(imageData, options).text;
 
 /**
  * Drop rows and columns of empty cells from the edges.
@@ -146,7 +158,7 @@ export function imageDataToBraille(imageData, options = {}) {
  *
  * A column only goes if it is empty in every row, so nothing shifts sideways.
  */
-export function trimBlank(text) {
+export function trimBounds(text) {
   const blank = String.fromCharCode(BRAILLE_BLANK);
   const lines = text.split('\n');
 
@@ -154,7 +166,7 @@ export function trimBlank(text) {
   let bottom = lines.length - 1;
   while (top <= bottom && [...lines[top]].every((cell) => cell === blank)) top++;
   while (bottom >= top && [...lines[bottom]].every((cell) => cell === blank)) bottom--;
-  if (top > bottom) return '';
+  if (top > bottom) return null;
 
   const kept = lines.slice(top, bottom + 1);
   const width = Math.max(...kept.map((line) => line.length));
@@ -164,9 +176,36 @@ export function trimBlank(text) {
   const columnIsBlank = (column) => kept.every((line) => (line[column] ?? blank) === blank);
   while (left <= right && columnIsBlank(left)) left++;
   while (right >= left && columnIsBlank(right)) right--;
-  if (left > right) return '';
+  if (left > right) return null;
 
-  return kept.map((line) => line.slice(left, right + 1)).join('\n');
+  return { left, top, right, bottom };
+}
+
+export function trimBlank(text) {
+  const bounds = trimBounds(text);
+  if (!bounds) return '';
+  return text.split('\n')
+    .slice(bounds.top, bounds.bottom + 1)
+    .map((line) => line.slice(bounds.left, bounds.right + 1))
+    .join('\n');
+}
+
+/** Crop a colour array to the same bounds, so cells and colours stay paired. */
+export function trimColours(colours, cols, bounds) {
+  if (!bounds || !colours) return colours;
+  const width = bounds.right - bounds.left + 1;
+  const height = bounds.bottom - bounds.top + 1;
+  const out = new Uint8ClampedArray(width * height * 3);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const from = ((y + bounds.top) * cols + (x + bounds.left)) * 3;
+      const to = (y * width + x) * 3;
+      out[to] = colours[from];
+      out[to + 1] = colours[from + 1];
+      out[to + 2] = colours[from + 2];
+    }
+  }
+  return out;
 }
 
 /**

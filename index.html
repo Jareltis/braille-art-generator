@@ -527,6 +527,8 @@
             <button id="downloadTxt" type="button">.txt</button>
             <button id="downloadPng" type="button">PNG</button>
             <button id="downloadSvg" type="button" data-advanced>SVG</button>
+            <button id="downloadHtml" type="button" data-advanced>HTML</button>
+            <button id="downloadAnsi" type="button" data-advanced>ANSI</button>
             <button id="generate" type="button">Пересчитать</button>
           </div>
         </div>
@@ -541,6 +543,11 @@
 
         <div data-advanced>
           <p class="group-title">Как считать точки</p>
+
+          <div class="field check">
+            <input id="colour" type="checkbox">
+            <label for="colour">Цвет: тонировать ячейки</label>
+          </div>
 
           <div class="field row">
             <div>

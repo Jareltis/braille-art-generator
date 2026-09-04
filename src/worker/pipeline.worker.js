@@ -5,7 +5,7 @@
 // free of document was for.
 
 import { applyAdjustments } from '../core/adjust.js';
-import { imageDataToBraille, tonePlane } from '../core/braille.js';
+import { encode, tonePlane } from '../core/braille.js';
 import { otsuThreshold } from '../core/otsu.js';
 import { linearToThreshold } from '../core/gamma.js';
 import { pack, transferOf, unpack } from './protocol.js';
@@ -28,9 +28,11 @@ const handlers = {
 
   generate({ image, params, options }) {
     const pixels = applyAdjustments(unpack(image), params);
-    const text = imageDataToBraille(pixels, options);
+    const { text, colours, cols, rows } = encode(pixels, options);
     const out = pack(pixels);
-    return { payload: { text, image: out }, transfer: transferOf(out) };
+    const transfer = transferOf(out);
+    if (colours) transfer.push(colours.buffer);
+    return { payload: { text, colours, cols, rows, image: out }, transfer };
   },
 
   otsu({ image, params, options }) {

@@ -741,6 +741,48 @@ async function run() {
        $('camera').srcObject === null || $('camera').srcObject.getTracks().every((t) => t.readyState === 'ended'));
   }
 
+  {
+    // --- colour on the page -------------------------------------------------
+    const colourFile = new win.DataTransfer();
+    const paint = document.createElement('canvas');
+    paint.width = 300; paint.height = 200;
+    const px = paint.getContext('2d');
+    const bands = ['#e04040', '#40e040', '#4060e0', '#e0e040'];
+    bands.forEach((tone, i) => { px.fillStyle = tone; px.fillRect(i * 75, 0, 75, 200); });
+    const blob = await new Promise((r) => paint.toBlob(r, 'image/png'));
+    colourFile.items.add(new File([blob], 'bands.png', { type: 'image/png' }));
+
+    $('sourceKind').value = 'image';
+    $('sourceKind').dispatchEvent(new Event('change', { bubbles: true }));
+    $('file').files = colourFile.files;
+    $('file').dispatchEvent(new Event('change', { bubbles: true }));
+    await until(() => $('srcMeta').textContent === '300×200');
+    await until(() => $('output').textContent.length > 0);
+
+    check('colour is off unless asked for', $('colour').checked, false);
+    check('a plain art has no markup in it', $('output').querySelectorAll('span').length, 0);
+    const plainArt = $('output').textContent;
+
+    $('colour').checked = true;
+    $('colour').dispatchEvent(new Event('change', { bubbles: true }));
+
+    ok('turning it on tints the cells',
+       await until(() => $('output').querySelectorAll('span').length > 0),
+       `${$('output').querySelectorAll('span').length} runs`);
+    check('but the dots are unchanged', $('output').textContent, plainArt);
+
+    const tints = new Set([...$('output').querySelectorAll('span')].map((s) => s.style.color));
+    ok('four bands give several distinct tints', tints.size >= 3, [...tints].join(' '));
+    ok('runs are far fewer than cells',
+       $('output').querySelectorAll('span').length < plainArt.replace(/\n/g, '').length / 4,
+       `${$('output').querySelectorAll('span').length} runs for ${plainArt.replace(/\n/g, '').length} cells`);
+
+    $('colour').checked = false;
+    $('colour').dispatchEvent(new Event('change', { bubbles: true }));
+    ok('turning it off returns to plain text',
+       await until(() => $('output').querySelectorAll('span').length === 0));
+  }
+
   const failed = log.filter((l) => l.startsWith('FAIL')).length;
   out(`${log.join('\n')}\n${failed ? `\n${failed} FAILED` : '\nAll e2e checks passed.'}`);
 }

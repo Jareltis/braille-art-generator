@@ -2,6 +2,10 @@
 // Pure pixel maths. No document, no canvas -- only ImageData, which exists in
 // workers too, so everything under core/ can be moved off the main thread as-is.
 
+/** A braille cell covers this many source pixels. */
+export const CELL_W = 2;
+export const CELL_H = 4;
+
 /** BT.601 luma over gamma-encoded sRGB. */
 export function luma(r, g, b) {
   return 0.299 * r + 0.587 * g + 0.114 * b;

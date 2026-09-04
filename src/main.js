@@ -2,13 +2,17 @@
 // Wiring: reads the controls, drives the pipeline, paints the previews.
 // All pixel work lives in ./core; this and ./ui are the only files touching the DOM.
 
-import { CELL_W, CELL_H, rowsForAspect, trimBlank } from './core/braille.js';
+import { CELL_W, CELL_H, rowsForAspect, trimBlank, trimBounds, trimColours } from './core/braille.js';
+import { cellHex, colourRuns } from './core/colour.js';
 import { DEFAULT_DITHER } from './core/dither.js';
 import { CONTENT_PRESETS } from './core/presets.js';
 import { fitWithin } from './core/pixels.js';
 import { createCanvas, drawScaled, putImageData, readImageData } from './ui/canvas.js';
 import { bindRange, clampInt, coalesce } from './ui/controls.js';
-import { brailleToSvg, copyText, downloadCanvas, downloadSvg, downloadText, renderTextToCanvas } from './ui/export.js';
+import {
+  brailleToAnsi, brailleToHtml, brailleToSvg, copyText, downloadCanvas, downloadHtml, downloadSvg,
+  downloadText, renderTextToCanvas,
+} from './ui/export.js';
 import {
   PLATFORMS, calibrationOf, clearCalibration, forPlatform, messageLength, partsFit, ruler,
   saveCalibration, splitForPlatform,
@@ -45,6 +49,9 @@ const dom = {
   cropReset: el('cropReset'),
   trimBlank: el('trimBlank'),
   fitLimit: el('fitLimit'),
+  colour: el('colour'),
+  downloadHtml: el('downloadHtml'),
+  downloadAnsi: el('downloadAnsi'),
   dotEdit: el('dotEdit'),
   dotUndo: el('dotUndo'),
   dotHint: el('dotHint'),
@@ -181,6 +188,7 @@ const readOptions = () => ({
   threshold: controls.threshold.value,
   invert: isInverted(),
   method: dom.dither.value || DEFAULT_DITHER,
+  colour: dom.colour.checked,
   edge: {
     mode: dom.edgeMode.value,
     amount: controls.edgeAmount.value / 100,
@@ -277,12 +285,24 @@ async function render() {
   const target = drawScaled(source, cols * CELL_W, rows * CELL_H, backgroundFor(isInverted()), { smooth: smoothScaling, crop: cropRect });
 
   const token = ++generateToken;
-  const { text, pixels } = await pipeline.generate(readImageData(target), readAdjustments(), readOptions());
+  const { text, pixels, colours, cols: gridCols } = await pipeline.generate(
+    readImageData(target), readAdjustments(), readOptions(),
+  );
   if (token !== generateToken) return;
 
-  artText = dom.trimBlank.checked ? trimBlank(text) : text;
+  if (dom.trimBlank.checked) {
+    const bounds = trimBounds(text);
+    artColours = trimColours(colours, gridCols, bounds);
+    artText = trimBlank(text);
+    artCols = bounds ? bounds.right - bounds.left + 1 : 0;
+  } else {
+    artColours = colours;
+    artText = text;
+    artCols = gridCols;
+  }
+
   nextPart = 0;
-  dom.output.textContent = artText;
+  paintArt();
   dotEditor?.forget();
   dom.dotUndo.disabled = true;
   applyFontSize();
@@ -495,18 +515,7 @@ function syncPlatform() {
 }
 
 function exportSvg() {
-  const style = getComputedStyle(dom.output);
-  const { fontFamily, fontSize, lineHeight } = outputMetrics();
-  downloadSvg(
-    brailleToSvg(artText, {
-      fontFamily,
-      fontSize,
-      lineHeight,
-      foreground: style.color,
-      background: style.backgroundColor,
-    }),
-    'braille.svg',
-  );
+  downloadSvg(brailleToSvg(artText, exportStyle()), 'braille.svg');
   setStatus('SVG сохранён.', 'ok');
 }
 
@@ -552,6 +561,7 @@ function collectSettings() {
     mode: dom.app.dataset.mode,
     keepAspect: dom.keepAspect.checked,
     textBold: dom.textBold.checked,
+    colour: dom.colour.checked,
     trimBlank: dom.trimBlank.checked,
     smooth: smoothScaling,
   };
@@ -580,6 +590,7 @@ function applySettings(values) {
   if (typeof values.keepAspect === 'boolean') dom.keepAspect.checked = values.keepAspect;
   if (typeof values.textBold === 'boolean') dom.textBold.checked = values.textBold;
   if (typeof values.trimBlank === 'boolean') dom.trimBlank.checked = values.trimBlank;
+  if (typeof values.colour === 'boolean') dom.colour.checked = values.colour;
   if (typeof values.smooth === 'boolean') smoothScaling = values.smooth;
 
   setLayout(dom.layout.value);
@@ -604,6 +615,7 @@ function resetEverything() {
   }
   dom.keepAspect.checked = true;
   dom.trimBlank.checked = false;
+  dom.colour.checked = false;
   smoothScaling = true;
   dom.presetHint.textContent = '';
   setLayout(LAYOUTS[0]);
@@ -718,7 +730,7 @@ function registerServiceWorker() {
  * ------------------------------------------------------------------------ */
 function replaceArt(next) {
   artText = next;
-  dom.output.textContent = next;
+  paintArt();
   updateMeta(next);
   dom.dotUndo.disabled = !dotEditor?.canUndo();
 }
@@ -946,6 +958,57 @@ function captureFrame() {
   setStatus(`Снят кадр ${frame.width}×${frame.height}.`, 'ok');
 }
 
+/* ------------------------------------------------------------------------ *
+ * Colour
+ *
+ * Kept alongside the text rather than inside it: the art stays a plain string
+ * that can be copied, saved and hand-edited, and the colours are a parallel
+ * array of one entry per cell. Formats that cannot carry colour simply ignore
+ * it.
+ * ------------------------------------------------------------------------ */
+
+/** Past this many cells the page is painted plain; the exports keep the colour. */
+const COLOUR_CELL_LIMIT = 40000;
+
+let artColours = null;
+let artCols = 0;
+
+function paintArt() {
+  const lines = artText.split('\n');
+
+  if (!artColours || artCols === 0) {
+    dom.output.textContent = artText;
+    return;
+  }
+  if (lines.length * artCols > COLOUR_CELL_LIMIT) {
+    dom.output.textContent = artText;
+    setStatus('Сетка великовата для цветного показа — в файлах цвет останется.', 'warn');
+    return;
+  }
+
+  // Only braille glyphs and the markup built here ever reach innerHTML.
+  dom.output.innerHTML = lines
+    .map((line, row) => colourRuns(artColours, row, line.length)
+      .map(({ start, end, index }) =>
+        `<span style="color:${cellHex(artColours, index)}">${line.slice(start, end)}</span>`)
+      .join(''))
+    .join('\n');
+}
+
+/** Everything the colour-aware exports need, in one place. */
+function exportStyle() {
+  const style = getComputedStyle(dom.output);
+  const { fontFamily, fontSize, lineHeight } = outputMetrics();
+  return {
+    fontFamily,
+    fontSize,
+    lineHeight,
+    foreground: style.color,
+    background: style.backgroundColor,
+    colours: artColours,
+  };
+}
+
 function init() {
   controls.threshold = bindRange(el('threshold'), el('thresholdVal'), { onChange: () => changed({ affectsPreview: false }) });
   controls.brightness = bindRange(el('brightness'), el('brightnessVal'), { onChange: changed });
@@ -1030,6 +1093,25 @@ function init() {
 
   dom.downloadSvg.addEventListener('click', () => {
     if (requireArt()) exportSvg();
+  });
+
+  dom.colour.addEventListener('change', () => changed({ affectsPreview: false }));
+
+  dom.downloadHtml.addEventListener('click', () => {
+    if (!requireArt()) return;
+    downloadHtml(brailleToHtml(artText, artColours, artCols, exportStyle()), 'braille.html');
+    setStatus(artColours ? 'HTML сохранён вместе с цветом.' : 'HTML сохранён.', 'ok');
+  });
+
+  dom.downloadAnsi.addEventListener('click', () => {
+    if (!requireArt()) return;
+    downloadText(brailleToAnsi(artText, artColours, artCols), 'braille.ans');
+    setStatus(
+      artColours
+        ? 'ANSI сохранён. Смотреть так: cat braille.ans'
+        : 'ANSI сохранён без цвета — включите «Цвет».',
+      'ok',
+    );
   });
 
   dom.modeSimple.addEventListener('click', () => { setMode('simple'); persist(); });
@@ -1152,15 +1234,7 @@ function init() {
 
   dom.downloadPng.addEventListener('click', () => {
     if (!requireArt()) return;
-    const style = getComputedStyle(dom.output);
-    const { fontFamily, fontSize, lineHeight } = outputMetrics();
-    const { canvas, scale } = renderTextToCanvas(artText, {
-      fontFamily,
-      fontSize,
-      lineHeight,
-      foreground: style.color,
-      background: style.backgroundColor,
-    });
+    const { canvas, scale } = renderTextToCanvas(artText, exportStyle());
     downloadCanvas(canvas, 'braille.png');
     setStatus(
       scale < 1

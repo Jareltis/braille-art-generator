@@ -4,7 +4,7 @@
 <body>
 <pre id="r">running</pre>
 <script type="module">
-import { binarize, imageDataToBraille, toLuminance, tonePlane, trimBlank } from '../src/core/braille.js';
+import { binarize, encode, imageDataToBraille, toLuminance, tonePlane, trimBlank } from '../src/core/braille.js';
 import { DITHER_METHODS, DEFAULT_DITHER } from '../src/core/dither.js';
 import { BLUE_NOISE_SIZE, blueNoiseMatrix } from '../src/core/bluenoise.js';
 import { otsuThreshold } from '../src/core/otsu.js';
@@ -17,7 +17,8 @@ import { EDGE_MODES } from '../src/core/edges.js';
 import { createCanvas, drawScaled, readImageData } from '../src/ui/canvas.js';
 import { FULL_FRAME, isWholeImage } from '../src/ui/crop.js';
 import { DEFAULT_TEXT_FONT, TEXT_FONTS, renderText } from '../src/ui/text.js';
-import { brailleToSvg } from '../src/ui/export.js';
+import { brailleToAnsi, brailleToHtml, brailleToSvg } from '../src/ui/export.js';
+import { cellColours, cellHex, colourRuns } from '../src/core/colour.js';
 import {
   PLATFORMS, calibrationOf, clearCalibration, forPlatform, messageLength, partsFit, ruler,
   saveCalibration, splitForPlatform,
@@ -486,6 +487,94 @@ async function run() {
   check('FULL_FRAME covers everything', isWholeImage(FULL_FRAME), true);
   check('null counts as the whole frame', isWholeImage(null), true);
   check('a real selection does not', isWholeImage({ x: 0.1, y: 0.1, w: 0.5, h: 0.5 }), false);
+
+  {
+    // --- colour per cell ----------------------------------------------------
+    // One cell, 2x4. Four white pixels and four black ones.
+    const cell = new ImageData(2, 4);
+    for (let i = 0; i < 8; i++) {
+      const v = i < 4 ? 255 : 0;
+      cell.data[i * 4] = cell.data[i * 4 + 1] = cell.data[i * 4 + 2] = v;
+      cell.data[i * 4 + 3] = 255;
+    }
+
+    // With every dot raised the average covers all eight pixels. Half white and
+    // half black is half the *light*, which is sRGB 188 -- averaging the encoded
+    // channels instead would say 128, the same mistake as dithering over them.
+    const allLit = cellColours(cell, new Uint8Array(8).fill(1), 1, 1);
+    ok('an even mix averages in linear light', Math.abs(allLit[0] - 188) <= 2,
+       `${allLit[0]}, sRGB averaging would say 128`);
+
+    // Only the raised dots are drawn, so only they are averaged: otherwise the
+    // unlit background drags every cell toward itself and washes the art out.
+    const litWhites = new Uint8Array(8);
+    for (let i = 0; i < 4; i++) litWhites[i] = 1;
+    const onlyLit = cellColours(cell, litWhites, 1, 1);
+    check('only raised dots are averaged', onlyLit[0], 255);
+
+    const red = new ImageData(2, 4);
+    for (let i = 0; i < 8; i++) {
+      red.data[i * 4] = 255;
+      red.data[i * 4 + 3] = 255;
+    }
+    const redCell = cellColours(red, new Uint8Array(8).fill(1), 1, 1);
+    check('a flat colour survives intact', `${redCell[0]},${redCell[1]},${redCell[2]}`, '255,0,0');
+    check('and reads as hex', cellHex(redCell, 0), '#ff0000');
+
+    // --- runs ---------------------------------------------------------------
+    const flatRow = new Uint8ClampedArray([10, 20, 30, 10, 20, 30, 10, 20, 30, 10, 20, 30]);
+    check('equal cells collapse to one run', colourRuns(flatRow, 0, 4).length, 1);
+
+    const split = new Uint8ClampedArray([10, 20, 30, 10, 20, 30, 200, 20, 30, 200, 20, 30]);
+    const runs = colourRuns(split, 0, 4);
+    check('a change starts a new run', runs.length, 2);
+    check('runs cover the row', runs.at(-1).end, 4);
+    check('the first run stops at the change', runs[0].end, 2);
+
+    const drifting = new Uint8ClampedArray([10, 20, 30, 14, 20, 30, 18, 20, 30, 22, 20, 30]);
+    ok('a slow drift is broken up rather than claimed whole',
+       colourRuns(drifting, 0, 4, 8).length > 1,
+       `${colourRuns(drifting, 0, 4, 8).length} runs`);
+
+    // --- coloured formats ---------------------------------------------------
+    const NL = String.fromCharCode(10);
+    const FULL = String.fromCharCode(0x28FF);
+    const artText = FULL.repeat(2) + NL + FULL.repeat(2);
+    const artColours = new Uint8ClampedArray([
+      255, 0, 0, 0, 255, 0,
+      0, 0, 255, 255, 255, 0,
+    ]);
+
+    const html = brailleToHtml(artText, artColours, 2, {
+      fontFamily: 'monospace', fontSize: 12, lineHeight: 1,
+      foreground: '#fff', background: '#000',
+    });
+    ok('html carries the colours', html.includes('#ff0000') && html.includes('#00ff00'), '');
+    ok('html carries the background', html.includes('background:#000'));
+    check('html spans one per run', (html.match(/<span/g) ?? []).length, 4);
+
+    const ansi = brailleToAnsi(artText, artColours, 2);
+    const ESC = String.fromCharCode(27);
+    ok('ansi uses 24-bit colour', ansi.includes(`${ESC}[38;2;255;0;0m`), '');
+    check('ansi resets on every line', (ansi.match(new RegExp(`${ESC}\\[0m`, 'g')) ?? []).length, 2);
+    ok('ansi keeps the glyphs', ansi.includes(FULL));
+
+    // Without colours these must still produce something usable.
+    ok('html without colour is still a page', brailleToHtml(artText, null, 2, {
+      fontFamily: 'monospace', fontSize: 12, lineHeight: 1, foreground: '#fff', background: '#000',
+    }).includes(FULL));
+    check('ansi without colour is the plain text', brailleToAnsi(artText, null, 2), artText + NL);
+
+    // --- the encoder only pays for colour when asked ------------------------
+    const sample = new ImageData(4, 8);
+    for (let i = 0; i < sample.data.length; i += 4) {
+      sample.data[i] = 200; sample.data[i + 1] = 100; sample.data[i + 2] = 50; sample.data[i + 3] = 255;
+    }
+    check('no colours unless requested', encode(sample, { threshold: 128 }).colours, null);
+    const coloured = encode(sample, { threshold: 128, colour: true });
+    check('colours come back one triple per cell', coloured.colours.length, coloured.cols * coloured.rows * 3);
+    check('the text is the same either way', coloured.text, encode(sample, { threshold: 128 }).text);
+  }
 
   // --- offline shell -------------------------------------------------------
   const manifest = await (await fetch('/manifest.webmanifest')).json();

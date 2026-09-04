@@ -2,7 +2,7 @@
 // One interface over "in a worker" and "right here".
 
 import { applyAdjustments } from '../core/adjust.js';
-import { imageDataToBraille, tonePlane } from '../core/braille.js';
+import { encode, tonePlane } from '../core/braille.js';
 import { otsuThreshold } from '../core/otsu.js';
 import { linearToThreshold } from '../core/gamma.js';
 import { pack, transferOf, unpack } from '../worker/protocol.js';
@@ -45,7 +45,13 @@ function workerPipeline(worker) {
     async generate(imageData, params, options) {
       const image = pack(imageData);
       const result = await send('generate', { image, params, options }, transferOf(image));
-      return { text: result.text, pixels: unpack(result.image) };
+      return {
+        text: result.text,
+        pixels: unpack(result.image),
+        colours: result.colours ?? null,
+        cols: result.cols,
+        rows: result.rows,
+      };
     },
     async otsu(imageData, params, options) {
       const image = pack(imageData);
@@ -67,7 +73,8 @@ function inlinePipeline() {
     },
     async generate(imageData, params, options) {
       const pixels = applyAdjustments(imageData, params);
-      return { text: imageDataToBraille(pixels, options), pixels };
+      const { text, colours, cols, rows } = encode(pixels, options);
+      return { text, pixels, colours, cols, rows };
     },
     async otsu(imageData, params, options) {
       // Same measurement and the same crossing back as the worker does.
