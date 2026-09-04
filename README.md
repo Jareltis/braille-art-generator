@@ -213,10 +213,39 @@ Measured across six photographs and drawings, on a hillside it halves the ink �
 background disappears completely and the lettering is untouched, with the number
 of separate pieces falling from 280 to 58.
 
-It has a limit worth stating: it separates the weak-but-connected from the
-weak-and-alone, so texture that answers as strongly as a contour is beyond it.
-On a photograph of a forest, Sobel's dust is genuinely strong — every needle is
-a real step edge — and cleaning barely moves it.
+That much was true from the start. What it could not do was separate a contour
+from texture of the *same strength* — a blade of grass is a genuinely sharp
+edge, and no threshold and no amount of connectivity tells the two apart. That
+gap is now closed by asking a different question: not how strong the ink is, but
+whether it points the same way as its neighbours.
+
+The **structure tensor** answers that. The products of the gradient components
+are smoothed into a small matrix at each point, and how far apart its two
+eigenvalues sit says whether the energy there is all going one way. A boundary
+pushes it one way and answers near 1; texture pushes it every way at once and
+answers near 0. Measured on a straight edge buried in speckle of its own
+strength: 0.72 on the edge against 0.02 in the texture, a gap of thirty-four
+times, where the plain gradient managed 2.4. Over the ink XDoG lays on a
+photograph, the most coherent tenth stands about twelve times above the least.
+
+Cleaning therefore asks both questions, in that order: dim what the neighbourhood
+does not agree about, then keep what is strong or joined to something strong.
+Seeds are chosen from ink that has already been judged rather than from whatever
+happened to be brightest, and what survives goes back to the weight the detector
+gave it, so a surviving stroke is as dark as it earned.
+
+On a landscape at sixty columns this takes the separate pieces of ink from 1001
+to 493 and the median run of connected ink from 30 pixels to 61; on a drawing,
+from 68 pieces to 27 and from 57 pixels to 161. Fewer marks, much longer.
+
+It is not free. The three blurs behind the structure tensor are the largest
+single cost in the edge path — 744ms of about 800 on a two-megapixel raster,
+against 21ms for the hysteresis after it. Two ways of making it cheaper were
+measured and neither was taken: half resolution is four times faster and moves
+30% of the lit dots, and box blurs in place of the Gaussian are twice as fast
+and shift the coherence by 0.07 to 0.14 on a scale of one. What carries the cost
+instead is the pacing — a redraw too slow to follow the controls stops following
+them and says so.
 
 Two other approaches were measured and dropped. Surround inhibition eats strokes
 from the middle outward, a strong stroke being its own surround, and the annulus

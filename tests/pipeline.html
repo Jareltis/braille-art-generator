@@ -23,7 +23,10 @@ import { otsuThreshold } from '../src/core/otsu.js';
 import { lightness, linearToThreshold, luminance, thresholdToLinear } from '../src/core/gamma.js';
 import { applyAdjustments } from '../src/core/adjust.js';
 import { gaussianBlur } from '../src/core/blur.js';
-import { sobel, xdog, applyEdges, gradient, thin, lineMap, structureMap, hysteresis, responseAt, cleanThresholds } from '../src/core/edges.js';
+import {
+  sobel, xdog, applyEdges, gradient, thin, lineMap, structureMap,
+  hysteresis, responseAt, cleanThresholds, coherenceMap, weighByCoherence,
+} from '../src/core/edges.js';
 import { CONTENT_PRESETS } from '../src/core/presets.js';
 import { IMAGE_KINDS, classifyImage, imageFeatures } from '../src/core/classify.js';
 import { VIEWING_BLUR, scoreArt, similarity, toneAgreement } from '../src/core/score.js';
@@ -398,6 +401,62 @@ async function run() {
     const swept = lineMap(stepped, W, H, { mode: 'xdog', radius: 1, clean: 0.9 });
     check('clean 0 changes nothing', lit(lineMap(stepped, W, H, { mode: 'xdog', radius: 1, clean: 0 })), lit(plain));
     ok('a real edge survives cleaning', lit(swept) > 0, `${lit(swept)} pixels of line`);
+  }
+
+  // --- telling a contour from texture by its direction ----------------------
+  // The limit hysteresis could not pass: a blade of grass is a genuinely sharp
+  // edge, so no threshold and no amount of connectivity separates it from a
+  // boundary. What separates them is that a boundary points one way and texture
+  // points every way at once.
+  {
+    // A straight edge down the middle, and speckle of the same strength either
+    // side of it -- exactly the fixture hysteresis was measured against, where
+    // it could only keep what was weak and connected.
+    const speckled = new Float32Array(W * H);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) speckled[y * W + x] = x < W / 2 ? 40 : 210;
+    let seed = 7;
+    const roll = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        if (Math.abs(x - W / 2) < 4) continue;
+        if (roll() < 0.25) speckled[y * W + x] += roll() < 0.5 ? -85 : 85;
+      }
+    }
+
+    const coherence = coherenceMap(speckled, W, H);
+    const along = (x) => {
+      let sum = 0;
+      for (let y = 8; y < H - 8; y++) sum += coherence[y * W + x];
+      return sum / (H - 16);
+    };
+    const onEdge = Math.max(along(W / 2 - 1), along(W / 2));
+    const onTexture = (along(8) + along(W - 8)) / 2;
+    ok('a boundary answers as one direction', onEdge > 0.5, onEdge.toFixed(3));
+    ok('and texture as none in particular', onTexture < 0.35, onTexture.toFixed(3));
+    ok('which is a gap worth leaning on', onEdge > onTexture * 2,
+       `${onEdge.toFixed(3)} against ${onTexture.toFixed(3)}`);
+
+    // The weighting itself: nothing at zero, and it only ever dims.
+    const lines = new Float32Array([200, 200, 200, 200]);
+    const mixed = new Float32Array([0, 0.25, 0.5, 1]);
+    check('no cleaning changes nothing', [...weighByCoherence(lines, mixed, 0)].join(','), '200,200,200,200');
+    const dimmed = weighByCoherence(lines, mixed, 1);
+    check('the undirected is dimmed to nothing', dimmed[0], 0);
+    check('the fully directed is left alone', dimmed[3], 200);
+    ok('and it never brightens anything',
+       [...dimmed].every((v, i) => v <= lines[i]), [...dimmed].join(','));
+
+    // End to end: the same picture, cleaned. What survives should be the edge.
+    const cleaned = lineMap(speckled, W, H, { mode: 'sobel', radius: 1, clean: 0.9 });
+    const inkNear = (x) => {
+      let n = 0;
+      for (let y = 0; y < H; y++) for (let dx = -2; dx <= 2; dx++) if (cleaned[y * W + x + dx] > 40) n++;
+      return n;
+    };
+    const kept = inkNear(W / 2);
+    const stray = inkNear(10) + inkNear(W - 10);
+    ok('cleaning keeps the boundary', kept > H / 2, `${kept} inked around the edge`);
+    ok('and drops the speckle beside it', stray < kept / 4, `${stray} inked out in the texture`);
   }
 
   // --- mixing --------------------------------------------------------------
