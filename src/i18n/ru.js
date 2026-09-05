@@ -26,6 +26,10 @@ export const ru = {
     'pane.zoom.adjusted': 'Увеличить: после коррекции',
     'pane.zoom.grid': 'Увеличить: пиксели сетки',
     'art.empty': 'Перетащите изображение сюда, вставьте из буфера или выберите файл слева.',
+    'art.describes': 'Брайль-арт из источника «{source}»: сетка {cols}×{rows} ячеек, {chars}.',
+    'art.describesNone': 'Арта пока нет.',
+    'art.chars': { one: '{#count} знак', few: '{#count} знака', many: '{#count} знаков' },
+    'art.describesEditing': 'Брайль-арт, сетка {cols}×{rows} ячеек, идёт правка точек. Стрелки — перемещение, Enter или пробел — переключить точку.',
     'inspect.close': '{w}×{h} px · щёлкните или нажмите Esc, чтобы закрыть',
 
     // --- source ---

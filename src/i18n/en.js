@@ -27,6 +27,10 @@ export const en = {
     'pane.zoom.adjusted': 'Enlarge: adjusted',
     'pane.zoom.grid': 'Enlarge: sampled pixels',
     'art.empty': 'Drop an image here, paste one from the clipboard, or choose a file on the left.',
+    'art.describes': 'Braille art from {source}: a grid of {cols}×{rows} cells, {chars}.',
+    'art.describesNone': 'No art yet.',
+    'art.chars': { one: '{#count} character', other: '{#count} characters' },
+    'art.describesEditing': 'Braille art, a grid of {cols}×{rows} cells, dots being edited by hand. Arrows move, Enter or Space turns a dot on or off.',
     'inspect.close': '{w}×{h} px · click or press Esc to close',
 
     // --- source ---

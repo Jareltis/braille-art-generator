@@ -1334,6 +1334,25 @@ async function run() {
        `${diffused.toFixed(3)} at ${VIEWING_BLUR} against ${sharp.toFixed(3)} up close`);
   }
 
+  // The art's spoken description counts in the language's own forms: Russian
+  // has three and 21 takes the singular, which "21 знаков" would get wrong.
+  {
+    setLocale('ru');
+    check('one of them', t('art.chars', { count: 1 }), '1 знак');
+    check('twenty-one of them, still singular', t('art.chars', { count: 21 }), '21 знак');
+    check('twenty-two takes the second form', t('art.chars', { count: 22 }), '22 знака');
+    // The separator between thousands is a non-breaking space, not a plain one:
+    // that is what stops a number breaking across two lines, and it is why the
+    // expected string here has to be built rather than typed.
+    const nbsp = String.fromCharCode(0x00A0);
+    check('and a thousand takes the third, grouped',
+          t('art.chars', { count: 5669 }), `5${nbsp}669 знаков`);
+    setLocale('en');
+    check('english has two forms', t('art.chars', { count: 1 }), '1 character');
+    check('and the other one', t('art.chars', { count: 21 }), '21 characters');
+    setLocale('ru');
+  }
+
   // --- a drawing judged as a drawing ---------------------------------------
   // Measured over 48 draws across four pictures, a line variant was offered
   // exactly never: it is scored against the light, and light is the one thing a

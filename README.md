@@ -36,6 +36,7 @@ only ever hands out static files.
 | **Back and forward** | steps the whole panel through what the automatic changes did to it |
 | **What was worked out** | the automatic choices in effect, and why each one is what it is |
 | **On a phone** | the result first, the source views as a strip beneath it, controls below |
+| **Spoken** | the art is a picture and says so, instead of being read out dot by dot |
 | **Targets** | message limit in view, copying inside a code fence, width measured against your own client |
 | **Fitting** | trim blank margins, find the widest size that fits, split into several messages |
 | **Source** | a file, lettering in large braille type, the camera, or a drawing |
@@ -269,6 +270,28 @@ no fragmentation to fix, only too much ink.
 Below 1 the flat-field response is `l·(1−τ)` — proportional to brightness — so
 an even mid-grey answers with ink and dark areas silt up with strokes that are
 not edges.
+
+### For someone who cannot see it
+
+Left to itself, a screen reader meeting the art reads out the braille patterns
+one after another — several thousand of them, as dot numbers. For an app that
+makes pictures out of braille that is worse than unhelpful, because the people
+who read braille for real get the worst of it.
+
+So the art says what it is: `role="img"` with a description built for this art
+rather than left in the markup — where the picture came from, the size of the
+grid, how many characters. The characters are then passed over rather than
+recited. The count is given in the language's own plural forms, which for
+Russian means 21 takes the singular.
+
+While dots are being edited by hand the role comes off, because then the element
+is not a picture but a thing being worked on, and the description says which
+keys move and which toggle. The status line is already a live region, so each
+edit is announced as it happens.
+
+One thing this cannot fix, and it is worth saying plainly: art pasted into a
+shared chat reaches anyone reading that chat on a braille display as noise. If
+the room is not yours, a line of description alongside it is a kindness.
 
 ### On a small screen
 

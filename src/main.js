@@ -435,6 +435,7 @@ async function keepRendering() {
       lastRender = { ms: performance.now() - started, cells: cols * rows };
       following = keepsUp(lastRender.cells, lastRender, following);
       describeDecisions();
+      describeArt();
       if (statusStamp === stamp) setStatus(t('status.done'), 'ok');
     } while (renderWanted);
   } finally {
@@ -528,6 +529,50 @@ async function autoThreshold() {
 }
 
 /** The size line, plus how the art measures against the target's limit. */
+/**
+ * Say what the art is, for anyone who cannot see it.
+ *
+ * A screen reader meeting this element without help reads the braille patterns
+ * one after another -- several thousand of them, in a row, as dot numbers. For
+ * an app that makes pictures out of braille that is worse than unhelpful: the
+ * one group of people who read braille for real get the worst of it.
+ *
+ * So the art is what it is, a picture, and says so: role="img" makes the label
+ * the whole of it and the characters are passed over. The label is built here
+ * rather than left in the markup because it has to describe this art, not the
+ * idea of one.
+ *
+ * The role comes off while dots are being edited by hand, because then the
+ * element is not a picture but a thing being worked on, and the status line --
+ * which is already a live region -- is what reports each change.
+ */
+function describeArt() {
+  const editing = Boolean(dotEditor?.isEnabled());
+  // One split, and the newline built rather than written: this shell eats a
+  // doubled backslash inside a heredoc, and has done four times now.
+  const lines = artText ? artText.split(String.fromCharCode(10)) : [];
+  const rows = lines.length;
+  const cols = lines[0]?.length ?? 0;
+
+  if (editing) {
+    dom.output.removeAttribute('role');
+    dom.output.setAttribute('aria-label', t('art.describesEditing', { cols, rows }));
+    return;
+  }
+
+  dom.output.setAttribute('role', 'img');
+  dom.output.setAttribute('aria-label', artText
+    ? t('art.describes', {
+      source: t(`source.${dom.sourceKind.value}`),
+      cols,
+      rows,
+      // Its own key, because a language with three plural forms needs one
+      // count per phrase and this sentence carries three numbers.
+      chars: t('art.chars', { count: artText.length }),
+    })
+    : t('art.describesNone'));
+}
+
 function updateMeta(text, sampled = null) {
   const lines = text.split('\n');
   const rows = lines.length;
@@ -1132,6 +1177,7 @@ function setEditing(on) {
   dom.dotEdit.setAttribute('aria-pressed', String(on));
   dom.dotUndo.disabled = !on || !dotEditor.canUndo();
   dom.dotHint.textContent = on ? `${t('dots.hint')} ${t('dots.keys')}` : '';
+  describeArt();
 }
 
 /* ------------------------------------------------------------------------ *
@@ -1509,7 +1555,7 @@ function init() {
   linkOpened = Object.keys(fromLink).length > 0;
 
   initLocale(opening.language ?? preferredLocale());
-  onLocaleChange(() => { retranslate(); describeDecisions(); });
+  onLocaleChange(() => { retranslate(); describeDecisions(); describeArt(); });
 
   fillLanguages();
   fillPresets();
@@ -1523,6 +1569,7 @@ function init() {
 
   applySettings(opening);
   describeDecisions();
+  describeArt();
   // A link sets the panel, and the panel is a thing this app remembers. Leaving
   // it unsaved would show one state and store another, and the next plain visit
   // would silently undo what the link asked for.

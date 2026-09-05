@@ -396,6 +396,42 @@ async function run() {
        $('presetHint').textContent);
   }
 
+  mark('the art says what it is');
+  // --- the art says what it is ---------------------------------------------
+  // Left to itself a screen reader reads this element out as several thousand
+  // braille patterns, one dot number after another. For an app that makes
+  // pictures out of braille that is worse than unhelpful: the people who read
+  // braille for real get the worst of it. So the art is a picture and says so.
+  {
+    const art = $('output');
+    check('the art is presented as a picture', art.getAttribute('role'), 'img');
+
+    const label = () => art.getAttribute('aria-label') ?? '';
+    ok('and its description says how big it is', /\d+×\d+/.test(label()), label());
+    ok('and where it came from', label().includes('источник'), label());
+    ok('and how much of it there is', /знаков/.test(label()), label());
+
+    // The numbers have to be this art, not the idea of one.
+    const cols = Number($('outWidth').value);
+    ok('the size in the description is the size on screen',
+       label().includes(String(cols)), `${label()} (width field says ${cols})`);
+
+    // While dots are being edited it is not a picture but a thing being worked
+    // on, and the status line -- already a live region -- reports each change.
+    $('dotEdit').click();
+    await until(() => $('dotEdit').getAttribute('aria-pressed') === 'true');
+    check('editing takes the picture role away', art.getAttribute('role'), null);
+    ok('and the description says what the keys do', /Стрелки/.test(label()), label());
+
+    $('dotEdit').click();
+    await until(() => $('dotEdit').getAttribute('aria-pressed') === 'false');
+    check('leaving editing gives it back', art.getAttribute('role'), 'img');
+
+    // The status line is what carries the running commentary, so it has to be
+    // a live region -- without that, an edit is silent.
+    check('the status line is announced', $('status').getAttribute('aria-live'), 'polite');
+  }
+
   mark('the panel says what it worked out');
   // --- the panel says what it worked out ------------------------------------
   // A lot is decided for the person now -- the kind of picture, the threshold,
