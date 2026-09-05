@@ -2001,6 +2001,39 @@ async function run() {
        `${byLight.ink} against ${byAll.ink}`);
   }
 
+
+  // --- colour follows the grid, not the row --------------------------------
+  // The runs used to be cut over each row's own length, which is the same
+  // number as the grid width right up until it is not. A ragged line would
+  // then slide every colour after it by a cell.
+  {
+    const NEWLINE_ = String.fromCharCode(10);
+    const full = String.fromCharCode(0x28FF);
+    const ragged = [full + full + full, full + full].join(NEWLINE_);
+    const grid = 3;
+    // Six cells, each its own unmistakable colour.
+    const tints = new Uint8ClampedArray([
+      10, 0, 0, 20, 0, 0, 30, 0, 0,
+      0, 40, 0, 0, 50, 0, 0, 60, 0,
+    ]);
+    const html = brailleToHtml(ragged, tints, grid, {
+      fontFamily: 'monospace', fontSize: 12, lineHeight: 1,
+      foreground: '#fff', background: '#000',
+    });
+    // The fourth cell is the first of the second row, so that is the colour the
+    // second line has to open with -- not the third cell's, which is where a
+    // row-length stride would have left it.
+    const opensWith = (line) => (line.match(/color:(#[0-9a-f]{6})/) ?? [])[1];
+    // Only the art's own lines: the page's stylesheet says "color:" as well.
+    const secondLine = html.split(NEWLINE_).filter((line) => line.includes('<span style="color:'))[1];
+    check('the second row opens on the second row of colours', opensWith(secondLine), '#002800');
+
+    const ansi = brailleToAnsi(ragged, tints, grid);
+    const secondAnsi = ansi.split(NEWLINE_)[1];
+    check('and the terminal export opens there too',
+      (secondAnsi.match(/38;2;(\d+;\d+;\d+)/) ?? [])[1], '0;40;0');
+  }
+
   const failed = log.filter((l) => l.startsWith('FAIL')).length;
   out(`${log.join('\n')}\n${failed ? `\n${failed} FAILED` : '\nAll pipeline checks passed.'}`);
 }

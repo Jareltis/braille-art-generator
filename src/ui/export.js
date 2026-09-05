@@ -106,6 +106,9 @@ async function handOver(payload) {
  */
 function pictureOf(canvas, filename) {
   const url = canvas.toDataURL('image/png');
+  // A canvas too large to encode comes back as "data:," rather than as an
+  // error, and sharing that would hand another app an empty file.
+  if (!url.startsWith('data:image/png')) return null;
   const encoded = atob(url.slice(url.indexOf(',') + 1));
   const bytes = new Uint8Array(encoded.length);
   for (let i = 0; i < encoded.length; i++) bytes[i] = encoded.charCodeAt(i);
@@ -118,7 +121,8 @@ export function shareArt(canvas, text, { filename, title }) {
   }
 
   const file = pictureOf(canvas, filename);
-  const takesFiles = typeof navigator.canShare !== 'function' || navigator.canShare({ files: [file] });
+  const takesFiles = file
+    && (typeof navigator.canShare !== 'function' || navigator.canShare({ files: [file] }));
   const payload = takesFiles ? { files: [file], title } : { text, title };
 
   return handOver(payload).then((went) => (went ? (takesFiles ? 'picture' : 'text') : 'cancelled'));
@@ -241,9 +245,13 @@ const RESET = `${ESC}[0m`;
  */
 export function brailleToHtml(text, colours, cols, { fontFamily, fontSize, lineHeight, foreground, background }) {
   const lines = text.split('\n');
+  // Runs are cut over the grid the colours were built on, not over the row:
+  // the two agree today because every row is the same length, and the colour
+  // array would silently shift by a cell the day one is not.
+  const stride = cols || Math.max(...lines.map((line) => line.length));
   const body = lines.map((line, row) => {
     if (!colours) return escapeHtml(line);
-    return colourRuns(colours, row, line.length)
+    return colourRuns(colours, row, stride)
       .map(({ start, end, index }) =>
         `<span style="color:${cellHex(colours, index)}">${escapeHtml(line.slice(start, end))}</span>`)
       .join('');
@@ -281,9 +289,10 @@ export function brailleToAnsi(text, colours, cols, palette = 'full') {
   const fixed = TERMINAL_PALETTES[palette] ?? null;
   const known = fixed ? new Map() : null;
   const lines = text.split('\n');
+  const stride = cols || Math.max(...lines.map((line) => line.length));
   return lines.map((line, row) => {
     if (!colours) return line;
-    const painted = colourRuns(colours, row, line.length).map(({ start, end, index }) => {
+    const painted = colourRuns(colours, row, stride).map(({ start, end, index }) => {
       const at = index * 3;
       const select = fixed
         ? ansiForeground(palette, nearest(fixed, colours[at], colours[at + 1], colours[at + 2], known))

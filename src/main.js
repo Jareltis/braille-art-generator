@@ -995,11 +995,6 @@ function whatChanges(recipe) {
   if (recipe.threshold != null && Math.round(recipe.threshold) !== Math.round(controls.threshold.value)) {
     changes.push(`${t('threshold.label')} ${Math.round(recipe.threshold)}`);
   }
-  // Only worth saying where there is a detector to say it about: with no lines
-  // at all the flag changes nothing, and announcing it would be noise.
-  if (recipe.edge.mode !== 'none' && Boolean(recipe.edge.colour) !== dom.edgeColour.checked) {
-    changes.push(t(recipe.edge.colour ? 'edges.colour.on' : 'edges.colour.off'));
-  }
   if (recipe.detail !== Math.round(controls.detail.value)) {
     changes.push(`${t('detail.label')} ${recipe.detail}`);
   }
@@ -1017,7 +1012,6 @@ function applyRecipe(recipe) {
     controls.edgeAmount.set(Math.round((recipe.edge.amount ?? 1) * 100));
     controls.edgeRadius.set(recipe.edge.radius ?? 1);
     controls.edgeClean.set(Math.round((recipe.edge.clean ?? 0) * 100));
-    dom.edgeColour.checked = Boolean(recipe.edge.colour);
   }
   syncEdgeControls();
 }

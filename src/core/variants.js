@@ -107,11 +107,6 @@ export const VARIANT_FAMILIES = Object.freeze([
         amount: between(random, 0.85, 1),
         radius: oneDecimal(between(random, 0.6, 1.6)),
         clean: between(random, 0.5, 1),
-        // Whether to look at colour as well is a dial like any other here: on a
-        // drawing of flat colours it finds boundaries the light cannot see, and
-        // on a photograph it finds texture. Which of those a picture has is
-        // exactly the sort of question the draw is here to answer.
-        colour: pick(random, [false, true]),
       },
     }),
   },
@@ -206,6 +201,20 @@ export function referenceFor(pixels, cols, rows) {
  * The same detector the drawing families use, run on the picture itself, so
  * what a line variant is measured against is the thing it was trying to find
  * rather than some other idea of an edge.
+ */
+/**
+ * Where the contours are, as far as this scoring can tell.
+ *
+ * Deliberately the lightness detector alone, and deliberately the same one for
+ * every candidate. Looking at colour was tried as a dial for the draw and taken
+ * out again: measured on four pictures, a candidate that looks at colour scores
+ * 0.87 against 0.96 on this reference and 0.72 against 0.95 on a landscape --
+ * not because it is worse but because the reference cannot see what it found.
+ * Building the reference from the colour detector instead simply reverses the
+ * verdict (0.92 against 0.85), which is the tell: this measure grades a
+ * candidate on how well it agrees with whichever detector drew the answer key,
+ * so it cannot arbitrate between two detectors. Colour in the edges is a
+ * decision for the preset and the panel, not for the draw.
  */
 export function contourFor(pixels, cols, rows) {
   const { width, height } = pixels;
