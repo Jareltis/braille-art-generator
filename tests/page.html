@@ -394,6 +394,67 @@ async function run() {
     ok('and the hint explains auto, not the kind it found',
        $('presetHint').textContent.length > 0 && !$('presetHint').textContent.includes('XDoG'),
        $('presetHint').textContent);
+    // Strokes on a clean ground are flat where they mean to be: the automatic
+    // lift asks about texture thrown away, and there is none here to throw.
+    check('and a clean ground is not lifted', $('shadows').value, '0');
+  }
+
+  mark('a crushed picture is lifted on its own');
+  // --- a crushed picture is lifted on its own ------------------------------
+  {
+    const dark = async () => {
+      const c = frame.contentWindow.document.createElement('canvas');
+      c.width = 240;
+      c.height = 240;
+      const paint = c.getContext('2d');
+      // A photograph's worth of texture, all of it in the bottom of the range:
+      // there is plenty to see and none of it survives one bit per dot.
+      for (let y = 0; y < 240; y++) {
+        for (let x = 0; x < 240; x++) {
+          const base = 4 + Math.round(y * 46 / 239);
+          const texture = (((x >> 1) + (y >> 1)) % 2) ? 9 : -9;
+          const value = Math.max(0, base + texture);
+          paint.fillStyle = `rgb(${value},${value},${value})`;
+          paint.fillRect(x, y, 1, 1);
+        }
+      }
+      const blob = await new Promise((r) => c.toBlob(r, 'image/png'));
+      return new File([blob], 'night.png', { type: 'image/png' });
+    };
+
+    const page = frame.contentWindow;
+    const carry = new page.DataTransfer();
+    carry.items.add(await dark());
+    page.dispatchEvent(new page.DragEvent('drop', { dataTransfer: carry, bubbles: true, cancelable: true }));
+    ok('a dark picture loads', await until(() => $('srcMeta').textContent === '240×240'),
+       `srcMeta = ${$('srcMeta').textContent}`);
+
+    $('preset').value = 'auto';
+    $('preset').dispatchEvent(new Event('change', { bubbles: true }));
+
+    ok('the shadows come up on their own',
+       await until(() => Number($('shadows').value) > 0, 6000), $('shadows').value);
+    ok('and it says how much was going missing',
+       /%/.test($('status').textContent), $('status').textContent);
+
+    // The panel is where the app says what it decided, and this is a decision
+    // it made on the person's behalf on a control they can see.
+    $('decided').open = true;
+    await wait(200);
+    const said = $('decidedList').textContent;
+    ok('the panel credits the automatic lift', /автоматически/.test(said),
+       said.slice(0, 120));
+
+    // And a hand on the slider takes the credit back.
+    $('shadows').value = '10';
+    $('shadows').dispatchEvent(new Event('input', { bubbles: true }));
+    await wait(600);
+    ok('moving it by hand takes the credit back',
+       /вручную/.test($('decidedList').textContent),
+       $('decidedList').textContent.slice(0, 120));
+    $('shadows').value = '0';
+    $('shadows').dispatchEvent(new Event('input', { bubbles: true }));
+    await wait(400);
   }
 
   mark('the art can be copied as a picture');
@@ -2108,12 +2169,26 @@ async function run() {
          `${$('dither').value}, width ${$('outWidth').value}`);
     }
 
+    // Every saved row can leave on its own, work or style alike: the panel says
+    // the browser is not a safe place to keep something, and the way out has to
+    // be reachable from the thing being kept.
+    {
+      const row = $('worksList').querySelector('li:not(.none)');
+      const labels = [...row.querySelectorAll('button')].map((button) => button.textContent);
+      check('each row offers open, file and delete', labels.join('/'), 'Открыть/Файлом/Удалить');
+    }
+
     // Everything saved along the way goes again, one row at a time, and the
     // list says so when there is nothing left.
     for (let guard = 0; guard < 8; guard++) {
       const row = $('worksList').querySelector('li:not(.none)');
       if (!row) break;
-      row.querySelectorAll('button')[1].click();
+      // By what it says, not by where it sits: the row grew a third button and
+      // the second one stopped being the one that deletes.
+      const drop = [...row.querySelectorAll('button')]
+        .find((button) => button.textContent === 'Удалить');
+      if (!drop) break;
+      drop.click();
       await wait(400);
     }
     ok('deleting empties the list',

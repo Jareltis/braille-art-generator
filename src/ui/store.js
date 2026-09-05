@@ -108,6 +108,9 @@ export async function packWork(work) {
   return JSON.stringify({
     app: 'braille-art',
     version: FILE_VERSION,
+    // A style is the same record with the picture left out, and a file that did
+    // not say so would open as a work with no picture and no size.
+    kind: work.kind === 'style' ? 'style' : 'work',
     name: work.name,
     saved: new Date(work.saved ?? Date.now()).toISOString(),
     cols: work.cols,
@@ -132,6 +135,7 @@ export async function unpackWork(text) {
   // A file from a later version opens as far as this one understands it, the
   // same way a link from a later version does.
   return {
+    kind: read.kind === 'style' ? 'style' : 'work',
     name: typeof read.name === 'string' ? read.name : '',
     saved: Date.parse(read.saved) || Date.now(),
     cols: read.cols ?? 0,

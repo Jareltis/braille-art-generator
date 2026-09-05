@@ -668,6 +668,12 @@ cookies either, and would not be: cookies are sent to the server with every
 request, which for a static site means handing the host what someone is working
 on, and four kilobytes is not a picture.
 
+Every saved row can leave on its own, too — **to a file**, beside **open** and
+**delete**. A work goes out with its picture inside it; a style goes out as what
+it is and comes back as one, which is why the file says which of the two it
+holds. Without that a style would return as a work with no picture and no size,
+and that is not a thing this app can show.
+
 Each saved work carries a small drawing of itself, made by the same function
 that draws the page and the PNG, so a thumbnail cannot show something the art
 does not. A name and a grid size tell two works apart only when they differ; a
@@ -971,6 +977,28 @@ question about the picture rather than about the person holding it. **Detect
 automatically** measures the picture and applies the preset that fits, and says
 which one it settled on, because it is a guess and a guess should be
 overrulable.
+
+**Detect automatically** does one more thing after it has chosen a preset: it
+asks whether the picture is handing the art more range than the art can show.
+Not by how dark the picture is — a drawing on a white ground is mostly one value
+and wants nothing done to it — but by how much of what the picture holds is
+being thrown away. It counts cells the art renders as nothing at all, every dot
+down or every dot up, **where the picture had visible texture to show**. A clean
+white background carries no texture and is not counted, which is exactly what
+stops this from flattening one.
+
+The lift is then chosen by trying a few and measuring, not by a rule about
+brightness: 0, 40, 70, 100, and the smallest that is as good as the best. Two
+bars keep it quiet. It only fires when at least one textured cell in twenty is
+being lost, and only when a lift wins back a fifth of that loss. Measured on six
+real pictures, that lifts the dark forest and the landscape — which were losing
+51% and 25% of their texture — and leaves the other four alone, where a lift
+won back between 7% and 17% and was not worth moving a control the person can
+see.
+
+Whatever it decides is on the slider afterwards, said out loud in the status
+line, and credited in **what was worked out**. A hand on the slider takes the
+credit back: the panel then says the shadows were lifted by hand.
 
 Four measurements do the work, and each threshold sits in the middle of a
 measured gap rather than snug against one edge:

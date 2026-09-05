@@ -14,6 +14,8 @@
 // of the four classes therefore rest on synthetic evidence, and the thresholds
 // sit in the wide middle of the gaps rather than snug against them.
 
+import { applyLocalTone } from './adjust.js';
+import { CELL_H, CELL_W, encode } from './braille.js';
 import { lightness } from './gamma.js';
 import { sobel } from './edges.js';
 
@@ -146,4 +148,111 @@ export function classifyImage(imageData) {
   else if (features.extremes >= INK_EXTREMES) kind = features.busy >= DRAWN_BUSY ? 'lineart' : 'logo';
 
   return { kind, features };
+}
+
+/**
+ * How dark a lift the picture is asking for, if any.
+ *
+ * The question is not how dark the picture is -- a drawing on a white ground is
+ * mostly one value and wants nothing done to it. The question is how much of
+ * what the picture holds is being thrown away: cells the art renders as nothing
+ * at all, every dot down or every dot up, where the picture had visible texture
+ * to show. A clean white background has no texture and is not counted, which is
+ * what stops this from flattening one.
+ *
+ * The lift is chosen by trying a few and measuring, not by a rule about
+ * brightness. Measured on six pictures, the loss falls all the way to the top
+ * of the slider -- there is no knee to find -- so the choice is the smallest
+ * setting that is as good as the best, and the whole thing only fires when
+ * there is a fifth of the loss to win back. On the six that means it lifts the
+ * dark forest and the landscape and leaves the other four alone.
+ */
+export const LIFT_STEPS = Object.freeze([0, 40, 70, 100]);
+
+/** Below this, in L*, a cell has nothing in it worth keeping. One unit is
+ *  roughly the smallest difference the eye can tell. */
+const TEXTURE = 2;
+
+/**
+ * How much has to be going missing before the question is worth asking at all.
+ *
+ * One textured cell in twenty. The relative test below is the one that tells
+ * the pictures apart -- on six real ones the lift won back 7 to 17 percent of
+ * the loss on four of them and 40 and 48 on the two that needed it -- but a
+ * ratio on a loss of two percent is a ratio on noise, and it fired.
+ */
+const WORTH_ASKING = 0.05;
+
+/** How much of the loss a lift has to win back before it is worth applying. */
+const WORTH_IT = 0.2;
+
+/** And how close to the best a smaller setting may be and still be taken. */
+const NEAR_ENOUGH = 0.01;
+
+function textureOf(imageData, cols, rows) {
+  const blockW = imageData.width / cols;
+  const blockH = imageData.height / rows;
+  const out = new Float32Array(cols * rows);
+  for (let cell = 0; cell < cols * rows; cell++) {
+    const fromX = Math.floor((cell % cols) * blockW);
+    const fromY = Math.floor(Math.floor(cell / cols) * blockH);
+    const toX = Math.min(imageData.width, Math.ceil(fromX + blockW));
+    const toY = Math.min(imageData.height, Math.ceil(fromY + blockH));
+    let sum = 0;
+    let squares = 0;
+    let seen = 0;
+    for (let y = fromY; y < toY; y++) {
+      for (let x = fromX; x < toX; x++) {
+        const at = (y * imageData.width + x) * 4;
+        const l = lightness(imageData.data[at], imageData.data[at + 1], imageData.data[at + 2]) / 2.55;
+        sum += l;
+        squares += l * l;
+        seen++;
+      }
+    }
+    const mean = sum / (seen || 1);
+    out[cell] = Math.sqrt(Math.max(0, squares / (seen || 1) - mean * mean));
+  }
+  return out;
+}
+
+/** The share of cells that had something to show and show nothing. */
+function lostTexture(bits, texture, cols, rows) {
+  const dotsW = cols * CELL_W;
+  let lost = 0;
+  let had = 0;
+  for (let cell = 0; cell < cols * rows; cell++) {
+    if (texture[cell] <= TEXTURE) continue;
+    had++;
+    const fromX = (cell % cols) * CELL_W;
+    const fromY = Math.floor(cell / cols) * CELL_H;
+    let lit = 0;
+    for (let dy = 0; dy < CELL_H; dy++) {
+      for (let dx = 0; dx < CELL_W; dx++) lit += bits[(fromY + dy) * dotsW + (fromX + dx)] ? 1 : 0;
+    }
+    if (lit === 0 || lit === CELL_W * CELL_H) lost++;
+  }
+  return had ? lost / had : 0;
+}
+
+export function shadowLiftFor(imageData, options = {}) {
+  const cols = options.grid?.cols;
+  const rows = options.grid?.rows;
+  if (!cols || !rows) return { shadows: 0, lost: 0, without: 0 };
+
+  const texture = textureOf(imageData, cols, rows);
+  const tried = LIFT_STEPS.map((shadows) => {
+    const pixels = shadows ? applyLocalTone(imageData, { shadows, highlights: 0 }) : imageData;
+    const { bits } = encode(pixels, options);
+    return { shadows, lost: lostTexture(bits, texture, cols, rows) };
+  });
+
+  const without = tried[0].lost;
+  const best = Math.min(...tried.map((one) => one.lost));
+  if (without < WORTH_ASKING || (without - best) / without < WORTH_IT) {
+    return { shadows: 0, lost: without, without };
+  }
+
+  const taken = tried.find((one) => one.lost <= best + NEAR_ENOUGH) ?? tried[0];
+  return { shadows: taken.shadows, lost: taken.lost, without };
 }

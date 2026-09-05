@@ -10,7 +10,7 @@ import { cellHex, colourRuns } from './core/colour.js';
 import { paletteFor, snap } from './core/palette.js';
 import { DEFAULT_DITHER, DIFFUSING } from './core/dither.js';
 import { CONTENT_PRESETS } from './core/presets.js';
-import { classifyImage } from './core/classify.js';
+import { classifyImage, shadowLiftFor } from './core/classify.js';
 import { APP_VERSION } from './version.js';
 import { DRAWS_PER_FAMILY, VARIANT_FAMILIES } from './core/variants.js';
 import { fitWithin } from './core/pixels.js';
@@ -72,6 +72,9 @@ let following = true;
  */
 let detectedKind = null;
 let thresholdFromOtsu = false;
+// What the automatic lift decided, so the panel can say so. Cleared by anyone
+// who sets the shadows themselves, the same way the Otsu flag is.
+let liftFromAuto = null;
 let lastSampling = null;
 
 const el = (id) => document.getElementById(id);
@@ -719,8 +722,51 @@ function detectPreset() {
   applyPreset(kind);
   // applyPreset writes that kind's own hint; the chosen kind is still auto.
   dom.presetHint.textContent = hintFor(AUTO_PRESET);
-  setStatus(t('preset.detected', { kind: t(`preset.${kind}`) }), 'info');
+
+  // And then, on the settings that preset just chose, ask whether the picture
+  // is handing the art more range than it can show. The order matters: the
+  // preset writes the shadows control, so measuring first would be measuring
+  // the last picture's answer.
+  const lift = measureLift();
+  if (lift?.shadows) {
+    controls.shadows.set(lift.shadows);
+    liftFromAuto = lift;
+    setStatus(t('preset.detectedLift', {
+      kind: t(`preset.${kind}`),
+      lost: Math.round(lift.without * 100),
+    }), 'info');
+  } else {
+    setStatus(t('preset.detected', { kind: t(`preset.${kind}`) }), 'info');
+  }
   return kind;
+}
+
+/**
+ * How much of the picture's texture the art is throwing away, and what lift
+ * stops it.
+ *
+ * Measured on a grid of its own rather than on the output's: four encodes are
+ * wanted here, the answer is a share rather than a count, and it does not move
+ * between forty columns and sixty. Anything wider would only cost time.
+ */
+const STUDY_COLS = 60;
+
+function measureLift() {
+  if (!source) return null;
+  const { cols, rows } = resolveGrid();
+  const studyCols = Math.min(STUDY_COLS, cols);
+  const studyRows = Math.max(2, Math.round(rows * studyCols / cols));
+  const raster = drawScaled(
+    source,
+    studyCols * CELL_W * 4,
+    studyRows * CELL_H * 4,
+    backgroundFor(isInverted()),
+    { smooth: smoothScaling, crop: cropRect },
+  );
+  return shadowLiftFor(readImageData(raster), {
+    ...readOptions(),
+    grid: { cols: studyCols, rows: studyRows },
+  });
 }
 
 /**
@@ -746,6 +792,8 @@ function applyPreset(key) {
   controls.edgeClean.set(chosen.edgeClean);
   dom.edgeColour.checked = Boolean(chosen.edgeColour);
   controls.emphasis.set(chosen.emphasis);
+  // The preset is setting this, so it is no longer the automatic answer.
+  liftFromAuto = null;
   controls.shadows.set(chosen.shadows);
   controls.highlights.set(chosen.highlights);
   controls.brightness.set(chosen.brightness);
@@ -940,12 +988,17 @@ function showWorks(saved) {
     open.textContent = t('works.open');
     open.addEventListener('click', () => { openWork(work.id).catch(fail); });
 
+    const file = document.createElement('button');
+    file.type = 'button';
+    file.textContent = t('works.file');
+    file.addEventListener('click', () => { exportWork(work.id).catch(fail); });
+
     const drop = document.createElement('button');
     drop.type = 'button';
     drop.textContent = t('works.delete');
     drop.addEventListener('click', () => { removeWork(work.id, work.name).catch(fail); });
 
-    row.append(who, when, open, drop);
+    row.append(who, when, open, file, drop);
     return row;
   }));
 
@@ -957,6 +1010,17 @@ function showWorks(saved) {
     row.textContent = t('works.empty');
     dom.worksList.replaceChildren(row);
   }
+}
+
+/** A name a file system will take, from a name a person chose. */
+const fileNameFor = (name) => `${name.replace(/[^\p{L}\p{N} _-]/gu, '') || 'work'}.braille.json`;
+
+/** Any saved record, work or style, out to a file of its own. */
+async function exportWork(id) {
+  const work = await readWork(id);
+  if (!work) return;
+  downloadText(await packWork(work), fileNameFor(work.name));
+  setStatus(t('works.saved', { name: work.name }), 'ok');
 }
 
 async function refreshWorks() {
@@ -1923,6 +1987,11 @@ function describeDecisions() {
     ? t('decided.thresholdOtsu', { value: threshold })
     : t('decided.thresholdHand', { value: threshold }));
 
+  const shadows = Math.round(controls.shadows.value);
+  add('decided.lift', liftFromAuto
+    ? t('decided.liftAuto', { value: shadows, lost: Math.round(liftFromAuto.without * 100) })
+    : (shadows ? t('decided.liftHand', { value: shadows }) : t('decided.liftNone')));
+
   if (lastSampling) add('decided.sampling', t('decided.samplingFrom', lastSampling));
 
   add('decided.redraw', lastRender
@@ -1980,7 +2049,9 @@ function init() {
     // through here, which is what makes the flag reliable.
     onChange: () => { thresholdFromOtsu = false; changed({ affectsPreview: false }); },
   });
-  controls.shadows = bindRange(el('shadows'), el('shadowsVal'), { onChange: changed });
+  controls.shadows = bindRange(el('shadows'), el('shadowsVal'), {
+    onChange: () => { liftFromAuto = null; changed(); },
+  });
   controls.highlights = bindRange(el('highlights'), el('highlightsVal'), { onChange: changed });
   controls.brightness = bindRange(el('brightness'), el('brightnessVal'), { onChange: changed });
   controls.contrast = bindRange(el('contrast'), el('contrastVal'), { onChange: changed });
@@ -2318,6 +2389,7 @@ function init() {
   });
 
   dom.reset.addEventListener('click', () => {
+    liftFromAuto = null;
     for (const name of ['shadows', 'highlights', 'brightness', 'contrast', 'saturation', 'sharpness']) {
       controls[name].reset();
     }
@@ -2381,7 +2453,7 @@ function init() {
     if (!requireArt()) return;
     (async () => {
       const work = await currentWork();
-      downloadText(await packWork(work), `${work.name.replace(/[^\p{L}\p{N} _-]/gu, '') || 'work'}.braille.json`);
+      downloadText(await packWork(work), fileNameFor(work.name));
       setStatus(t('works.saved', { name: work.name }), 'ok');
     })().catch(fail);
   });

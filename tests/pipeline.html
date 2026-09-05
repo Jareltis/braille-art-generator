@@ -31,7 +31,7 @@ import {
   hysteresis, responseAt, cleanThresholds, coherenceMap, weighByCoherence,
 } from '../src/core/edges.js';
 import { CONTENT_PRESETS } from '../src/core/presets.js';
-import { IMAGE_KINDS, classifyImage, imageFeatures } from '../src/core/classify.js';
+import { IMAGE_KINDS, LIFT_STEPS, classifyImage, imageFeatures, shadowLiftFor } from '../src/core/classify.js';
 import { VIEWING_BLUR, scoreArt, similarity, toneAgreement } from '../src/core/score.js';
 import {
   DISTINCT, DRAWS_PER_FAMILY, QUALITY_FLOOR, VARIANT_FAMILIES,
@@ -2444,6 +2444,18 @@ async function run() {
     check('of the same kind', back.source.blob.type, 'image/png');
 
     // A work without a picture is still a work.
+    // A style is the same record with the picture left out, so the file has to
+    // say which it is -- otherwise it comes back as a work with no picture and
+    // no size, which is not a thing this app can show.
+    {
+      const style = await unpackWork(await packWork({
+        ...work, kind: 'style', art: '', cols: 0, rows: 0, source: null,
+      }));
+      check('a style is still a style after a trip through a file', style.kind, 'style');
+      check('and its settings came with it', style.settings.dither, work.settings.dither);
+      check('a work is a work', (await unpackWork(await packWork(work))).kind, 'work');
+    }
+
     const bare = await unpackWork(await packWork({ ...work, source: null }));
     check('a work with no picture opens too', bare.source, null);
 
@@ -2617,6 +2629,59 @@ async function run() {
          lightOf(chained, 0, w / 2) / lightOf(scene, 0, w / 2) > 1.8,
          `x${(lightOf(chained, 0, w / 2) / lightOf(scene, 0, w / 2)).toFixed(2)}`);
     }
+  }
+
+  // --- what the picture is asking for --------------------------------------
+  {
+    const scene = (paint, cols, rows) => {
+      const image = new ImageData(cols * CELL_W * 4, rows * CELL_H * 4);
+      for (let y = 0; y < image.height; y++) {
+        for (let x = 0; x < image.width; x++) {
+          const at = (y * image.width + x) * 4;
+          const value = paint(x / image.width, y / image.height, x, y);
+          image.data[at] = image.data[at + 1] = image.data[at + 2] = value;
+          image.data[at + 3] = 255;
+        }
+      }
+      return image;
+    };
+    const grid = { cols: 20, rows: 10 };
+    const asked = (image) => shadowLiftFor(image, { ...grid, grid });
+
+    // A dark scene with texture all through it: this is what the lift is for.
+    const crushed = asked(scene((across, down, x, y) => {
+      const base = 6 + Math.round(down * 90);
+      return base + (((x >> 2) + (y >> 2)) % 2 ? 7 : -7);
+    }, grid.cols, grid.rows));
+    ok('a crushed picture is offered a lift', crushed.shadows > 0,
+       `${crushed.shadows}, losing ${(crushed.without * 100).toFixed(0)}%`);
+    ok('and the lift is one of the steps on offer', LIFT_STEPS.includes(crushed.shadows),
+       String(crushed.shadows));
+
+    // A drawing on a clean white ground is flat where it means to be, and the
+    // whole point of asking about texture rather than about brightness is that
+    // this one is left alone.
+    const drawing = asked(scene((across, down, x, y) => (
+      (Math.abs(x - y) < 6 || Math.abs(x + y - 300) < 6) ? 20 : 250
+    ), grid.cols, grid.rows));
+    check('a drawing on a clean ground is left alone', drawing.shadows, 0);
+
+    // A picture already showing everything it has: every cell lands part way
+    // between the two extremes, nothing is being thrown away, nothing is done.
+    const even = asked(scene((across, down, x, y) => (
+      128 + (((x >> 2) + (y >> 2)) % 2 ? 20 : -20)
+    ), grid.cols, grid.rows));
+    ok('a picture with nothing to lose is left alone',
+       even.shadows === 0 && even.without < 0.05,
+       `${even.shadows}, losing ${(even.without * 100).toFixed(0)}%`);
+
+    // The same picture must ask for the same thing every time: this moves a
+    // control the person can see, and a wandering answer would look like a bug.
+    check('and the answer does not wander',
+          asked(scene((across, down, x, y) => {
+            const base = 6 + Math.round(down * 90);
+            return base + (((x >> 2) + (y >> 2)) % 2 ? 7 : -7);
+          }, grid.cols, grid.rows)).shadows, crushed.shadows);
   }
 
   const failed = log.filter((l) => l.startsWith('FAIL')).length;
