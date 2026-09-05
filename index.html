@@ -360,10 +360,14 @@
        these apart is its name and its size, and a braille thumbnail the size of
        a postage stamp tells nothing at all. */
     .works { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; max-height: 190px; overflow: auto; }
-    .works li { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-top: 1px solid var(--line); }
+    /* Wraps rather than overflows: on a phone the name, the size and the two
+       buttons do not fit one line, and a row that runs off the edge takes its
+       buttons with it. */
+    .works li { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; padding: 4px 0; border-top: 1px solid var(--line); }
     .works li:first-child { border-top: 0; }
-    .works .who { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .works .who { flex: 1 1 120px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .works .when { color: var(--muted); font-size: 12px; white-space: nowrap; }
+    .works .none { color: var(--muted); font-size: 12px; display: block; }
     .works button { padding: 4px 9px; font-size: 12px; }
     #worksPanel .field.row { align-items: end; }
     #workName { width: 100%; }

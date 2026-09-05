@@ -859,7 +859,9 @@ function showWorks(saved) {
 
   if (!saved.length) {
     const row = document.createElement('li');
-    row.className = 'when';
+    // Its own class: the size next to a name never wraps, and this sentence
+    // must, or the row runs a couple of screens off the side of a phone.
+    row.className = 'none';
     row.textContent = t('works.empty');
     dom.worksList.replaceChildren(row);
   }

@@ -749,6 +749,9 @@ async function run() {
     // The two screens where this last fell over, measured rather than guessed:
     // a phone held sideways and a small or folded one. Both had the button
     // below the fold, which is exactly what the arrangement exists to prevent.
+    // Nothing may hang off the side, and that includes what the panels put
+    // there: the "nothing saved yet" line reused a class that never wraps and
+    // ran two screens wide before anything noticed.
     for (const [width, height, what] of [[320, 568, 'a small phone'], [844, 390, 'a phone held sideways']]) {
       await resize(width, height);
       const inner = frame.contentWindow;
@@ -758,6 +761,10 @@ async function run() {
       ok(`${what}: and nothing runs off the side`,
          doc.documentElement.scrollWidth <= inner.innerWidth + 2,
          `${doc.documentElement.scrollWidth}px wide in ${inner.innerWidth}px`);
+      const past = [...doc.querySelectorAll('body *')]
+        .filter((el) => el.getBoundingClientRect().right > inner.innerWidth + 2)
+        .map((el) => el.id || el.className || el.tagName);
+      ok(`${what}: and no single element does either`, past.length === 0, past.slice(0, 3).join(', '));
       ok(`${what}: the art is still the tallest thing above it`,
          box('.shot-art').height > box('.panes .shot:not(.shot-art)').height,
          `art ${Math.round(box('.shot-art').height)}px against strip ${Math.round(box('.panes .shot:not(.shot-art)').height)}px`);
