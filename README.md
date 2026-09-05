@@ -241,10 +241,19 @@ from 68 pieces to 27 and from 57 pixels to 161. Fewer marks, much longer.
 
 It is not free. The three blurs behind the structure tensor are the largest
 single cost in the edge path — 744ms of about 800 on a two-megapixel raster,
-against 21ms for the hysteresis after it. Two ways of making it cheaper were
-measured and neither was taken: half resolution is four times faster and moves
-30% of the lit dots, and box blurs in place of the Gaussian are twice as fast
-and shift the coherence by 0.07 to 0.14 on a scale of one. What carries the cost
+against 21ms for the hysteresis after it. Three ways of making it cheaper have been
+measured and none was taken. Half resolution is four times faster and moves 30%
+of the lit dots. Box blurs in place of the Gaussian are twice as fast and shift
+the coherence itself by 0.07 to 0.14 on a scale of one. And a recursive
+Gaussian — Young and van Vliet, a fixed handful of operations per pixel whatever
+sigma is — is four to eight times faster on the blur and keeps a flat field
+exactly flat, but measured against a properly computed Gaussian rather than
+against our own approximation it is the less accurate of the two by about seven
+times, with tails twice as heavy as they should be. For a tensor whose whole
+question is how far agreement reaches, that is the wrong thing to get wrong; it
+moved 1.4–3.1% of the lit dots to save half the time on this path, and the
+truncated direct filter was already within half a level of the ideal at its
+worst. What carries the cost
 instead is the pacing — a redraw too slow to follow the controls stops following
 them and says so.
 

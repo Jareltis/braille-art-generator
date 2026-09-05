@@ -231,6 +231,16 @@ const COHERENCE_RADIUS = 4;
  * Gaussian is twice as cheap and shifts the coherence itself by 0.07 to 0.14 on
  * a scale of one, which is a large fraction of the thing being measured.
  *
+ * A recursive Gaussian -- Young and van Vliet, a fixed handful of operations per
+ * pixel whatever sigma is -- was written, measured and thrown away too. It is
+ * four to eight times faster on the blur alone and keeps a flat field exactly
+ * flat, but measured against a properly computed Gaussian it is the less
+ * accurate of the two by roughly seven times: its tails are twice as heavy as
+ * they should be, which for a tensor that asks how far agreement reaches is the
+ * wrong thing to get wrong. It moved 1.4% to 3.1% of the lit dots for a twofold
+ * saving on this path. The truncated direct filter was already within 0.5 of a
+ * level of the ideal at its worst.
+ *
  * So the cost stands, and what carries it is the pacing: a redraw that grows too
  * slow to follow the controls stops following them and says so, which is what
  * that mechanism is for. At sixty columns the whole redraw is around 310ms and
