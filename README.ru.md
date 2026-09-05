@@ -9,7 +9,7 @@
 Работает целиком в браузере: изображение никуда не загружается, сервер отдаёт
 только статические файлы.
 
-**[Открыть генератор →](https://jareltis.github.io/Braille_Art_Generator/)**
+**[Открыть генератор →](https://jareltis.github.io/braille-art-generator/)**
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Older versions: MIT](https://img.shields.io/badge/%E2%89%A4v0.0.12-MIT-green.svg)](LICENSE-MIT)
@@ -642,14 +642,14 @@ braille.ans`). Обычный текст и буфер обмена цвет н�
 
 ## Запуск
 
-Проще всего — [открыть готовую версию](https://jareltis.github.io/Braille_Art_Generator/).
+Проще всего — [открыть готовую версию](https://jareltis.github.io/braille-art-generator/).
 
 Локально нужен любой HTTP-сервер: проект собран из ES-модулей, а браузеры не
 загружают модули по `file://`. Двойной клик по `index.html` не сработает.
 
 ```bash
-git clone https://github.com/Jareltis/Braille_Art_Generator.git
-cd Braille_Art_Generator
+git clone https://github.com/Jareltis/braille-art-generator.git
+cd braille-art-generator
 ```
 
 Дальше — что есть под рукой:

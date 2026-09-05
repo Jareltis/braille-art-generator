@@ -1,8 +1,8 @@
 {
   "name": "Braille Art Generator",
   "short_name": "Braille Art",
-  "description": "Генератор арта из символов Unicode Braille. Работает полностью в браузере.",
-  "lang": "ru",
+  "description": "Turn a picture into art made of Unicode braille dots. Runs entirely in the browser, works offline.",
+  "lang": "en",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
@@ -10,8 +10,23 @@
   "background_color": "#072e20",
   "theme_color": "#072e20",
   "icons": [
-    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
   ]
 }

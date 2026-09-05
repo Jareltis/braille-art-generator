@@ -9,7 +9,7 @@ ordinary ASCII art.
 It runs entirely in the browser: the image is never uploaded, and the server
 only ever hands out static files.
 
-**[Open the generator →](https://jareltis.github.io/Braille_Art_Generator/)**
+**[Open the generator →](https://jareltis.github.io/braille-art-generator/)**
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Older versions: MIT](https://img.shields.io/badge/%E2%89%A4v0.0.12-MIT-green.svg)](LICENSE-MIT)
@@ -58,15 +58,15 @@ the art keeps its alignment in chats that collapse whitespace.
 
 ## Run it
 
-The easiest way is to [open the hosted version](https://jareltis.github.io/Braille_Art_Generator/).
+The easiest way is to [open the hosted version](https://jareltis.github.io/braille-art-generator/).
 
 Locally, any static server will do — the project is built from ES modules, and
 browsers refuse to load those over `file://`, so double-clicking `index.html`
 will not work.
 
 ```bash
-git clone https://github.com/Jareltis/Braille_Art_Generator.git
-cd Braille_Art_Generator
+git clone https://github.com/Jareltis/braille-art-generator.git
+cd braille-art-generator
 ```
 
 Then whichever is at hand:
