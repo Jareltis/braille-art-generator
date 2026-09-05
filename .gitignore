@@ -8,8 +8,9 @@ Thumbs.db
 node_modules/
 *.log
 
-# local scratch
+# local scratch: the lab page and the two scripts that drive it
 _*.html
+_*.mjs
 
 # рабочие заметки, не для репозитория
 CLAUDE.md
