@@ -57,9 +57,12 @@ function run(mode, work) {
 export async function listWorks() {
   const all = await run('readonly', (store) => store.getAll());
   return all
-    .map(({ id, name, saved, cols, rows, source, thumb, art }) => ({
+    .map(({ id, name, saved, cols, rows, source, thumb, art, kind }) => ({
       id, name, saved, cols, rows, thumb: thumb ?? null,
-      kind: source?.kind ?? 'image',
+      // A style is the same record with the picture and the art left out: it
+      // says how to make one, not what was made.
+      kind: kind === 'style' ? 'style' : 'work',
+      source: source?.kind ?? 'image',
       // What this one work costs, which is not the same question as what the
       // whole site is using: the offline cache is most of that.
       bytes: (source?.blob?.size ?? 0) + (thumb?.size ?? 0) + (art?.length ?? 0),

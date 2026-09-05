@@ -2046,6 +2046,38 @@ async function run() {
        `width ${$('outWidth').value}`);
     check('and the width with it', $('outWidth').value, '44');
 
+    // A style is the same record with the picture left out: what to do, not
+    // what was done. Saved from one picture, put on another.
+    {
+      $('dither').value = 'bayer4';
+      $('dither').dispatchEvent(new Event('change', { bubbles: true }));
+      await stable(() => $('output').textContent);
+      $('workName').value = 'мой стиль';
+      $('styleSave').click();
+      ok('saving a style says what it is for',
+         await until(() => /накатить на любую/.test($('status').textContent), 6000),
+         $('status').textContent);
+
+      const rows = () => [...$('worksList').querySelectorAll('li')];
+      const styleRow = rows().find((row) => row.querySelector('.who')?.textContent === 'мой стиль');
+      ok('it appears in the list as a style, without a size',
+         styleRow?.querySelector('.when')?.textContent === 'стиль', styleRow?.textContent?.slice(0, 40) ?? 'missing');
+      ok('and without a picture of its own, having none',
+         !styleRow?.querySelector('.peek'), styleRow?.innerHTML?.slice(0, 40) ?? '');
+
+      // Change the settings, keep the picture, put the style back on.
+      const art = await stable(() => $('output').textContent);
+      $('dither').value = 'atkinson';
+      $('dither').dispatchEvent(new Event('change', { bubbles: true }));
+      await stable(() => $('output').textContent);
+      styleRow.querySelectorAll('button')[0].click();
+      ok('applying it brings the settings back', await until(() => $('dither').value === 'bayer4', 6000),
+         $('dither').value);
+      ok('and says it went onto this picture',
+         /теперь на этой картинке/.test($('status').textContent), $('status').textContent);
+      ok('and the art is the one that style made', await until(() => $('output').textContent === art, 8000));
+    }
+
     // The same work, dropped on the page as a file. Dropping a picture is how
     // most things start here; a saved work is the other thing worth dropping,
     // and it should not need a different gesture.
@@ -2072,7 +2104,14 @@ async function run() {
          `${$('dither').value}, width ${$('outWidth').value}`);
     }
 
-    $('worksList').querySelectorAll('button')[1].click();
+    // Everything saved along the way goes again, one row at a time, and the
+    // list says so when there is nothing left.
+    for (let guard = 0; guard < 8; guard++) {
+      const row = $('worksList').querySelector('li:not(.none)');
+      if (!row) break;
+      row.querySelectorAll('button')[1].click();
+      await wait(400);
+    }
     ok('deleting empties the list',
        await until(() => /Пока пусто/.test($('worksList').textContent), 5000),
        $('worksList').textContent.slice(0, 40));

@@ -161,6 +161,7 @@ const dom = {
   worksHint: el('worksHint'),
   workName: el('workName'),
   workSave: el('workSave'),
+  styleSave: el('styleSave'),
   workExport: el('workExport'),
   workImport: el('workImport'),
   workFile: el('workFile'),
@@ -890,6 +891,20 @@ async function currentWork() {
 /** Object URLs handed to the list, released when the list is rebuilt. */
 let shownThumbs = [];
 
+/** The settings alone, for putting on some other picture later. */
+function currentStyle() {
+  return {
+    kind: 'style',
+    name: dom.workName.value.trim() || t('works.namePlaceholder'),
+    settings: collectSettings(),
+    art: '',
+    cols: 0,
+    rows: 0,
+    source: null,
+    thumb: null,
+  };
+}
+
 function showWorks(saved) {
   for (const url of shownThumbs) URL.revokeObjectURL(url);
   shownThumbs = [];
@@ -913,7 +928,8 @@ function showWorks(saved) {
 
     const when = document.createElement('span');
     when.className = 'when';
-    when.textContent = `${work.cols}×${work.rows}`;
+    // A style has no size to give, so it says what it is instead.
+    when.textContent = work.kind === 'style' ? t('works.style') : `${work.cols}×${work.rows}`;
 
     const open = document.createElement('button');
     open.type = 'button';
@@ -997,7 +1013,9 @@ async function openWork(id) {
   const work = await readWork(id);
   if (!work) return;
   await applyWork(work);
-  setStatus(t('works.opened', { name: work.name }), 'ok');
+  // Opening a style puts it on whatever picture is already here, which is the
+  // whole point of having saved one, so it says that rather than "opened".
+  setStatus(t(work.kind === 'style' ? 'works.appliedStyle' : 'works.opened', { name: work.name }), 'ok');
 }
 
 async function removeWork(id, name) {
@@ -2339,6 +2357,16 @@ function init() {
       dom.worksPanel.open = true;
       await refreshWorks();
       setStatus(t('works.saved', { name: work.name }), 'ok');
+    })().catch(fail);
+  });
+
+  dom.styleSave.addEventListener('click', () => {
+    (async () => {
+      const style = currentStyle();
+      await saveWork(style);
+      dom.worksPanel.open = true;
+      await refreshWorks();
+      setStatus(t('works.savedStyle', { name: style.name }), 'ok');
     })().catch(fail);
   });
 

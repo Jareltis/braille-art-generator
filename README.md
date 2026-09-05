@@ -640,6 +640,13 @@ source picture measured in megabytes. The size shown beside the count is what
 the works themselves take, not what the origin does — the offline cache is tens
 of megabytes and would drown them.
 
+**Save the style** puts the same record in without the picture or the art: how
+to make one rather than what was made. It lands in the same list, marked as a
+style and carrying no thumbnail, since there is nothing to show; opening it puts
+those settings on whatever picture is loaded now. That is the difference worth
+having — a saved work is a thing you made, a saved style is the way you make
+them.
+
 The panel says plainly that the browser is not a safe place to leave something.
 A private window forgets it, "clear site data" takes it, and iOS discards
 everything a site stored after seven days away unless the site was installed.
