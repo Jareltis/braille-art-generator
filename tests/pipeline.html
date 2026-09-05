@@ -232,6 +232,58 @@ async function run() {
   })(), true);
   check('default method', DEFAULT_DITHER, 'floyd-steinberg');
 
+  // --- turning at each end --------------------------------------------------
+  // Error diffusion that always travels the same way leaves the error drifting
+  // that way too, and the drift shows as fine horizontal streaks through the
+  // mid-tones. Alternating the direction row by row cancels it.
+  {
+    const level = thresholdToLinear(128);
+    const size = 96;
+    const ramp = new Float32Array(size * size);
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) ramp[y * size + x] = 30 + (x / (size - 1)) * 190;
+    }
+
+    // The give-away of a fixed direction: neighbouring rows come out alike,
+    // because each row inherits the same drift from the one above it.
+    const rowsAlike = (bits) => {
+      let same = 0, counted = 0;
+      for (let y = 1; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+          if (bits[y * size + x] === bits[(y - 1) * size + x]) same++;
+          counted++;
+        }
+      }
+      return same / counted;
+    };
+
+    const diffused = DITHER_METHODS['floyd-steinberg'](ramp, size, size, level, level);
+    ok('rows do not simply copy the row above', rowsAlike(diffused) < 0.75,
+       `${(100 * rowsAlike(diffused)).toFixed(0)}% of dots match the row above`);
+
+    // Turning must not cost the tone: the error still lands on real neighbours,
+    // whichever way it is going.
+    for (const method of ['floyd-steinberg', 'atkinson']) {
+      const flat = new Float32Array(size * size).fill(128);
+      const got = coverage(DITHER_METHODS[method](flat, size, size, level, level));
+      const wanted = method === 'atkinson' ? 0.59 : 0.502;
+      near(`${method} still holds its tone when it turns`, got, wanted - 0.03, wanted + 0.03);
+    }
+
+    // And the picture is not lopsided: the two halves get equal ink, which a
+    // botched mirror of the kernel would break.
+    const flat = new Float32Array(size * size).fill(110);
+    const bits = DITHER_METHODS['floyd-steinberg'](flat, size, size, level, level);
+    let left = 0, right = 0;
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size / 2; x++) left += bits[y * size + x];
+      for (let x = size / 2; x < size; x++) right += bits[y * size + x];
+    }
+    ok('neither side of the picture gets more ink than the other',
+       Math.abs(left - right) / Math.max(1, left + right) < 0.02,
+       `${left} against ${right}`);
+  }
+
   // --- leaning on the threshold at an edge ---------------------------------
   // Eschbach and Knox's edge enhancement: push the threshold about per pixel so
   // an edge decides more sharply. It costs faithfulness -- the score against

@@ -67,17 +67,25 @@ function floydSteinberg(plane, width, height, threshold, neutral = threshold, bi
   const bits = new Uint8Array(plane.length);
 
   for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
+    // Turn at each end rather than flying back. Always sending the error the
+    // same way leaves it drifting that way too, and the drift shows as fine
+    // horizontal streaks through the mid-tones -- plain to see on a hillside.
+    // Alternating the direction cancels the bias between one row and the next.
+    const ahead = y & 1 ? -1 : 1;
+    for (let step = 0; step < width; step++) {
+      const x = ahead > 0 ? step : width - 1 - step;
       const i = y * width + x;
       const lit = buf[i] > threshold + (bias ? bias[i] : 0);
       bits[i] = lit ? 1 : 0;
       const err = buf[i] - (lit ? 255 : 0);
 
-      if (x + 1 < width) buf[i + 1] += err * 7 / 16;
+      const nextTo = x + ahead;
+      const behind = x - ahead;
+      if (nextTo >= 0 && nextTo < width) buf[i + ahead] += err * 7 / 16;
       if (y + 1 < height) {
-        if (x > 0) buf[i + width - 1] += err * 3 / 16;
+        if (behind >= 0 && behind < width) buf[i + width - ahead] += err * 3 / 16;
         buf[i + width] += err * 5 / 16;
-        if (x + 1 < width) buf[i + width + 1] += err * 1 / 16;
+        if (nextTo >= 0 && nextTo < width) buf[i + width + ahead] += err * 1 / 16;
       }
     }
   }
@@ -98,18 +106,23 @@ function atkinson(plane, width, height, threshold, neutral = threshold, bias = n
   const bits = new Uint8Array(plane.length);
 
   for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
+    const ahead = y & 1 ? -1 : 1;   // see floydSteinberg for why
+    for (let step = 0; step < width; step++) {
+      const x = ahead > 0 ? step : width - 1 - step;
       const i = y * width + x;
       const lit = buf[i] > threshold + (bias ? bias[i] : 0);
       bits[i] = lit ? 1 : 0;
       const share = (buf[i] - (lit ? 255 : 0)) / 8;
 
-      if (x + 1 < width) buf[i + 1] += share;
-      if (x + 2 < width) buf[i + 2] += share;
+      const one = x + ahead;
+      const two = x + ahead * 2;
+      const back = x - ahead;
+      if (one >= 0 && one < width) buf[i + ahead] += share;
+      if (two >= 0 && two < width) buf[i + ahead * 2] += share;
       if (y + 1 < height) {
-        if (x > 0) buf[i + width - 1] += share;
+        if (back >= 0 && back < width) buf[i + width - ahead] += share;
         buf[i + width] += share;
-        if (x + 1 < width) buf[i + width + 1] += share;
+        if (one >= 0 && one < width) buf[i + width + ahead] += share;
       }
       if (y + 2 < height) buf[i + 2 * width] += share;
     }

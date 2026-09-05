@@ -139,6 +139,15 @@ coarse.
 - **Atkinson** passes on only six eighths of the error. Losing the rest is the
   point: highlights and shadows clip rather than smear, which reads better on a
   coarse grid.
+
+Both of these turn at the end of each row rather than flying back to the left.
+Error diffusion that always travels the same way leaves the error drifting that
+way too, and the drift shows as fine horizontal streaking through the mid-tones
+— plain to see on a hillside, where the slopes came out combed. Alternating the
+direction cancels it between one row and the next, at no cost at all. Measured,
+the score against the original rose from 0.890 to 0.901 on a landscape and from
+0.943 to 0.949 on a drawing, and fell by 0.002 on a graphic; the streaking is
+the part you can see.
 - **Blue noise** is ordered like Bayer — nothing travels between pixels, so the
   result never shifts when the image is re-cropped — but its tile is built by
   void-and-cluster, spreading thresholds so that no scale carries a repeating
