@@ -293,6 +293,14 @@
 
     .shot-art { background: var(--art-bg); position: relative; }
 
+    /* The art drawn as dots, laid over the text it was set from. The text
+       keeps its place -- it is what gets selected, copied and read out -- and
+       gives up only its colour while the canvas is up. The span rule needs
+       !important because the colour runs carry theirs inline. */
+    #lattice { position: absolute; z-index: 4; pointer-events: none; }
+    #output.lattice-on { color: transparent; }
+    #output.lattice-on span { color: transparent !important; }
+
     /* where the keyboard is, on surfaces a pointer would otherwise own alone */
     .dot-cursor, .pad-cursor {
       position: absolute; z-index: 5; pointer-events: none;
@@ -783,7 +791,10 @@
               <label for="fontSize" data-i18n="display.fontSize"></label>
               <input id="fontSize" type="number" min="6" max="48" value="12">
             </div>
-            <div></div>
+            <div class="check" data-i18n-title="display.evenGridHint">
+              <input id="evenGrid" type="checkbox" checked>
+              <label for="evenGrid" data-i18n="display.evenGrid"></label>
+            </div>
           </div>
 
           <div class="field buttons">
@@ -828,6 +839,7 @@
           <figure class="shot shot-art">
             <figcaption><b data-i18n="pane.result"></b></figcaption>
             <pre id="output" tabindex="0" role="img"></pre>
+            <canvas id="lattice" hidden></canvas>
             <div class="dot-cursor" id="dotCursor" hidden></div>
           </figure>
         </div>

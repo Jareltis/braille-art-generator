@@ -33,6 +33,7 @@ const KEYS = Object.freeze({
   emphasis: 'em',
   keepAspect: 'ka',
   trimBlank: 'tr',
+  evenGrid: 'eg',
   colour: 'col',
   palette: 'pal',
   transparent: 'tr0',
@@ -45,7 +46,7 @@ const KEYS = Object.freeze({
 const NAMES = Object.freeze(Object.fromEntries(Object.entries(KEYS).map(([name, key]) => [key, name])));
 
 /** Written as 1 and 0, and read back as booleans rather than as those strings. */
-const BOOLEAN = new Set(['keepAspect', 'trimBlank', 'colour', 'smooth', 'textBold', 'transparent']);
+const BOOLEAN = new Set(['keepAspect', 'trimBlank', 'colour', 'smooth', 'textBold', 'transparent', 'evenGrid']);
 
 /** Lettering long enough to make the link useless is left out of it. */
 const TEXT_LIMIT = 400;

@@ -29,7 +29,8 @@ only ever hands out static files.
 | **Colour** | one tint per cell: on screen, in PNG, SVG, HTML and ANSI for the terminal |
 | **Palette** | full colour, the 256 or 16 a terminal has, or a few drawn from the picture |
 | **Copying** | as text, or as a picture for rooms that squash the line height |
-| **PNG** | drawn dot by dot, so no font's padding or hollow rings get into it |
+| **On screen** | the art drawn dot by dot, so the font's gutters and hollow rings stay out of it |
+| **PNG** | drawn the same way, from the same function |
 | **Image adjustment** | brightness, contrast, saturation, sharpness |
 | **Output** | width and height in cells, proportions kept automatically, inversion |
 | **Presets** | photographs, line art, logos, pixel art — each sets every control it covers |
@@ -323,7 +324,7 @@ Below 1 the flat-field response is `l·(1−τ)` — proportional to brightness 
 an even mid-grey answers with ink and dark areas silt up with strokes that are
 not edges.
 
-### The exported picture is drawn, not typed
+### The art is drawn, not typed
 
 A braille glyph does not fill the cell it is given. Measured in this app's own
 font stack, a fully lit cell inks 26 pixels of a 37.5 pixel advance: nearly a
@@ -334,17 +335,37 @@ for exactly this reason. Some fonts are worse than merely padded: they draw the
 unraised dots as hollow rings, filling the picture with holes that were never
 in it.
 
-On screen there is nothing to be done about that — a page shows what the font
-gives it. An exported image is ours from end to end, so the PNG is drawn from
-the dots: two across a cell and four down, each in the middle of its own
-quarter, so the spacing inside a cell and the spacing between cells are the same
-number. The cell keeps the proportions the art was laid out for, so the picture
-has the shape the screen promised without the gaps the screen could not help.
+The obvious fix is the wrong one. Pulling the letters together with a negative
+letter-spacing would even out the lattice, but it would also make the cell
+narrower than a cell actually is: the gutter is missing ink, not a narrower
+character, and every terminal that renders these glyphs well fills the cell
+without changing its width. Squeezing the text hides a cosmetic flaw by
+introducing a real one — and the glyph aspect that the row count, the layout and
+both exports are all derived from would start to lie.
+
+So the cell keeps the width the font gives it, and the dots are drawn inside it:
+two across and four down, each in the middle of its own quarter, so the spacing
+inside a cell and the spacing between cells are the same number. That is how the
+PNG has always been written; since 0.35 it is what the page shows as well, out
+of the same function, so the two cannot drift apart. The text is still there
+underneath — it is what gets selected, copied, hand-edited and read out — and it
+gives up only its colour while the drawing is up; select any of it and the
+drawing steps aside so the highlight can be seen. **Draw the dots evenly** turns
+it off, for anyone who would rather see exactly what their own font does.
+
+Only the visible window is drawn: a full 900×700 of it measures 3.6 ms, which is
+a scroll's worth of work rather than a render's. At small type sizes a dot is
+drawn as a square rather than a circle — not because a square is sharper, since
+an equal-area one peaks at the same value, but because near a one-pixel radius a
+circle is almost entirely its own anti-aliased edge and the art greys out. In a
+cell four pixels by eight, round dots lay down 4016 of ink where squares lay
+down 5760.
 
 The SVG stays text, and that is deliberate: a 400×400 grid holds up to 1.28
 million dots, and drawn individually that is a file nobody can open. As text it
 is a few kilobytes and stays selectable and editable — at the price, stated in
-full there, of rendering in whatever monospace font the viewer happens to have.
+full there, of rendering in whatever monospace font the viewer happens to have,
+gutters and all. It is the one output still typeset rather than drawn.
 
 ### For someone who cannot see it
 
@@ -786,6 +807,7 @@ src/
     pipeline.js       one interface over worker and inline
     canvas.js         scaling, cropping, reading and writing pixels
     export.js         .txt, clipboard, PNG, SVG, HTML, ANSI
+    lattice.js        the dots, drawn: on the page and into the PNG
     pace.js           whether a redraw still keeps up with the sliders
     platforms.js      message limits and width calibration
     settings.js       remembering the panel

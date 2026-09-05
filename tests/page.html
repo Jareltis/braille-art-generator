@@ -420,6 +420,49 @@ async function run() {
        $('status').textContent);
   }
 
+  mark('the art is drawn, not typeset');
+  // --- the art is drawn, not typeset ---------------------------------------
+  // A braille glyph inks about two thirds of the cell the font gives it, so the
+  // typeset art arrives ruled with gutters that belong to the font rather than
+  // to the picture. The page draws the dots over the text instead, on the same
+  // lattice the exported picture uses. The text stays where it is -- it is what
+  // gets copied, hand-edited and read out -- and gives up only its colour.
+  {
+    const drawn = $('lattice');
+    const artView = $('output');
+    const inFrame = frame.contentWindow;
+    const transparent = 'rgba(0, 0, 0, 0)';
+
+    check('the drawn copy is on by default', $('evenGrid').checked, true);
+    ok('and the canvas is showing', await until(() => !drawn.hidden), `hidden=${drawn.hidden}`);
+    check('the text has given up its colour', inFrame.getComputedStyle(artView).color, transparent);
+    ok('the canvas covers the art',
+       Math.abs(drawn.getBoundingClientRect().width - artView.clientWidth) < 2,
+       `${drawn.getBoundingClientRect().width} over ${artView.clientWidth}`);
+    ok('and it has pixels to draw into', drawn.width > 0 && drawn.height > 0, `${drawn.width}x${drawn.height}`);
+    ok('while the art is still text underneath', /^[⠀-⣿]+$/.test(artView.textContent.split(NEWLINE)[0]));
+
+    // A selection under an opaque canvas looks like a selection that failed.
+    const picked = inFrame.getSelection();
+    picked.selectAllChildren(artView);
+    ok('a selection puts the canvas aside', await until(() => drawn.hidden, 3000), `hidden=${drawn.hidden}`);
+    ok('so the highlight can be seen', inFrame.getComputedStyle(artView).color !== transparent);
+    picked.removeAllRanges();
+    ok('and letting go brings the drawing back', await until(() => !drawn.hidden, 3000));
+
+    // Turned off, the page shows whatever the font makes of it.
+    $('evenGrid').checked = false;
+    $('evenGrid').dispatchEvent(new Event('change', { bubbles: true }));
+    ok('turning it off hides the canvas', await until(() => drawn.hidden, 3000));
+    ok('and the text is visible again', inFrame.getComputedStyle(artView).color !== transparent);
+    ok('and the choice travels in the link',
+       await until(() => /(^|[#&])eg=0([&]|$)/.test(inFrame.location.hash), 3000), inFrame.location.hash);
+
+    $('evenGrid').checked = true;
+    $('evenGrid').dispatchEvent(new Event('change', { bubbles: true }));
+    await until(() => !drawn.hidden);
+  }
+
   mark('the art says what it is');
   // --- the art says what it is ---------------------------------------------
   // Left to itself a screen reader reads this element out as several thousand
@@ -1381,6 +1424,19 @@ async function run() {
     ok('runs are far fewer than cells',
        $('output').querySelectorAll('span').length < plainArt.replace(/\n/g, '').length / 4,
        `${$('output').querySelectorAll('span').length} runs for ${plainArt.replace(/\n/g, '').length} cells`);
+
+    // The tint has to reach the drawn copy as well, or the page would show a
+    // white art while claiming a coloured one.
+    {
+      const shown = $('lattice');
+      const paints = shown.getContext('2d', { willReadFrequently: true })
+        .getImageData(0, 0, shown.width, shown.height).data;
+      const seen = new Set();
+      for (let i = 0; i < paints.length; i += 4) {
+        if (paints[i + 3] > 200) seen.add(`${paints[i] >> 5},${paints[i + 1] >> 5},${paints[i + 2] >> 5}`);
+      }
+      ok('and the drawn dots are tinted too', seen.size >= 3, `${seen.size} colours on the canvas`);
+    }
 
     $('colour').checked = false;
     $('colour').dispatchEvent(new Event('change', { bubbles: true }));

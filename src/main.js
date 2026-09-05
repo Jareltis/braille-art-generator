@@ -29,6 +29,7 @@ import { clearSettings, loadSettings, saveSettings } from './ui/settings.js';
 import { fromHash, shareUrl, textFits, updateHash } from './ui/link.js';
 import { createCropper } from './ui/crop.js';
 import { createDotEditor } from './ui/dots.js';
+import { createLatticeView } from './ui/lattice.js';
 import { DEFAULT_TEXT_FONT, TEXT_FONTS, renderText } from './ui/text.js';
 import { createCamera } from './ui/camera.js';
 import { createSketchPad } from './ui/draw.js';
@@ -136,6 +137,8 @@ const dom = {
   generate: el('generate'),
   reset: el('resetEdits'),
   output: el('output'),
+  lattice: el('lattice'),
+  evenGrid: el('evenGrid'),
   status: el('status'),
   meta: el('meta'),
   srcCanvas: el('srcCanvas'),
@@ -390,6 +393,7 @@ async function render() {
 
 function applyFontSize() {
   dom.output.style.fontSize = `${clampInt(dom.fontSize.value, 6, 48, 12)}px`;
+  lattice?.redraw();
 }
 
 /**
@@ -777,6 +781,7 @@ function collectSettings() {
     colour: dom.colour.checked,
     transparent: dom.transparent.checked,
     trimBlank: dom.trimBlank.checked,
+    evenGrid: dom.evenGrid.checked,
     smooth: smoothScaling,
   };
   for (const id of PERSISTED_FIELDS) values[id] = el(id).value;
@@ -867,6 +872,9 @@ function applySettings(values) {
   if (typeof values.colour === 'boolean') dom.colour.checked = values.colour;
   if (typeof values.transparent === 'boolean') dom.transparent.checked = values.transparent;
   if (typeof values.smooth === 'boolean') smoothScaling = values.smooth;
+  if (typeof values.evenGrid === 'boolean') dom.evenGrid.checked = values.evenGrid;
+  // Setting a checkbox from code fires no change event, so the view is told.
+  if (lattice) lattice.enabled = dom.evenGrid.checked;
 
   setLayout(dom.layout.value);
   dom.presetHint.textContent = hintFor(dom.preset.value);
@@ -892,6 +900,8 @@ function resetEverything() {
   }
   dom.keepAspect.checked = true;
   dom.trimBlank.checked = false;
+  dom.evenGrid.checked = true;
+  if (lattice) lattice.enabled = true;
   dom.colour.checked = false;
   dom.transparent.checked = false;
   describeDecisions();
@@ -1492,19 +1502,32 @@ const COLOUR_CELL_LIMIT = 40000;
 
 let artColours = null;
 let artCols = 0;
+/** What the page is actually showing: colour is dropped on a grid too big for it. */
+let shownColours = null;
+let lattice = null;
 
 function paintArt() {
+  paintText();
+  // Every path that changes the art ends up here, so this is the one place
+  // the drawn copy has to be brought back in step with the typeset one.
+  lattice?.redraw();
+}
+
+function paintText() {
   const lines = artText.split('\n');
 
   if (!artColours || artCols === 0) {
+    shownColours = null;
     dom.output.textContent = artText;
     return;
   }
   if (lines.length * artCols > COLOUR_CELL_LIMIT) {
+    shownColours = null;
     dom.output.textContent = artText;
     setStatus(t('colour.tooLarge'), 'warn');
     return;
   }
+  shownColours = artColours;
 
   // Only braille glyphs and the markup built here ever reach innerHTML.
   dom.output.innerHTML = lines
@@ -1753,6 +1776,16 @@ function init() {
   dom.cropReset.addEventListener('click', () => cropper.reset());
   dom.trimBlank.addEventListener('change', () => changed({ affectsPreview: false }));
   dom.fitLimit.addEventListener('click', () => { fitToLimit().catch(fail); });
+
+  lattice = createLatticeView(dom.lattice, dom.output, {
+    metrics: outputMetrics,
+    getArt: () => ({ text: artText, colours: shownColours, cols: artCols }),
+  });
+  lattice.enabled = dom.evenGrid.checked;
+  dom.evenGrid.addEventListener('change', () => {
+    lattice.enabled = dom.evenGrid.checked;
+    persist();
+  });
 
   dotEditor = createDotEditor(dom.output, {
     metrics: outputMetrics,

@@ -172,6 +172,8 @@ export const en = {
 
     'display.group': 'Display',
     'display.fontSize': 'Type size, px',
+    'display.evenGrid': 'Draw the dots evenly',
+    'display.evenGridHint': 'The art is drawn rather than typeset, so the gaps a font leaves between cells do not show. What gets copied is unchanged.',
     'reset.edits': 'Reset adjustments',
     'reset.all': 'Reset everything',
     'decided.title': 'What was worked out',

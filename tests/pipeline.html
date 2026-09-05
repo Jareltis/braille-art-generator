@@ -43,6 +43,7 @@ import { DEFAULT_TEXT_FONT, TEXT_FONTS, renderText } from '../src/ui/text.js';
 import { FALLBACK, LOCALES, formatNumber, setLocale, t } from '../src/i18n/index.js';
 import { fromHash, textFits, toHash } from '../src/ui/link.js';
 import { brailleToAnsi, brailleToHtml, brailleToSvg, renderDotsToCanvas } from '../src/ui/export.js';
+import { drawLattice } from '../src/ui/lattice.js';
 import { cellColours, cellHex, colourRuns } from '../src/core/colour.js';
 import { PALETTES, TERMINAL_PALETTES, ansiForeground, medianCut, nearest, paletteFor, snap } from '../src/core/palette.js';
 import { lab } from '../src/core/gamma.js';
@@ -1800,6 +1801,54 @@ async function run() {
     const pixel = tinted.getContext('2d', { willReadFrequently: true }).getImageData(4, 4, 1, 1).data;
     ok('a tinted cell paints in its own colour', pixel[0] > 150 && pixel[1] < 90,
        `rgb(${pixel[0]}, ${pixel[1]}, ${pixel[2]})`);
+  }
+
+
+  // --- and the screen draws it too, a window at a time ---------------------
+  // The page cannot draw the whole art on every scroll -- two hundred cells
+  // across and hundreds of rows down is more work than the gutters are worth --
+  // so it draws the visible window and slides the art under it.
+  {
+    const DOTTED = String.fromCharCode(0x28FF);
+    const EMPTY = String.fromCharCode(0x2800);
+    const rows = [EMPTY + DOTTED, DOTTED + EMPTY];
+
+    const board = document.createElement('canvas');
+    board.width = 16;
+    board.height = 32;
+    const board2d = board.getContext('2d', { willReadFrequently: true });
+
+    const window16 = (offsetX, offsetY) => {
+      board2d.clearRect(0, 0, 16, 32);
+      drawLattice(board2d, rows, {
+        cellW: 16, cellH: 32, foreground: '#ffffff', offsetX, offsetY, width: 16, height: 32,
+      });
+      let dots = 0;
+      for (let dx = 0; dx < 2; dx++) {
+        for (let dy = 0; dy < 4; dy++) {
+          if (board2d.getImageData(Math.round((dx + 0.5) * 8), Math.round((dy + 0.5) * 8), 1, 1).data[3] > 128) dots++;
+        }
+      }
+      return dots;
+    };
+
+    check('at rest the window shows the first cell, which is blank', window16(0, 0), 0);
+    check('scrolled one cell across, the lit one has arrived', window16(16, 0), 8);
+    check('and scrolled one row down, so has the one below', window16(0, 32), 8);
+
+    // Small type is where a round dot falls apart: at a radius near a pixel
+    // there is little of it that is not its own anti-aliased edge, and the art
+    // greys out. Below the switch the dot is drawn as a square, which is the
+    // shape that keeps the ink -- 5760 of it here, against 4016 for circles.
+    const small = document.createElement('canvas');
+    small.width = 4;
+    small.height = 8;
+    const small2d = small.getContext('2d', { willReadFrequently: true });
+    drawLattice(small2d, [DOTTED], { cellW: 4, cellH: 8, foreground: '#ffffff' });
+    const pixels = small2d.getImageData(0, 0, 4, 8).data;
+    let ink = 0;
+    for (let i = 3; i < pixels.length; i += 4) ink += pixels[i];
+    ok('a cell four pixels wide still lays down its ink', ink > 5000, `total alpha ${ink}`);
   }
 
   const failed = log.filter((l) => l.startsWith('FAIL')).length;
