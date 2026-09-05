@@ -8,7 +8,7 @@ import {
 } from './i18n/index.js';
 import { cellHex, colourRuns } from './core/colour.js';
 import { paletteFor, snap } from './core/palette.js';
-import { DEFAULT_DITHER } from './core/dither.js';
+import { DEFAULT_DITHER, DIFFUSING } from './core/dither.js';
 import { CONTENT_PRESETS } from './core/presets.js';
 import { classifyImage } from './core/classify.js';
 import { APP_VERSION } from './version.js';
@@ -235,6 +235,7 @@ const readOptions = () => ({
   threshold: controls.threshold.value,
   invert: isInverted(),
   method: dom.dither.value || DEFAULT_DITHER,
+  emphasis: controls.emphasis.value / 100,
   colour: dom.colour.checked,
   detail: controls.detail.value / 100,
   edge: {
@@ -246,11 +247,17 @@ const readOptions = () => ({
 });
 
 /** The line controls mean nothing until a detector is chosen. */
+/** The emphasis only means anything where the error is handed on. */
+function syncEmphasis() {
+  controls.emphasis.input.disabled = !DIFFUSING.has(dom.dither.value || DEFAULT_DITHER);
+}
+
 function syncEdgeControls() {
   const off = dom.edgeMode.value === 'none';
   controls.edgeAmount.input.disabled = off;
   controls.edgeRadius.input.disabled = off;
   controls.edgeClean.input.disabled = off;
+  syncEmphasis();
 }
 
 /** A loaded file reports naturalWidth; drawn lettering is a canvas and reports width. */
@@ -675,6 +682,7 @@ function applyPreset(key) {
   controls.edgeAmount.set(chosen.edgeAmount);
   controls.edgeRadius.set(chosen.edgeRadius);
   controls.edgeClean.set(chosen.edgeClean);
+  controls.emphasis.set(chosen.emphasis);
   controls.brightness.set(chosen.brightness);
   controls.contrast.set(chosen.contrast);
   controls.saturation.set(chosen.saturation);
@@ -753,7 +761,7 @@ function setLayout(name) {
  * ------------------------------------------------------------------------ */
 const PERSISTED_RANGES = [
   'detail', 'threshold', 'brightness', 'contrast', 'saturation', 'sharpness', 'edgeAmount', 'edgeRadius',
-  'edgeClean',
+  'edgeClean', 'emphasis',
 ];
 const PERSISTED_FIELDS = [
   'preset', 'platform', 'dither', 'invert', 'edgeMode', 'outWidth', 'outHeight', 'fontSize', 'layout',
@@ -1579,6 +1587,7 @@ function init() {
   controls.edgeAmount = bindRange(el('edgeAmount'), el('edgeAmountVal'), { onChange: () => changed({ affectsPreview: false }) });
   controls.edgeRadius = bindRange(el('edgeRadius'), el('edgeRadiusVal'), { decimals: 1, onChange: () => changed({ affectsPreview: false }) });
   controls.edgeClean = bindRange(el('edgeClean'), el('edgeCleanVal'), { onChange: () => changed({ affectsPreview: false }) });
+  controls.emphasis = bindRange(el('emphasis'), el('emphasisVal'), { onChange: () => changed({ affectsPreview: false }) });
 
   controls.calibratedScale = bindRange(el('calibratedScale'), el('calibratedScaleVal'), { decimals: 2 });
 
@@ -1604,6 +1613,7 @@ function init() {
   });
 
   applySettings(opening);
+  syncEmphasis();
   describeDecisions();
   describeArt();
   // A link sets the panel, and the panel is a thing this app remembers. Leaving
@@ -1818,7 +1828,7 @@ function init() {
   dom.cols.addEventListener('input', () => { syncRows(); changed({ affectsPreview: false }); });
   dom.rows.addEventListener('input', () => changed({ affectsPreview: false }));
   dom.keepAspect.addEventListener('change', () => { syncRows(); changed({ affectsPreview: false }); });
-  dom.dither.addEventListener('change', () => changed({ affectsPreview: false }));
+  dom.dither.addEventListener('change', () => { syncEmphasis(); changed({ affectsPreview: false }); });
   dom.edgeMode.addEventListener('change', () => {
     syncEdgeControls();
     changed({ affectsPreview: false });

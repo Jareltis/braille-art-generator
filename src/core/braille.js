@@ -4,7 +4,7 @@
 import { lightness, luminance, thresholdToLinear } from './gamma.js';
 import { CELL_H, CELL_W } from './pixels.js';
 import { cellColours } from './colour.js';
-import { DITHER_METHODS, DEFAULT_DITHER } from './dither.js';
+import { DIFFUSING, DITHER_METHODS, DEFAULT_DITHER, edgeBias } from './dither.js';
 import { lineMap, mixLines, structureMap } from './edges.js';
 import { reduceMax, reduceStats, withDetail } from './sample.js';
 
@@ -104,11 +104,14 @@ export const thresholdFor = (threshold, linear) =>
  * The chosen method decides which pixels land on the bright side; inversion is
  * applied here afterwards, so no dithering method has to know about it.
  */
-export function binarize(plane, width, height, { threshold = 128, neutral = threshold, invert = false, method = DEFAULT_DITHER } = {}) {
+export function binarize(plane, width, height, { threshold = 128, neutral = threshold, invert = false, method = DEFAULT_DITHER, emphasis = 0 } = {}) {
   const dither = DITHER_METHODS[method];
   if (!dither) throw new RangeError(`unknown dither method: ${method}`);
 
-  const bits = dither(plane, width, height, threshold, neutral);
+  // Only where the error is handed on: elsewhere a moved threshold moves the
+  // tone with it, and there is nothing to put it back.
+  const bias = DIFFUSING.has(method) ? edgeBias(plane, width, height, emphasis) : null;
+  const bits = dither(plane, width, height, threshold, neutral, bias);
   if (invert) {
     for (let i = 0; i < bits.length; i++) bits[i] ^= 1;
   }

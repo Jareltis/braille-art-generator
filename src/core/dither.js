@@ -11,6 +11,40 @@
 // itself, so the control can only shift what it chose.
 
 import { BLUE_NOISE_SIZE, blueNoiseMatrix } from './bluenoise.js';
+import { gaussianBlur } from './blur.js';
+
+/**
+ * The methods that hand their error to the neighbours.
+ *
+ * Only these can have their threshold pushed about per pixel without the tone
+ * going with it: whatever the moved threshold decides, the difference from the
+ * true value is still what gets passed on, so the neighbourhood corrects it.
+ * An ordered tile has no such second chance -- moving its threshold moves the
+ * tone, full stop, which is the same trap the ordered methods were already
+ * caught in once.
+ */
+export const DIFFUSING = Object.freeze(new Set(['floyd-steinberg', 'atkinson']));
+
+/**
+ * How much to lean on the threshold at an edge, per pixel.
+ *
+ * The classic edge enhancement for error diffusion, after Eschbach and Knox:
+ * subtract a scaled high-pass of the picture from the threshold, so a pixel on
+ * the bright side of an edge finds it easier to light and one on the dark side
+ * harder. One multiply and one add per pixel.
+ *
+ * It costs faithfulness -- measured, the score against the original falls from
+ * 0.89 to 0.86 as this is turned up -- and buys legibility, which that score
+ * cannot see: on a graphic with lettering, the word reads at strength 1 and
+ * mushes into its background at 0. So it is a control and not a default.
+ */
+export function edgeBias(plane, width, height, strength) {
+  if (!(strength > 0)) return null;
+  const soft = gaussianBlur(plane, width, height, 1.2);
+  const bias = new Float32Array(plane.length);
+  for (let i = 0; i < plane.length; i++) bias[i] = -strength * (plane[i] - soft[i]);
+  return bias;
+}
 
 /** No diffusion at all: each pixel decided on its own. Best for logos and text. */
 function hardThreshold(plane, width, height, threshold) {
@@ -28,14 +62,14 @@ function hardThreshold(plane, width, height, threshold) {
  * The error is measured against the value actually emitted, so the average
  * brightness survives whatever threshold is chosen.
  */
-function floydSteinberg(plane, width, height, threshold) {
+function floydSteinberg(plane, width, height, threshold, neutral = threshold, bias = null) {
   const buf = Float32Array.from(plane);
   const bits = new Uint8Array(plane.length);
 
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const i = y * width + x;
-      const lit = buf[i] > threshold;
+      const lit = buf[i] > threshold + (bias ? bias[i] : 0);
       bits[i] = lit ? 1 : 0;
       const err = buf[i] - (lit ? 255 : 0);
 
@@ -59,14 +93,14 @@ function floydSteinberg(plane, width, height, threshold) {
  *  1/8  1/8  1/8
  *       1/8
  */
-function atkinson(plane, width, height, threshold) {
+function atkinson(plane, width, height, threshold, neutral = threshold, bias = null) {
   const buf = Float32Array.from(plane);
   const bits = new Uint8Array(plane.length);
 
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const i = y * width + x;
-      const lit = buf[i] > threshold;
+      const lit = buf[i] > threshold + (bias ? bias[i] : 0);
       bits[i] = lit ? 1 : 0;
       const share = (buf[i] - (lit ? 255 : 0)) / 8;
 

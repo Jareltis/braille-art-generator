@@ -30,6 +30,7 @@ const KEYS = Object.freeze({
   edgeAmount: 'ea',
   edgeRadius: 'er',
   edgeClean: 'ec',
+  emphasis: 'em',
   keepAspect: 'ka',
   trimBlank: 'tr',
   colour: 'col',

@@ -17,7 +17,7 @@ window.addEventListener('unhandledrejection', (event) => {
 </script>
 <script type="module">
 import { binarize, encode, imageDataToBraille, toLuminance, tonePlane, trimBlank } from '../src/core/braille.js';
-import { DITHER_METHODS, DEFAULT_DITHER } from '../src/core/dither.js';
+import { DIFFUSING, DITHER_METHODS, DEFAULT_DITHER, edgeBias } from '../src/core/dither.js';
 import { BLUE_NOISE_SIZE, blueNoiseMatrix } from '../src/core/bluenoise.js';
 import { otsuThreshold } from '../src/core/otsu.js';
 import { lightness, linearToThreshold, luminance, thresholdToLinear } from '../src/core/gamma.js';
@@ -231,6 +231,46 @@ async function run() {
     try { binarize(ramp, W, H, { method: 'nope' }); return false; } catch (e) { return e instanceof RangeError; }
   })(), true);
   check('default method', DEFAULT_DITHER, 'floyd-steinberg');
+
+  // --- leaning on the threshold at an edge ---------------------------------
+  // Eschbach and Knox's edge enhancement: push the threshold about per pixel so
+  // an edge decides more sharply. It costs faithfulness -- the score against
+  // the original falls as it is turned up -- and buys legibility the score
+  // cannot see, which is why it is a control rather than a default.
+  {
+    const level = thresholdToLinear(128);
+
+    // The tone must survive it. Error diffusion measures its error against the
+    // true value whatever the threshold did, so the neighbours put it back.
+    for (const method of ['floyd-steinberg', 'atkinson']) {
+      const flat = new Float32Array(W * H).fill(128);
+      const plain = coverage(binarize(flat, W, H, { method, threshold: level, neutral: level }));
+      const leaned = coverage(binarize(flat, W, H, { method, threshold: level, neutral: level, emphasis: 2 }));
+      near(`${method} holds its tone through the emphasis`, leaned, plain - 0.02, plain + 0.02);
+    }
+
+    // And it must actually do something at an edge.
+    const step = new Float32Array(W * H);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) step[y * W + x] = x < W / 2 ? 60 : 190;
+    const bias = edgeBias(step, W, H, 1);
+    ok('the bias is zero away from the edge', Math.abs(bias[Math.floor(H / 2) * W + 5]) < 0.5,
+       bias[Math.floor(H / 2) * W + 5].toFixed(2));
+    ok('and pushes the two sides opposite ways at it',
+       bias[Math.floor(H / 2) * W + W / 2 - 1] * bias[Math.floor(H / 2) * W + W / 2] < 0,
+       `${bias[Math.floor(H / 2) * W + W / 2 - 1].toFixed(1)} then ${bias[Math.floor(H / 2) * W + W / 2].toFixed(1)}`);
+
+    // Only where the error is handed on. An ordered tile has no way back, so
+    // the emphasis must not reach it -- moving its threshold moves the tone,
+    // which is the trap those methods were already caught in once.
+    check('ordered dithering is left out of it', DIFFUSING.has('bayer4'), false);
+    check('and so is a bare threshold', DIFFUSING.has('threshold'), false);
+    const flat = new Float32Array(W * H).fill(128);
+    check('so asking for it there changes nothing',
+      coverage(binarize(flat, W, H, { method: 'bayer4', threshold: level, neutral: level, emphasis: 2 })),
+      coverage(binarize(flat, W, H, { method: 'bayer4', threshold: level, neutral: level })));
+
+    check('and zero asks for nothing at all', edgeBias(step, W, H, 0), null);
+  }
 
   // --- Otsu ----------------------------------------------------------------
   const bimodal = new Float32Array(W * H);

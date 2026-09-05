@@ -128,6 +128,8 @@ export const en = {
     // --- dots ---
     'dither.group': 'How dots are chosen',
     'dither.label': 'Method',
+    'emphasis.label': 'Edge emphasis',
+    'emphasis.hint': 'Leans on the threshold at an edge, so lettering and hard shapes read instead of mushing. Costs a little faithfulness, and only error diffusion can do it without the tone going with it.',
     'dither.floyd-steinberg': 'Floyd–Steinberg',
     'dither.atkinson': 'Atkinson',
     'dither.bluenoise': 'Blue noise',

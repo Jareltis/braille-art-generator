@@ -23,7 +23,7 @@ only ever hands out static files.
 | | |
 |---|---|
 | **Detail** | thin structure survives the reduction instead of being averaged away |
-| **Dithering** | Floyd–Steinberg, Atkinson, blue noise, Bayer 4×4 |
+| **Dithering** | Floyd–Steinberg, Atkinson, blue noise, Bayer 4×4, with optional edge emphasis |
 | **Thresholds** | global, automatic by Otsu, and local adaptive (Sauvola) |
 | **Edge detection** | XDoG for drawn strokes, Sobel for gradients, a slider between fill and lines |
 | **Colour** | one tint per cell: on screen, in PNG, SVG, HTML and ANSI for the terminal |
@@ -154,6 +154,25 @@ to correct a bias, which is exactly how they drifted for nine versions after
 tone moved to linear light — a flat mid-grey came out at 81% coverage instead of
 50%, while error diffusion sailed through the same change because it corrects
 itself.
+**Edge emphasis** leans on the threshold at an edge, after Eschbach and Knox:
+subtract a scaled high-pass of the picture from it, so a pixel on the bright
+side of an edge finds it easier to light and one on the dark side harder. One
+multiply and one add per pixel.
+
+It is a control and not a default, because the two things it does pull opposite
+ways. Measured, the score against the original falls from 0.89 to 0.86 as it is
+turned up — it is deliberately less faithful to the light. What it buys is
+legibility, which that score cannot see: on a graphic with lettering, the word
+reads at strength 1 and mushes into its background at 0. Both were looked at.
+The logo preset turns it on because that is the case it was measured on.
+
+It reaches only the methods that hand their error to the neighbours. Those
+measure their error against the true value whatever the moved threshold decided,
+so the neighbourhood puts the tone back. An ordered tile has no such second
+chance — moving its threshold moves the tone and nothing returns it, which is
+exactly the trap the ordered methods were already caught in once. The control
+greys out when a method that cannot do it is chosen.
+
 - **Local threshold (Sauvola)** picks a threshold per neighbourhood instead of
   one for the frame. A single number cannot serve a photograph lit from one
   side: whatever it is, one end of the frame is crushed.
