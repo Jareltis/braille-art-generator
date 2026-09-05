@@ -396,6 +396,76 @@ async function run() {
        $('presetHint').textContent);
   }
 
+  mark('the panel says what it worked out');
+  // --- the panel says what it worked out ------------------------------------
+  // A lot is decided for the person now -- the kind of picture, the threshold,
+  // whether a redraw still keeps up, what cleaning is doing -- and all of it
+  // used to be announced once in the status line and then be gone.
+  {
+    const doc = frame.contentDocument;
+    const rows = () => {
+      const list = doc.querySelectorAll('#decidedList dt');
+      return [...list].map((dt, i) => `${dt.textContent}: ${doc.querySelectorAll('#decidedList dd')[i].textContent}`);
+    };
+
+    ok('it lists what was decided', rows().length >= 4, rows().join(' | '));
+    ok('including how the picture was sampled',
+       rows().some((row) => /\d+×\d+/.test(row) && row.includes('ячее')), rows().join(' | '));
+    ok('and whether redraws keep up',
+       rows().some((row) => row.includes('мс') || row.includes('ничего')), rows().join(' | '));
+
+    // Otsu and the hand are different answers and the panel says which it has.
+    $('threshold').value = '96';
+    $('threshold').dispatchEvent(new Event('input', { bubbles: true }));
+    // Waiting for the number, not for the word: the word may already be there
+    // from whatever set the threshold last, and then this waits for nothing.
+    await until(() => rows().some((row) => row.includes('96')), 8000);
+    ok('a threshold set by hand says so', rows().some((row) => row.includes('96') && row.includes('вручную')),
+       rows().join(' | '));
+
+    $('autoThreshold').click();
+    ok('and one picked by Otsu says that instead',
+       await until(() => rows().some((row) => row.includes('Оцу')), 8000), rows().join(' | '));
+
+    // The kind of picture: chosen by hand, then worked out.
+    $('preset').value = 'photo';
+    $('preset').dispatchEvent(new Event('change', { bubbles: true }));
+    ok('a preset chosen by hand is not claimed as a discovery',
+       rows().some((row) => row.includes('вручную')), rows().join(' | '));
+    // And the preset set the threshold, so Otsu must not be credited with it.
+    ok('nor is a preset threshold credited to Otsu',
+       !rows().some((row) => row.includes('Оцу')), rows().join(' | '));
+    $('preset').value = 'auto';
+    $('preset').dispatchEvent(new Event('change', { bubbles: true }));
+    ok('and an automatic one is named',
+       await until(() => rows().some((row) => row.includes('определён по картинке')), 8000), rows().join(' | '));
+
+    // The two chords the panel advertises have to work.
+    const chord = (key, extra = {}) => frame.contentWindow.dispatchEvent(
+      new frame.contentWindow.KeyboardEvent('keydown', { key, ctrlKey: true, bubbles: true, ...extra }),
+    );
+    $('contrast').value = '25';
+    $('contrast').dispatchEvent(new Event('input', { bubbles: true }));
+    await wait(200);
+    // Watched at the buttons themselves: a status line that was going to change
+    // anyway proves nothing about whether the chord arrived.
+    let recalculated = false;
+    let copied = false;
+    $('generate').addEventListener('click', () => { recalculated = true; }, { once: true });
+    $('copy').addEventListener('click', () => { copied = true; }, { once: true });
+
+    chord('Enter');
+    ok('ctrl+enter reaches recalculate', recalculated);
+    chord('c', { shiftKey: true });
+    ok('ctrl+shift+c reaches copy', copied);
+
+    // And the plain chord is left alone, so copying out of a text box still works.
+    let hijacked = false;
+    $('copy').addEventListener('click', () => { hijacked = true; }, { once: true });
+    chord('c');
+    ok('plain ctrl+c is left to the browser', !hijacked);
+  }
+
   mark('a burst of changes settles on the last one');
   // --- a burst of changes settles on the last one --------------------------
   // Coalescing by animation frame merges the events of one frame and then lets

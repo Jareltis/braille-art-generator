@@ -58,6 +58,18 @@ const DETAIL_BUDGET = 2_000_000;
 let lastRender = null;
 let following = true;
 
+/**
+ * What the app worked out for itself, as opposed to what it was told.
+ *
+ * There is a lot of it now -- the kind of picture, the threshold, whether a
+ * redraw still keeps up, what cleaning is doing -- and almost all of it was
+ * announced once in the status line and then gone. Kept here so the panel can
+ * say what is in effect rather than what happened a minute ago.
+ */
+let detectedKind = null;
+let thresholdFromOtsu = false;
+let lastSampling = null;
+
 const el = (id) => document.getElementById(id);
 
 const dom = {
@@ -72,6 +84,8 @@ const dom = {
   fitLimit: el('fitLimit'),
   colour: el('colour'),
   palette: el('palette'),
+  decided: el('decided'),
+  decidedList: el('decidedList'),
   transparent: el('transparent'),
   language: el('language'),
   copyLink: el('copyLink'),
@@ -331,6 +345,7 @@ async function render() {
   // the <=800x600 preview, so anything larger was upscaled from detail that had
   // already been thrown away.
   const detail = detailSize(cols, rows);
+  lastSampling = { w: sourceW(), h: sourceH(), dw: detail.w, dh: detail.h, cols, rows };
   const target = drawScaled(source, detail.w, detail.h, backgroundFor(isInverted()), { smooth: smoothScaling, crop: cropRect });
 
   const token = ++generateToken;
@@ -418,6 +433,7 @@ async function keepRendering() {
       await render();
       lastRender = { ms: performance.now() - started, cells: cols * rows };
       following = keepsUp(lastRender.cells, lastRender, following);
+      describeDecisions();
       if (statusStamp === stamp) setStatus(t('status.done'), 'ok');
     } while (renderWanted);
   } finally {
@@ -505,6 +521,7 @@ async function autoThreshold() {
   const target = drawScaled(source, detail.w, detail.h, backgroundFor(isInverted()), { smooth: smoothScaling, crop: cropRect });
   const threshold = await pipeline.otsu(readImageData(target), readAdjustments(), { ...readOptions(), grid: { cols, rows } });
   controls.threshold.set(threshold);
+  thresholdFromOtsu = true;
   setStatus(t('threshold.picked', { value: threshold }), 'ok');
   changed({ affectsPreview: false });
 }
@@ -582,6 +599,7 @@ function detectPreset() {
   );
 
   const { kind } = classifyImage(readImageData(study));
+  detectedKind = kind;
   applyPreset(kind);
   // applyPreset writes that kind's own hint; the chosen kind is still auto.
   dom.presetHint.textContent = hintFor(AUTO_PRESET);
@@ -599,6 +617,10 @@ function applyPreset(key) {
   if (!preset) return;
 
   const chosen = preset.settings;
+  // The preset is setting this, so it is no longer Otsu's answer. set() does
+  // not go through the control's onChange, which is where that is normally
+  // cleared -- without this the panel credited Otsu with a preset's number.
+  thresholdFromOtsu = false;
   dom.dither.value = chosen.method;
   dom.edgeMode.value = chosen.edgeMode;
   controls.detail.set(chosen.detail);
@@ -797,6 +819,8 @@ function applySettings(values) {
 
 function resetEverything() {
   clearSettings();
+  thresholdFromOtsu = false;
+  detectedKind = null;
   for (const control of Object.values(controls)) control.reset();
   for (const id of PERSISTED_FIELDS) {
     const node = el(id);
@@ -815,6 +839,7 @@ function resetEverything() {
   dom.trimBlank.checked = false;
   dom.colour.checked = false;
   dom.transparent.checked = false;
+  describeDecisions();
   smoothScaling = true;
   dom.presetHint.textContent = '';
   setLayout(LAYOUTS[0]);
@@ -877,6 +902,7 @@ function acceptPastedImages() {
  * ------------------------------------------------------------------------ */
 /** A recipe writes the same controls a preset does, and nothing else. */
 function applyRecipe(recipe) {
+  thresholdFromOtsu = false;
   dom.dither.value = recipe.method;
   controls.detail.set(recipe.detail);
   if (recipe.threshold != null) controls.threshold.set(recipe.threshold);
@@ -1395,6 +1421,46 @@ function paintArt() {
 }
 
 /** Everything the colour-aware exports need, in one place. */
+/**
+ * Fill in the "what was worked out" list.
+ *
+ * Present tense throughout: this describes the state the art is in, not a log
+ * of how it got there. Anything the app did not decide for itself says so
+ * plainly rather than being left out, because a missing line reads as a bug.
+ */
+function describeDecisions() {
+  const rows = [];
+  const add = (term, detail) => rows.push([t(term), detail]);
+
+  add('decided.kind', detectedKind
+    ? t('decided.kindAuto', { kind: t(`preset.${detectedKind}`) })
+    : t('decided.kindChosen'));
+
+  const threshold = Math.round(controls.threshold.value);
+  add('decided.threshold', thresholdFromOtsu
+    ? t('decided.thresholdOtsu', { value: threshold })
+    : t('decided.thresholdHand', { value: threshold }));
+
+  if (lastSampling) add('decided.sampling', t('decided.samplingFrom', lastSampling));
+
+  add('decided.redraw', lastRender
+    ? t(following ? 'decided.redrawLive' : 'decided.redrawButton', { ms: Math.round(lastRender.ms) })
+    : t('decided.redrawNone'));
+
+  const cleaning = Math.round(controls.edgeClean.value);
+  add('decided.cleanup', dom.edgeMode.value === 'none'
+    ? t('decided.cleanupNoEdges')
+    : (cleaning > 0 ? t('decided.cleanupOn', { value: cleaning }) : t('decided.cleanupOff')));
+
+  dom.decidedList.replaceChildren(...rows.flatMap(([term, detail]) => {
+    const dt = document.createElement('dt');
+    dt.textContent = term;
+    const dd = document.createElement('dd');
+    dd.textContent = detail;
+    return [dt, dd];
+  }));
+}
+
 function exportStyle() {
   const style = getComputedStyle(dom.output);
   const { fontFamily, fontSize, lineHeight } = outputMetrics();
@@ -1411,7 +1477,11 @@ function exportStyle() {
 }
 
 function init() {
-  controls.threshold = bindRange(el('threshold'), el('thresholdVal'), { onChange: () => changed({ affectsPreview: false }) });
+  controls.threshold = bindRange(el('threshold'), el('thresholdVal'), {
+    // Moved by hand, so it is no longer Otsu's answer. set() does not come
+    // through here, which is what makes the flag reliable.
+    onChange: () => { thresholdFromOtsu = false; changed({ affectsPreview: false }); },
+  });
   controls.brightness = bindRange(el('brightness'), el('brightnessVal'), { onChange: changed });
   controls.contrast = bindRange(el('contrast'), el('contrastVal'), { onChange: changed });
   controls.saturation = bindRange(el('saturation'), el('saturationVal'), { onChange: changed });
@@ -1432,7 +1502,7 @@ function init() {
   linkOpened = Object.keys(fromLink).length > 0;
 
   initLocale(opening.language ?? preferredLocale());
-  onLocaleChange(retranslate);
+  onLocaleChange(() => { retranslate(); describeDecisions(); });
 
   fillLanguages();
   fillPresets();
@@ -1445,6 +1515,7 @@ function init() {
   });
 
   applySettings(opening);
+  describeDecisions();
   // A link sets the panel, and the panel is a thing this app remembers. Leaving
   // it unsaved would show one state and store another, and the next plain visit
   // would silently undo what the link asked for.
@@ -1487,8 +1558,13 @@ function init() {
   dom.settingsRedo.addEventListener('click', redoSettings);
   dom.preset.addEventListener('change', () => {
     remember();
-    if (dom.preset.value === AUTO_PRESET) detectPreset();
-    else applyPreset(dom.preset.value);
+    if (dom.preset.value === AUTO_PRESET) {
+      detectPreset();
+    } else {
+      detectedKind = null;
+      applyPreset(dom.preset.value);
+    }
+    describeDecisions();
   });
   dom.platform.addEventListener('change', () => {
     syncPlatform();
@@ -1594,6 +1670,21 @@ function init() {
   window.addEventListener('keydown', (event) => {
     if (!(event.ctrlKey || event.metaKey)) return;
     const key = event.key.toLowerCase();
+
+    // Recalculate, and copy. Shift on the copy so the plain chord goes on
+    // meaning what it means everywhere else -- taking that would be rude, and
+    // would break copying out of the lettering box.
+    if (key === 'enter') {
+      event.preventDefault();
+      dom.generate.click();
+      return;
+    }
+    if (key === 'c' && event.shiftKey) {
+      event.preventDefault();
+      dom.copy.click();
+      return;
+    }
+
     if (key !== 'z' && key !== 'y') return;
 
     // While dots are being edited the same chord means the dots, which is what

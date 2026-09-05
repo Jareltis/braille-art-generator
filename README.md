@@ -34,6 +34,7 @@ only ever hands out static files.
 | **Detect the kind** | measures the picture and picks the preset for it, saying which way it went |
 | **Suggest** | renders a spread of recipes, scores each against the picture, offers the best four |
 | **Back and forward** | steps the whole panel through what the automatic changes did to it |
+| **What was worked out** | the automatic choices in effect, and why each one is what it is |
 | **On a phone** | the result first, the source views as a strip beneath it, controls below |
 | **Targets** | message limit in view, copying inside a code fence, width measured against your own client |
 | **Fitting** | trim blank margins, find the widest size that fits, split into several messages |
@@ -276,6 +277,30 @@ across the whole screen.
 
 None of this is a second interface: it is the same markup with a different
 order, which is the same rule the Simple and Advanced modes follow.
+
+### Saying what was worked out
+
+A good deal is now decided for the person holding the picture: the kind of image
+and the preset that follows from it, the threshold when Otsu is asked, how the
+lines are cleaned, whether a redraw still keeps up. Every one of those was
+announced once in the status line and then gone.
+
+**What was worked out** lists them, in the present tense, as state rather than
+as a log: the kind of picture and whether it was found or chosen, the threshold
+and whether Otsu picked it or a hand did, the chain from source pixels through
+the detail raster to the grid, whether redraws are following the controls and
+what the last one cost, and what cleaning is doing. Anything the app did not
+decide for itself says so plainly rather than being left out — a missing line
+reads as a fault.
+
+It has to be exactly right to be worth having. Writing it caught the app
+crediting Otsu with a threshold a preset had set, because the flag that
+remembers where the number came from was only cleared when the slider moved by
+hand.
+
+Alongside it, the keys: **Ctrl+Enter** recalculates and **Ctrl+Shift+C** copies.
+The plain Ctrl+C is deliberately left alone — taking it would break copying out
+of the lettering box, and it means the same thing everywhere else.
 
 ### Keeping up with the sliders
 

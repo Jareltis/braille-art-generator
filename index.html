@@ -177,6 +177,15 @@
     }
 
     .hint { margin: 6px 0 0; color: var(--muted); font-size: 11.5px; line-height: 1.45; }
+
+    /* what the app worked out for itself, and the keys it answers to */
+    .decided summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+    .decided dl {
+      display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 10px;
+      margin: 9px 0 0; font-size: 11.5px; line-height: 1.45;
+    }
+    .decided dt { color: var(--muted); }
+    .decided dd { margin: 0; color: var(--ink); }
     .panel-inset { margin-top: 10px; padding: 11px; background: rgba(0,0,0,0.24); border: 1px solid var(--line); border-radius: 8px; }
     .ruler {
       margin: 8px 0; padding: 8px; overflow-x: auto; white-space: pre;
@@ -771,6 +780,14 @@
             <button id="resetAll" type="button" data-i18n="reset.all"></button>
           </div>
         </div>
+
+        <hr>
+
+        <details class="decided" id="decided">
+          <summary data-i18n="decided.title"></summary>
+          <dl id="decidedList"></dl>
+          <p class="hint" data-i18n="decided.keys"></p>
+        </details>
 
       </aside>
 
