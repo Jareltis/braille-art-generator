@@ -489,18 +489,22 @@
        asks for and the 48 Material does. The rule is on the pointer rather than
        on the width, because a touch laptop is 1440px wide and still has a
        finger on it -- and because a narrow window on a desktop does not. */
+
     @media (pointer: coarse) {
       button, select, input[type="text"], input[type="number"], input[type="file"] {
         min-height: 44px;
       }
       button { padding: 10px 14px; }
+      /* The box grows, and so does the row it sits in: the label toggles the
+         box, so the row is the target, and 24 pixels of glass is not one. */
       .check input[type="checkbox"] { width: 24px; height: 24px; }
+      .field.check, .check label { min-height: 44px; }
+      .check label { display: flex; align-items: center; }
       /* The chips and the list buttons are secondary, not small: 40 is the
          floor where a thumb still lands on the right one of two side by side. */
       .actions .chip, .works button { min-height: 40px; padding: 8px 12px; }
       .modes button { min-height: 40px; }
     }
-
     /* Screens with little height: a phone held sideways, a short window, a
        cover display. Measured at 844x390 and 320x568, the first thing anyone
        wants -- copying -- fell below the fold, which is where the redesign put

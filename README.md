@@ -529,6 +529,12 @@ smallest was 36×30 and a checkbox 16×16, against the 44 Apple asks for and the
 touch laptop being 1440px wide and a narrow desktop window not being touched at
 all — controls take a floor of 44, the secondary chips 40, and checkboxes 24.
 
+The rule is a media query this browser will not match — emulating a small screen
+does not make a page think it is being touched — so the suite lifts the rules
+out of the query and applies them for real, then measures. That tests what they
+do rather than that they exist, and deleting them takes the smallest button from
+44 back to 29, which is checked by deleting them.
+
 That costs height, and height was already the thing the short screens did not
 have: at 44 the button went back under the fold on a 360×640 phone. So the
 short-screen rules start at 700px of height rather than 620, and a third tier

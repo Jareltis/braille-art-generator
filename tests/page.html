@@ -770,6 +770,68 @@ async function run() {
          `art ${Math.round(box('.shot-art').height)}px against strip ${Math.round(box('.panes .shot:not(.shot-art)').height)}px`);
     }
 
+    // A finger needs a bigger target than a pointer does, and the rule that
+    // gives it one is a media query this browser will not match: emulating a
+    // small screen does not make a page think it is being touched, the pointer
+    // feature follows touch emulation. So the rules are taken out of the query
+    // and applied for real, which tests what they do rather than that they
+    // exist -- and fails just as loudly if someone deletes them.
+    {
+      const coarse = [];
+      for (const sheet of doc.styleSheets) {
+        let rules;
+        try { rules = sheet.cssRules; } catch { continue; }
+        for (const rule of rules) {
+          if (rule.type === CSSRule.MEDIA_RULE && /pointer:\s*coarse/.test(rule.conditionText)) {
+            coarse.push(...[...rule.cssRules].map((inner) => inner.cssText));
+          }
+        }
+      }
+      ok('there are rules for a finger at all', coarse.length > 0, `${coarse.length} rules`);
+
+      await resize(390, 844);
+      const visible = () => [...doc.querySelectorAll('button, .check input[type="checkbox"]')]
+        .filter((el) => el.offsetParent !== null && !el.disabled);
+      const shortest = () => Math.min(...visible().map((el) => el.getBoundingClientRect().height));
+      const before = shortest();
+
+      const patch = doc.createElement('style');
+      patch.textContent = coarse.join(String.fromCharCode(10));
+      doc.head.append(patch);
+      await wait(120);
+
+      // Measured while the rules are on -- reading the sizes after taking them
+      // off again is how the first version of this test managed to report the
+      // old numbers and call them the new ones.
+      const tall = (list) => list
+        .filter((el) => el.offsetParent !== null)
+        .map((el) => Math.round(el.getBoundingClientRect().height));
+      // Two tiers on purpose: what you press to get something done stands at
+      // 44, what you press to pick among things already listed at 40 -- the
+      // save chips, the two mode buttons, the open and delete beside a saved
+      // work. Below 40 nothing.
+      const secondary = (el) => el.classList.contains('chip')
+        || el.closest('.modes') !== null || el.closest('.works') !== null;
+      const buttons = tall([...doc.querySelectorAll('button')].filter((el) => !secondary(el)));
+      const chips = tall([...doc.querySelectorAll('button')].filter(secondary));
+      const rows = tall([...doc.querySelectorAll('.field.check')]);
+      const boxes = tall([...doc.querySelectorAll('.check input[type="checkbox"]')]);
+      const after = shortest();
+      patch.remove();
+
+      ok('applying them makes the controls taller', after > before, `${before}px before, ${after}px after`);
+      // Apple asks for 44, Material for 48; the secondary chips stand at 40,
+      // which is where a thumb still lands on the right one of two side by side.
+      ok('a button is at least 44', Math.min(...buttons) >= 44, `smallest ${Math.min(...buttons)}px`);
+      ok('and the ones that only choose, at least 40', Math.min(...chips) >= 40,
+         `smallest ${Math.min(...chips)}px`);
+      ok('a checkbox is no longer 16 pixels of glass', Math.min(...boxes) >= 24,
+         `smallest ${Math.min(...boxes)}px`);
+      // The label toggles the box, so the row is what a thumb aims at.
+      ok('and the row it sits in is a target of its own', Math.min(...rows) >= 44,
+         `smallest ${Math.min(...rows)}px`);
+    }
+
     // Wide enough for two columns of controls, narrow enough to still be one
     // stack: a landscape phone should not stretch every field across 844px.
     await resize(844, 390);
