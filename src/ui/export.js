@@ -4,6 +4,7 @@
 import { TERMINAL_PALETTES, ansiForeground, nearest } from '../core/palette.js';
 import { createCanvas } from './canvas.js';
 import { cellHex, colourRuns } from '../core/colour.js';
+import { BRAILLE_BLANK, CELL_H, CELL_W, DOT_BITS } from '../core/braille.js';
 
 /** Canvas dimension browsers can be relied on to allocate. */
 const MAX_PNG_SIDE = 8192;
@@ -33,30 +34,34 @@ export function downloadCanvas(canvas, filename) {
 }
 
 /**
- * Render braille text onto a canvas.
+ * Render the art by drawing its dots, rather than by setting its text.
  *
- * Width comes from the widest line measured in the *same* font the page shows,
- * not from line 0 times a guessed 0.6em -- the old guess clipped output in any
- * font with a wider advance. If the result would exceed MAX_PNG_SIDE the whole
- * image is scaled down; it used to be cropped silently instead.
+ * A braille glyph does not fill the cell it is given. Measured in this app's own
+ * font stack, a fully lit cell inks 26 pixels of a 37.5 pixel advance: nearly a
+ * third of every cell is blank, so the picture comes out ruled with vertical
+ * gaps that belong to the font rather than to the art. The terminals that show
+ * braille well -- kitty, iTerm2, Ghostty, Konsole, VS Code -- draw these glyphs
+ * themselves for exactly this reason. Some fonts are worse than merely padded:
+ * they draw the unraised dots as hollow rings, which fills the picture with
+ * holes that were never in it.
  *
- * Returns the canvas plus the scale that was applied, so the caller can tell
- * the user when the export was shrunk.
+ * On screen there is nothing to be done about that; a page shows what the font
+ * gives it. An exported picture is ours from end to end, so it is drawn from
+ * the dots: an even lattice, no font anywhere in the chain, and the same image
+ * on every machine that opens it.
+ *
+ * The cell keeps the proportions the art was laid out for -- the advance and
+ * the line height measured from the page -- so the picture has the shape the
+ * screen promised, without the gaps the screen could not help.
  */
-export function renderTextToCanvas(text, { fontFamily, fontSize, lineHeight, foreground, background, colours }) {
-  const lines = text.split('\n');
-  const font = `${fontSize}px ${fontFamily}`;
+export function renderDotsToCanvas(text, { advancePx, lineHeightPx, foreground, background, colours }) {
+  const lines = text.split(String.fromCharCode(10));
+  const widest = lines.reduce((most, line) => Math.max(most, line.length), 0);
+  const cellW = Math.max(2, advancePx);
+  const cellH = Math.max(4, lineHeightPx);
 
-  const probe = createCanvas(1, 1).getContext('2d');
-  probe.font = font;
-  let textWidth = 0;
-  for (const line of lines) {
-    textWidth = Math.max(textWidth, probe.measureText(line).width);
-  }
-
-  const rowHeight = fontSize * lineHeight;
-  const width = Math.max(1, Math.ceil(textWidth));
-  const height = Math.max(1, Math.ceil(lines.length * rowHeight));
+  const width = Math.max(1, Math.ceil(widest * cellW));
+  const height = Math.max(1, Math.ceil(lines.length * cellH));
   const scale = Math.min(1, MAX_PNG_SIDE / width, MAX_PNG_SIDE / height);
 
   const canvas = createCanvas(
@@ -67,21 +72,36 @@ export function renderTextToCanvas(text, { fontFamily, fontSize, lineHeight, for
   ctx.scale(scale, scale);
   ctx.fillStyle = background;
   ctx.fillRect(0, 0, width, height);
-  ctx.font = font;
-  ctx.textBaseline = 'top';
-  const advance = probe.measureText(String.fromCharCode(0x28FF)).width;
 
-  for (let i = 0; i < lines.length; i++) {
-    if (!colours) {
-      ctx.fillStyle = foreground;
-      ctx.fillText(lines[i], 0, i * rowHeight);
-      continue;
-    }
-    for (const { start, end, index } of colourRuns(colours, i, lines[i].length)) {
-      ctx.fillStyle = cellHex(colours, index);
-      ctx.fillText(lines[i].slice(start, end), start * advance, i * rowHeight);
+  // Two dots across a cell and four down it, each in the middle of its own
+  // quarter -- so the spacing inside a cell and the spacing between cells are
+  // the same number, which is the whole point of drawing this by hand.
+  const pitchX = cellW / CELL_W;
+  const pitchY = cellH / CELL_H;
+  const radius = Math.min(pitchX, pitchY) * 0.42;
+
+  for (let row = 0; row < lines.length; row++) {
+    const line = lines[row];
+    for (let cell = 0; cell < line.length; cell++) {
+      const pattern = line.charCodeAt(cell) - BRAILLE_BLANK;
+      if (pattern <= 0) continue;
+
+      ctx.fillStyle = colours ? cellHex(colours, row * line.length + cell) : foreground;
+      for (let dx = 0; dx < CELL_W; dx++) {
+        for (let dy = 0; dy < CELL_H; dy++) {
+          if (!(pattern & (1 << DOT_BITS[dx][dy]))) continue;
+          ctx.beginPath();
+          ctx.arc(
+            cell * cellW + (dx + 0.5) * pitchX,
+            row * cellH + (dy + 0.5) * pitchY,
+            radius, 0, Math.PI * 2,
+          );
+          ctx.fill();
+        }
+      }
     }
   }
+
   return { canvas, scale };
 }
 

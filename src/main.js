@@ -19,7 +19,7 @@ import { bindRange, clampInt, coalesce } from './ui/controls.js';
 import { keepsUp } from './ui/pace.js';
 import {
   brailleToAnsi, brailleToHtml, brailleToSvg, copyCanvas, copyText, downloadCanvas, downloadHtml,
-  downloadSvg, downloadText, renderTextToCanvas,
+  downloadSvg, downloadText, renderDotsToCanvas,
 } from './ui/export.js';
 import {
   PLATFORMS, calibrationOf, clearCalibration, forPlatform, messageLength, partsFit, ruler,
@@ -1560,11 +1560,14 @@ function describeDecisions() {
 
 function exportStyle() {
   const style = getComputedStyle(dom.output);
-  const { fontFamily, fontSize, lineHeight } = outputMetrics();
+  const { fontFamily, fontSize, lineHeight, advancePx, lineHeightPx } = outputMetrics();
   return {
     fontFamily,
     fontSize,
     lineHeight,
+    // The cell as the page has it, for the exporter that draws its own dots.
+    advancePx,
+    lineHeightPx,
     foreground: style.color,
     // 'transparent' is a colour as far as a canvas fill is concerned: it paints
     // nothing, which is exactly what is wanted.
@@ -1877,7 +1880,7 @@ function init() {
   dom.copyImage.addEventListener('click', async () => {
     if (!requireArt()) return;
     try {
-      const { canvas } = renderTextToCanvas(artText, exportStyle());
+      const { canvas } = renderDotsToCanvas(artText, exportStyle());
       await copyCanvas(canvas);
       setStatus(t('status.copiedImage'), 'ok');
     } catch (error) {
@@ -1896,7 +1899,7 @@ function init() {
 
   dom.downloadPng.addEventListener('click', () => {
     if (!requireArt()) return;
-    const { canvas, scale } = renderTextToCanvas(artText, exportStyle());
+    const { canvas, scale } = renderDotsToCanvas(artText, exportStyle());
     downloadCanvas(canvas, 'braille.png');
     setStatus(
       scale < 1

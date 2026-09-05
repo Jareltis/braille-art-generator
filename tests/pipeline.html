@@ -42,7 +42,7 @@ import { FULL_FRAME, isWholeImage } from '../src/ui/crop.js';
 import { DEFAULT_TEXT_FONT, TEXT_FONTS, renderText } from '../src/ui/text.js';
 import { FALLBACK, LOCALES, formatNumber, setLocale, t } from '../src/i18n/index.js';
 import { fromHash, textFits, toHash } from '../src/ui/link.js';
-import { brailleToAnsi, brailleToHtml, brailleToSvg } from '../src/ui/export.js';
+import { brailleToAnsi, brailleToHtml, brailleToSvg, renderDotsToCanvas } from '../src/ui/export.js';
 import { cellColours, cellHex, colourRuns } from '../src/core/colour.js';
 import { PALETTES, TERMINAL_PALETTES, ansiForeground, medianCut, nearest, paletteFor, snap } from '../src/core/palette.js';
 import { lab } from '../src/core/gamma.js';
@@ -1651,6 +1651,67 @@ async function run() {
     const slow = { ms: 2000, cells: 160000 };
     check('after shrinking, the estimate says yes', keepsUp(8000, slow, false), true);
     check('and at the old size it still says no', keepsUp(160000, slow, false), false);
+  }
+
+  // --- the exported picture is drawn, not typed ----------------------------
+  // A braille glyph does not fill its cell: measured in this app's own font
+  // stack, a lit cell inks 26 pixels of a 37.5 pixel advance, and the picture
+  // came out ruled with vertical gaps belonging to the font. An exported image
+  // is ours end to end, so it is drawn from the dots on an even lattice.
+  {
+    const NL = String.fromCharCode(10);
+    const full = String.fromCharCode(0x28FF);
+    const blank = String.fromCharCode(0x2800);
+    const style = { advancePx: 16, lineHeightPx: 32, foreground: '#ffffff', background: '#000000', colours: null };
+
+    const { canvas } = renderDotsToCanvas([full + blank, blank + full].join(NL), style);
+    check('the picture is the size the cells ask for', `${canvas.width}x${canvas.height}`, '32x64');
+
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const at = (x, y) => ctx.getImageData(Math.round(x), Math.round(y), 1, 1).data;
+    const lit = (x, y) => at(x, y)[0] > 128;
+
+    // Eight dots in the lit cell, each in the middle of its own quarter.
+    let painted = 0;
+    for (let dx = 0; dx < 2; dx++) {
+      for (let dy = 0; dy < 4; dy++) if (lit((dx + 0.5) * 8, (dy + 0.5) * 8)) painted++;
+    }
+    check('a lit cell paints all eight of its dots', painted, 8);
+
+    let stray = 0;
+    for (let dx = 0; dx < 2; dx++) {
+      for (let dy = 0; dy < 4; dy++) if (lit(16 + (dx + 0.5) * 8, (dy + 0.5) * 8)) stray++;
+    }
+    check('and a blank cell paints none', stray, 0);
+
+    // The lattice is even: the gap between the two dots inside a cell is the
+    // same as the gap across the join to the next cell. That is the whole
+    // point -- the font's version is not.
+    const centres = [];
+    for (let x = 0; x < 32; x++) if (lit(x, 4)) centres.push(x);
+    const runs = [];
+    let from = centres[0];
+    for (let i = 1; i <= centres.length; i++) {
+      if (i < centres.length && centres[i] === centres[i - 1] + 1) continue;
+      runs.push((from + centres[i - 1]) / 2);
+      from = centres[i];
+    }
+    ok('the dots sit on an even lattice',
+       runs.length === 2 && Math.abs((runs[1] - runs[0]) - 8) < 1.5,
+       `dot centres at ${runs.map((v) => v.toFixed(1)).join(', ')} for a pitch of 8`);
+
+    // A transparent background paints nothing at all.
+    const clear = renderDotsToCanvas(blank, { ...style, background: 'transparent' }).canvas;
+    check('a transparent background stays transparent',
+      clear.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, 1, 1).data[3], 0);
+
+    // And the colours reach the dots.
+    const tinted = renderDotsToCanvas(full, {
+      ...style, colours: new Uint8ClampedArray([220, 30, 30]),
+    }).canvas;
+    const pixel = tinted.getContext('2d', { willReadFrequently: true }).getImageData(4, 4, 1, 1).data;
+    ok('a tinted cell paints in its own colour', pixel[0] > 150 && pixel[1] < 90,
+       `rgb(${pixel[0]}, ${pixel[1]}, ${pixel[2]})`);
   }
 
   const failed = log.filter((l) => l.startsWith('FAIL')).length;

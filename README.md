@@ -29,6 +29,7 @@ only ever hands out static files.
 | **Colour** | one tint per cell: on screen, in PNG, SVG, HTML and ANSI for the terminal |
 | **Palette** | full colour, the 256 or 16 a terminal has, or a few drawn from the picture |
 | **Copying** | as text, or as a picture for rooms that squash the line height |
+| **PNG** | drawn dot by dot, so no font's padding or hollow rings get into it |
 | **Image adjustment** | brightness, contrast, saturation, sharpness |
 | **Output** | width and height in cells, proportions kept automatically, inversion |
 | **Presets** | photographs, line art, logos, pixel art — each sets every control it covers |
@@ -290,6 +291,29 @@ no fragmentation to fix, only too much ink.
 Below 1 the flat-field response is `l·(1−τ)` — proportional to brightness — so
 an even mid-grey answers with ink and dark areas silt up with strokes that are
 not edges.
+
+### The exported picture is drawn, not typed
+
+A braille glyph does not fill the cell it is given. Measured in this app's own
+font stack, a fully lit cell inks 26 pixels of a 37.5 pixel advance: nearly a
+third of every cell is blank, and the picture comes out ruled with vertical gaps
+that belong to the font rather than to the art. The terminals that show braille
+well — kitty, iTerm2, Ghostty, Konsole, VS Code — draw these glyphs themselves
+for exactly this reason. Some fonts are worse than merely padded: they draw the
+unraised dots as hollow rings, filling the picture with holes that were never
+in it.
+
+On screen there is nothing to be done about that — a page shows what the font
+gives it. An exported image is ours from end to end, so the PNG is drawn from
+the dots: two across a cell and four down, each in the middle of its own
+quarter, so the spacing inside a cell and the spacing between cells are the same
+number. The cell keeps the proportions the art was laid out for, so the picture
+has the shape the screen promised without the gaps the screen could not help.
+
+The SVG stays text, and that is deliberate: a 400×400 grid holds up to 1.28
+million dots, and drawn individually that is a file nobody can open. As text it
+is a few kilobytes and stays selectable and editable — at the price, stated in
+full there, of rendering in whatever monospace font the viewer happens to have.
 
 ### For someone who cannot see it
 
