@@ -301,10 +301,22 @@ them and says so.
 Two other approaches were measured and dropped. Surround inhibition eats strokes
 from the middle outward, a strong stroke being its own surround, and the annulus
 form that avoids that removes almost nothing from a photograph, where the ring
-is as busy under a contour as anywhere else. Flow-based DoG was planned and then
-not built: it addresses fragmented contours, and the measurement showed the
-opposite problem — 93–97% of XDoG's ink was already in long strokes. There was
-no fragmentation to fix, only too much ink.
+is as busy under a contour as anywhere else. Flow-based DoG was planned, dropped, and later
+built and measured after all. It was dropped the first time because it addresses
+fragmented contours and the measurement showed the opposite problem: 93–97% of
+XDoG's ink was already in long strokes. It was reconsidered once the structure
+tensor arrived, since that gives the flow field FDoG needs for nothing extra —
+and then measured properly, with the same cleaning applied to both so the
+comparison was not between a tidied thing and an untidied one.
+
+The result was a modest gain on a photograph — 342 separate pieces of ink
+against 493, a median run of 86 pixels against 61, at the same ink — and none on
+a drawing, which the cleaned XDoG already reduced to 27 pieces. Side by side the
+two pictures are hard to tell apart. The detector costs eight times as much.
+Both methods exploit the same fact, that an edge has a direction; having taken
+the cheap way to use it, the expensive way adds too little to pay for itself.
+That is a verdict on the marginal gain here, not on the method: without the
+coherence gate it would very likely have been the right thing to build.
 
 τ is deliberately 1 rather than the ≈0.98 the XDoG paper uses for stylisation.
 Below 1 the flat-field response is `l·(1−τ)` — proportional to brightness — so
