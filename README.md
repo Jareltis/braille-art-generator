@@ -510,6 +510,25 @@ the same row, where the eye already is. The header keeps what is used before the
 art exists: the mode, and the language. **Layout** went into the display group —
 it is set once, and on a phone it does nothing at all.
 
+### On every screen
+
+Measured across twelve sizes rather than assumed: a folded phone at 320×568, a
+small one at 360×640, ordinary ones at 390×844 and 430×932, a phone held
+sideways at 844×390, tablets both ways up, a laptop, 1920×1080, an ultrawide at
+2560×1440, a short window at 1440×620, and a tall narrow one at 480×1200.
+
+What is checked at each: does the page scroll sideways (never), does the desktop
+still hold everything without scrolling at all (yes, from 1024×768 up), and is
+the first thing anyone wants to do — copying — on the first screen. That last
+one failed in exactly two places, both of them short: the folded phone put the
+button 65px below the fold and the sideways phone 81px below it.
+
+Screens with little height now give a little from everywhere above the button:
+the art takes 34vh instead of 44, the source views shrink to 52px thumbnails,
+the rows close up. The art stays the largest thing on the screen, which is
+checked too, and both sizes now land the button with room to spare — 514 of 568,
+370 of 390.
+
 ### On a small screen
 
 Below 900px the page stops trying to hold four panes at once and scrolls. That

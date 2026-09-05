@@ -461,6 +461,24 @@
       .panes .shot:not(.shot-art) figcaption span { display: none; }
     }
 
+    /* Screens with little height: a phone held sideways, a short window, a
+       cover display. Measured at 844x390 and 320x568, the first thing anyone
+       wants -- copying -- fell below the fold, which is where the redesign put
+       it on purpose. Everything above it gives up a little so that it does not:
+       the art keeps the largest share, the source views shrink to what a glance
+       needs, and the rows close up. */
+    @media (max-width: 900px) and (max-height: 620px) {
+      #output { max-height: 34vh; }
+      .shot canvas { height: 52px; }
+      .shot { padding: 6px 8px; gap: 3px; }
+      .shot figcaption { font-size: 11px; }
+      .panes { gap: 6px; }
+      .stage { gap: 6px; }
+      .actions { gap: 6px 8px; }
+      .actions #status { flex-basis: auto; }
+      .topbar { padding: 6px 10px; }
+    }
+
     /* A landscape phone or a tablet: still one column, but wide enough that a
        single stack leaves every field stretched across the whole screen. */
     @media (min-width: 620px) and (max-width: 900px) {
