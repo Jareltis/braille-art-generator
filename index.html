@@ -68,18 +68,18 @@
       padding-bottom: 8px;
       border-bottom: 1px solid var(--line);
     }
-    .brand { font-size: 16px; font-weight: 600; letter-spacing: 0.2px; white-space: nowrap; }
+    .brand { font-size: 1rem; font-weight: 600; letter-spacing: 0.2px; white-space: nowrap; }
     .brand span { color: var(--accent); }
     .topbar .grow { flex: 1 1 auto; min-width: 0; }
     .barfield {
       display: flex; align-items: center; gap: 7px;
-      margin: 0; color: var(--muted); font-size: 12.5px; white-space: nowrap;
+      margin: 0; color: var(--muted); font-size: 0.7812rem; white-space: nowrap;
     }
-    .barfield select { width: auto; padding: 5px 8px; font-size: 13px; }
+    .barfield select { width: auto; padding: 5px 8px; font-size: 0.8125rem; }
 
     #status {
       min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-      color: var(--muted); font-size: 13px;
+      color: var(--muted); font-size: 0.8125rem;
     }
     #status[data-kind="ok"] { color: var(--accent); }
     #status[data-kind="warn"] { color: var(--warn); }
@@ -89,7 +89,7 @@
     .modes { display: flex; padding: 3px; background: rgba(0,0,0,0.28); border: 1px solid var(--line); border-radius: 9px; }
     .modes button {
       padding: 5px 13px; color: var(--muted); background: none; border: 0; border-radius: 6px;
-      font: inherit; font-size: 13px; cursor: pointer;
+      font: inherit; font-size: 0.8125rem; cursor: pointer;
     }
     .modes button[aria-pressed="true"] { color: var(--accent-ink); background: var(--accent); font-weight: 600; }
 
@@ -131,38 +131,38 @@
       width: 100%; min-height: 74px; padding: 8px 9px; resize: vertical;
       color: inherit; background: rgba(0, 0, 0, 0.26);
       border: 1px solid var(--line); border-radius: 8px;
-      font: inherit; font-size: 15px; line-height: 1.35;
+      font: inherit; font-size: 0.9375rem; line-height: 1.35;
     }
 
     .field { margin-bottom: 13px; }
     .field:last-child { margin-bottom: 0; }
     .row { display: grid; gap: 10px; grid-template-columns: 1fr 1fr; }
-    label { display: block; margin-bottom: 4px; color: var(--muted); font-size: 12.5px; }
+    label { display: block; margin-bottom: 4px; color: var(--muted); font-size: 0.7812rem; }
 
     input[type="file"], input[type="number"], select {
       width: 100%; padding: 7px 9px;
       color: inherit; background: rgba(0, 0, 0, 0.26);
       border: 1px solid var(--line); border-radius: 8px;
-      font: inherit; font-size: 14px;
+      font: inherit; font-size: 0.875rem;
     }
     input[type="number"]:disabled, select:disabled, button:disabled { opacity: 0.45; cursor: not-allowed; }
     input[type="file"]::file-selector-button {
       margin-right: 10px; padding: 5px 10px; color: var(--ink);
       background: rgba(255,255,255,0.09); border: 1px solid var(--line);
-      border-radius: 6px; font: inherit; font-size: 13px; cursor: pointer;
+      border-radius: 6px; font: inherit; font-size: 0.8125rem; cursor: pointer;
     }
 
     .slider { display: flex; gap: 9px; align-items: center; }
     input[type="range"] { flex: 1; min-width: 0; accent-color: var(--accent); }
-    .readout { width: 46px; flex: none; text-align: center; color: var(--muted); font-size: 12.5px; font-variant-numeric: tabular-nums; }
-    .slider button { flex: none; padding: 4px 9px; font-size: 12.5px; }
+    .readout { width: 46px; flex: none; text-align: center; color: var(--muted); font-size: 0.7812rem; font-variant-numeric: tabular-nums; }
+    .slider button { flex: none; padding: 4px 9px; font-size: 0.7812rem; }
 
     .check { display: flex; gap: 8px; align-items: center; }
     .check input { width: 16px; height: 16px; accent-color: var(--accent); }
     .check label { margin: 0; }
 
     hr { margin: 15px 0; border: 0; border-top: 1px solid var(--line); }
-    .group-title { margin: 0 0 9px; color: var(--ink); font-size: 12px; text-transform: uppercase; letter-spacing: 0.7px; opacity: 0.65; }
+    .group-title { margin: 0 0 9px; color: var(--ink); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.7px; opacity: 0.65; }
 
     .buttons { display: flex; flex-wrap: wrap; gap: 7px; }
 
@@ -178,13 +178,13 @@
        it away and "Copy ... Link" and "Suggest ... Undo" look like one list. */
     .act + .act { padding-left: 18px; border-left: 1px solid var(--line); }
     .act.saves { border-left: 0; padding-left: 0; }
-    .act-label { color: var(--muted); font-size: 12px; }
-    .actions .chip { padding: 5px 9px; font-size: 12px; color: var(--muted); }
+    .act-label { color: var(--muted); font-size: 0.75rem; }
+    .actions .chip { padding: 5px 9px; font-size: 0.75rem; color: var(--muted); }
     .actions .chip:hover:not(:disabled) { color: var(--ink); }
     button {
       padding: 7px 12px; color: var(--ink); background: transparent;
       border: 1px solid var(--line-strong); border-radius: 8px;
-      font: inherit; font-size: 13.5px; cursor: pointer;
+      font: inherit; font-size: 0.8438rem; cursor: pointer;
     }
     button:hover:not(:disabled) { background: rgba(255,255,255,0.08); }
     button.primary { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); font-weight: 600; }
@@ -192,13 +192,13 @@
       outline: 2px solid var(--accent); outline-offset: 2px;
     }
 
-    .hint { margin: 6px 0 0; color: var(--muted); font-size: 11.5px; line-height: 1.45; }
+    .hint { margin: 6px 0 0; color: var(--muted); font-size: 0.7188rem; line-height: 1.45; }
 
     /* what the app worked out for itself, and the keys it answers to */
-    .decided summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+    .decided summary { cursor: pointer; color: var(--muted); font-size: 0.75rem; }
     .decided dl {
       display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 10px;
-      margin: 9px 0 0; font-size: 11.5px; line-height: 1.45;
+      margin: 9px 0 0; font-size: 0.7188rem; line-height: 1.45;
     }
     .decided dt { color: var(--muted); }
     .decided dd { margin: 0; color: var(--ink); }
@@ -271,10 +271,13 @@
     .shot[data-inspect]:hover { border-color: var(--line-strong); }
     .shot figcaption {
       display: flex; justify-content: space-between; gap: 8px;
-      color: var(--muted); font-size: 11px; letter-spacing: 0.3px;
+      color: var(--muted); font-size: 0.6875rem; letter-spacing: 0.3px;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
     .shot figcaption b { color: var(--ink); font-weight: 500; }
+    /* The caption shortens rather than pushing the pane wider: at twice the
+       reader's font size a word like "Sampled pixels" is wider than a phone. */
+    .shot figcaption b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 
     /* object-fit letterboxes the bitmap inside its box, so panes of different
        shapes still line up; the surround is kept close to the card colour so a
@@ -332,7 +335,7 @@
     .skip {
       position: absolute; left: -9999px; top: 0; z-index: 40;
       padding: 8px 14px; color: var(--accent-ink); background: var(--accent);
-      border-radius: 0 0 8px 0; font-size: 14px;
+      border-radius: 0 0 8px 0; font-size: 0.875rem;
     }
     .skip:focus { left: 0; }
     /* while dots are being painted a drag must not select the text under it */
@@ -353,7 +356,7 @@
     #output:empty::before {
       content: var(--empty-art, '');
       display: block; padding: 20px 4px; color: var(--muted);
-      font-family: Inter, system-ui, sans-serif; font-size: 13px; white-space: normal;
+      font-family: Inter, system-ui, sans-serif; font-size: 0.8125rem; white-space: normal;
     }
 
     /* Saved work. A list rather than a grid of thumbnails: what tells one of
@@ -373,16 +376,16 @@
       border-radius: 4px; background: var(--art-bg); object-fit: contain;
     }
     .works .who { flex: 1 1 120px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .works .when { color: var(--muted); font-size: 12px; white-space: nowrap; }
-    .works .none { color: var(--muted); font-size: 12px; display: block; }
-    .works button { padding: 4px 9px; font-size: 12px; }
+    .works .when { color: var(--muted); font-size: 0.75rem; white-space: nowrap; }
+    .works .none { color: var(--muted); font-size: 0.75rem; display: block; }
+    .works button { padding: 4px 9px; font-size: 0.75rem; }
     #worksPanel .field.row { align-items: end; }
     #workName { width: 100%; }
 
     .stagefoot { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-    #meta { margin: 0; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+    #meta { margin: 0; color: var(--muted); font-size: 0.75rem; font-variant-numeric: tabular-nums; }
     #meta.over { color: var(--warn); }
-    .stagefoot a { color: var(--muted); font-size: 12px; }
+    .stagefoot a { color: var(--muted); font-size: 0.75rem; }
 
     /* click a preview to see it at full size */
     .inspect {
@@ -393,7 +396,7 @@
       cursor: zoom-out;
     }
     .inspect canvas { max-width: 100%; max-height: 85vh; object-fit: contain; border-radius: 8px; background: #000; }
-    .inspect p { margin: 0; color: var(--muted); font-size: 13px; }
+    .inspect p { margin: 0; color: var(--muted); font-size: 0.8125rem; }
 
     /* the offered variants */
     .offer { cursor: default; align-content: center; }
@@ -418,8 +421,8 @@
       font-family: ui-monospace, "Cascadia Mono", "Segoe UI Mono", Menlo, monospace;
       line-height: 1.05; white-space: pre; color: var(--ink);
     }
-    .offer-tile .offer-name { font-size: 13px; }
-    .offer-tile .offer-why { color: var(--muted); font-size: 12px; }
+    .offer-tile .offer-name { font-size: 0.8125rem; }
+    .offer-tile .offer-why { color: var(--muted); font-size: 0.75rem; }
 
     /* drag and drop */
     body.dropping::after {
@@ -427,7 +430,7 @@
       position: fixed; inset: 10px; z-index: 30;
       display: grid; place-items: center;
       border: 2px dashed var(--accent); border-radius: 14px;
-      background: rgba(4, 36, 15, 0.55); color: var(--ink); font-size: 16px;
+      background: rgba(4, 36, 15, 0.55); color: var(--ink); font-size: 1rem;
       pointer-events: none;
     }
 
@@ -464,8 +467,12 @@
       /* Sized so that the first thing you can do with the art is on the same
          screen as the art. Measured on a 390x844 phone: at 52vh the art ran to
          570px, the strip to 170, and Copy landed at 900 -- just past the fold,
-         which is the worst place for it. At 44vh the row lands around 700. */
-      #output { max-height: 44vh; }
+         which is the worst place for it. At 44vh the row lands around 700.
+         The second term is for a reader who has asked for bigger text: the rows
+         above and below the art grow with it, and what is left is what the art
+         may have. At the browser's own size it never binds; at 150% it takes
+         the art from 371px to 268 and keeps the button on the screen. */
+      #output { max-height: max(10rem, min(44vh, calc(100dvh - 24rem))); }
 
       /* On its own line here: beside the chips there is no room for a sentence. */
       .actions #status { flex-basis: 100%; }
@@ -505,6 +512,22 @@
       .actions .chip, .works button { min-height: 40px; padding: 8px 12px; }
       .modes button { min-height: 40px; }
     }
+    /* On paper there is no panel, no buttons and no colour worth spending: the
+       art is the whole point of printing this, and it prints as ink on white
+       whatever the screen was doing. The dots are text here rather than the
+       drawn canvas, because a printer's resolution is the one place the font's
+       own glyphs come out better than a canvas scaled up to meet it. */
+    @media print {
+      .sidebar, .actions, .topbar, .stagefoot, #worksPanel, .panes .shot:not(.shot-art) { display: none; }
+      body, .app { background: #fff; color: #000; height: auto; padding: 0; }
+      .app { display: block; }
+      .workspace, .stage, .panes { display: block; }
+      .shot-art { background: #fff; border: 0; padding: 0; }
+      #lattice { display: none; }
+      #output { max-height: none; overflow: visible; color: #000; }
+      #output.lattice-on, #output.lattice-on span { color: #000 !important; }
+    }
+
     /* Screens with little height: a phone held sideways, a short window, a
        cover display. Measured at 844x390 and 320x568, the first thing anyone
        wants -- copying -- fell below the fold, which is where the redesign put
@@ -518,7 +541,7 @@
       #output { max-height: 34vh; }
       .shot canvas { height: 52px; }
       .shot { padding: 6px 8px; gap: 3px; }
-      .shot figcaption { font-size: 11px; }
+      .shot figcaption { font-size: 0.6875rem; }
       .panes { gap: 6px; }
       .stage { gap: 6px; }
       .actions { gap: 6px 8px; }

@@ -541,6 +541,18 @@ short-screen rules start at 700px of height rather than 620, and a third tier
 below 430 gives up more again. All twelve sizes land the button on the first
 screen with a finger on the glass.
 
+Type sizes are in `rem` rather than pixels, so a reader who has told their
+browser to use bigger text gets bigger text — which is a setting pixels ignore
+entirely, page zoom being a different thing that always worked. What must not
+happen then is the page falling apart, so the art gives up its own height to
+make room: at 150% it goes from 371px to 268 and the button stays on the screen,
+at 200% from 371 to 320 and it still does. On a desktop nothing is given up at
+all, because there was room to begin with.
+
+There is a stylesheet for paper as well. Printing this used to put the whole
+control panel on the page; now the panel, the buttons and the source views stay
+off it, and the art prints as ink on white however dark the screen was.
+
 Screens with little height now give a little from everywhere above the button:
 the art takes 34vh instead of 44, the source views shrink to 52px thumbnails,
 the rows close up. The art stays the largest thing on the screen, which is

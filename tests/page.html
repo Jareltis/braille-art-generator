@@ -832,6 +832,52 @@ async function run() {
          `smallest ${Math.min(...rows)}px`);
     }
 
+    // Paper is a screen size too, and the one that cannot be measured by
+    // resizing: the rules are read out of the print query and checked for
+    // saying what matters -- the art stays, the panel and the buttons go.
+    {
+      const printed = [];
+      for (const sheet of doc.styleSheets) {
+        let rules;
+        try { rules = sheet.cssRules; } catch { continue; }
+        for (const rule of rules) {
+          if (rule.type === CSSRule.MEDIA_RULE && /print/.test(rule.conditionText)) {
+            printed.push(...[...rule.cssRules].map((inner) => inner.cssText));
+          }
+        }
+      }
+      ok('there are rules for paper', printed.length > 0, `${printed.length} rules`);
+      const hides = printed.find((rule) => /display:\s*none/.test(rule) && /\.sidebar/.test(rule));
+      ok('the panel and the buttons are not printed', Boolean(hides), hides?.slice(0, 60) ?? 'nothing hides them');
+      ok('and the art is printed as ink on white',
+         printed.some((rule) => /#output/.test(rule) && /color:\s*(#000|black|rgb\(0, 0, 0\))/.test(rule)),
+         printed.filter((rule) => /#output/.test(rule)).join(' | ').slice(0, 80));
+    }
+
+    // A reader who has asked for bigger text gets it: the type is in rem, so it
+    // follows the browser's own size rather than ignoring it. What must not
+    // happen is the page falling apart -- measured at 150%, where the art gives
+    // up its own height so the button stays on the screen.
+    {
+      await resize(390, 844);
+      const inner = frame.contentWindow;
+      const smallText = box('#copy').height;
+      doc.documentElement.style.fontSize = '24px';
+      await wait(200);
+      const bigText = box('#copy').height;
+      ok('bigger text makes the buttons bigger', bigText > smallText,
+         `${Math.round(smallText)}px against ${Math.round(bigText)}px`);
+      ok('and the art gives up height for it', box('.shot-art').height < inner.innerHeight / 2,
+         `${Math.round(box('.shot-art').height)}px of ${inner.innerHeight}px`);
+      ok('so copying is still on the first screen', box('#copy').bottom <= inner.innerHeight,
+         `copy ends at ${Math.round(box('#copy').bottom)}px`);
+      ok('and nothing runs off the side at that size',
+         doc.documentElement.scrollWidth <= inner.innerWidth + 2,
+         `${doc.documentElement.scrollWidth}px wide in ${inner.innerWidth}px`);
+      doc.documentElement.style.fontSize = '';
+      await wait(200);
+    }
+
     // Wide enough for two columns of controls, narrow enough to still be one
     // stack: a landscape phone should not stretch every field across 844px.
     await resize(844, 390);
