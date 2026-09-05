@@ -50,6 +50,7 @@ function workerPipeline(worker) {
         text: result.text,
         pixels: unpack(result.image),
         colours: result.colours ?? null,
+        background: result.background ?? null,
         cols: result.cols,
         rows: result.rows,
       };
@@ -78,14 +79,14 @@ function inlinePipeline() {
       return previewSource ? applyAdjustments(previewSource, params) : null;
     },
     async generate(imageData, params, options) {
-      const { text, colours, cols, rows, plane } = encode(applyAdjustments(imageData, params), options);
+      const { text, colours, background, cols, rows, plane } = encode(applyAdjustments(imageData, params), options);
       const preview = new ImageData(cols * 2, rows * 4);
       for (let i = 0, at = 0; i < plane.length; i++, at += 4) {
         const value = plane[i] < 0 ? 0 : plane[i] > 255 ? 255 : plane[i];
         preview.data[at] = preview.data[at + 1] = preview.data[at + 2] = value;
         preview.data[at + 3] = 255;
       }
-      return { text, pixels: preview, colours, cols, rows };
+      return { text, pixels: preview, colours, background, cols, rows };
     },
     async otsu(imageData, params, options) {
       // Same measurement and the same crossing back as the worker does.

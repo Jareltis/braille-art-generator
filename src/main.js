@@ -86,6 +86,7 @@ const dom = {
   edgeColour: el('edgeColour'),
   fitLimit: el('fitLimit'),
   colour: el('colour'),
+  cellGround: el('cellGround'),
   palette: el('palette'),
   decided: el('decided'),
   decidedList: el('decidedList'),
@@ -242,6 +243,9 @@ const readOptions = () => ({
   method: dom.dither.value || DEFAULT_DITHER,
   emphasis: controls.emphasis.value / 100,
   colour: dom.colour.checked,
+  // The second colour is only meaningful where something can draw a background,
+  // so it is asked for separately rather than implied by colour.
+  ground: dom.colour.checked && dom.cellGround.checked,
   detail: controls.detail.value / 100,
   edge: {
     mode: dom.edgeMode.value,
@@ -365,22 +369,29 @@ async function render() {
   const target = drawScaled(source, detail.w, detail.h, backgroundFor(isInverted()), { smooth: smoothScaling, crop: cropRect });
 
   const token = ++generateToken;
-  const { text, pixels, colours, cols: gridCols } = await pipeline.generate(
+  const { text, pixels, colours, background, cols: gridCols } = await pipeline.generate(
     readImageData(target), readAdjustments(), { ...readOptions(), grid: { cols, rows } },
   );
   if (token !== generateToken) return;
 
   // Snapped here, once, so the screen, the HTML, the PNG, the SVG and the
   // terminal all agree about what colour a cell is.
-  const painted = snap(colours, paletteFor(dom.palette.value, colours));
+  // One palette for both, chosen from the ink: two palettes would let a cell's
+  // ground land on a colour its ink could not have, and the pair is meant to
+  // come from the same picture.
+  const palette = paletteFor(dom.palette.value, colours);
+  const painted = snap(colours, palette);
+  const behind = snap(background, palette);
 
   if (dom.trimBlank.checked) {
     const bounds = trimBounds(text);
     artColours = trimColours(painted, gridCols, bounds);
+    artGround = trimColours(behind, gridCols, bounds);
     artText = trimBlank(text);
     artCols = bounds ? bounds.right - bounds.left + 1 : 0;
   } else {
     artColours = painted;
+    artGround = behind;
     artText = text;
     artCols = gridCols;
   }
@@ -784,6 +795,7 @@ function collectSettings() {
     keepAspect: dom.keepAspect.checked,
     textBold: dom.textBold.checked,
     colour: dom.colour.checked,
+    cellGround: dom.cellGround.checked,
     transparent: dom.transparent.checked,
     trimBlank: dom.trimBlank.checked,
     edgeColour: dom.edgeColour.checked,
@@ -877,6 +889,8 @@ function applySettings(values) {
   if (typeof values.trimBlank === 'boolean') dom.trimBlank.checked = values.trimBlank;
   if (typeof values.edgeColour === 'boolean') dom.edgeColour.checked = values.edgeColour;
   if (typeof values.colour === 'boolean') dom.colour.checked = values.colour;
+  if (typeof values.cellGround === 'boolean') dom.cellGround.checked = values.cellGround;
+  dom.cellGround.disabled = !dom.colour.checked;
   if (typeof values.transparent === 'boolean') dom.transparent.checked = values.transparent;
   if (typeof values.smooth === 'boolean') smoothScaling = values.smooth;
   if (typeof values.evenGrid === 'boolean') dom.evenGrid.checked = values.evenGrid;
@@ -911,6 +925,8 @@ function resetEverything() {
   dom.evenGrid.checked = true;
   if (lattice) lattice.enabled = true;
   dom.colour.checked = false;
+  dom.cellGround.checked = false;
+  dom.cellGround.disabled = true;
   dom.transparent.checked = false;
   describeDecisions();
   smoothScaling = true;
@@ -1509,9 +1525,11 @@ function captureFrame() {
 const COLOUR_CELL_LIMIT = 40000;
 
 let artColours = null;
+let artGround = null;
 let artCols = 0;
 /** What the page is actually showing: colour is dropped on a grid too big for it. */
 let shownColours = null;
+let shownGround = null;
 let lattice = null;
 
 function paintArt() {
@@ -1526,22 +1544,29 @@ function paintText() {
 
   if (!artColours || artCols === 0) {
     shownColours = null;
+    shownGround = null;
     dom.output.textContent = artText;
     return;
   }
   if (lines.length * artCols > COLOUR_CELL_LIMIT) {
     shownColours = null;
+    shownGround = null;
     dom.output.textContent = artText;
     setStatus(t('colour.tooLarge'), 'warn');
     return;
   }
   shownColours = artColours;
+  shownGround = artGround;
 
   // Only braille glyphs and the markup built here ever reach innerHTML.
   dom.output.innerHTML = lines
-    .map((line, row) => colourRuns(artColours, row, line.length)
-      .map(({ start, end, index }) =>
-        `<span style="color:${cellHex(artColours, index)}">${line.slice(start, end)}</span>`)
+    .map((line, row) => colourRuns(artColours, row, artCols, 8, artGround)
+      .map(({ start, end, index }) => {
+        const paint = artGround
+          ? `color:${cellHex(artColours, index)};background:${cellHex(artGround, index)}`
+          : `color:${cellHex(artColours, index)}`;
+        return `<span style="${paint}">${line.slice(start, end)}</span>`;
+      })
       .join(''))
     .join('\n');
 }
@@ -1604,6 +1629,7 @@ function exportStyle() {
     // nothing, which is exactly what is wanted.
     background: dom.transparent.checked ? 'transparent' : style.backgroundColor,
     colours: artColours,
+    ground: artGround,
   };
 }
 
@@ -1740,7 +1766,14 @@ function init() {
     if (requireArt()) exportSvg();
   });
 
-  dom.colour.addEventListener('change', () => changed({ affectsPreview: false }));
+  // The second colour means nothing without the first, so the box follows it.
+  const syncColour = () => { dom.cellGround.disabled = !dom.colour.checked; };
+  dom.colour.addEventListener('change', () => {
+    syncColour();
+    changed({ affectsPreview: false });
+  });
+  dom.cellGround.addEventListener('change', () => changed({ affectsPreview: false }));
+  syncColour();
 
   dom.downloadHtml.addEventListener('click', () => {
     if (!requireArt()) return;
@@ -1750,7 +1783,7 @@ function init() {
 
   dom.downloadAnsi.addEventListener('click', () => {
     if (!requireArt()) return;
-    downloadText(brailleToAnsi(artText, artColours, artCols, dom.palette.value), 'braille.ans');
+    downloadText(brailleToAnsi(artText, artColours, artCols, dom.palette.value, artGround), 'braille.ans');
     setStatus(
       artColours
         ? t('status.ansiSaved')
@@ -1788,7 +1821,7 @@ function init() {
 
   lattice = createLatticeView(dom.lattice, dom.output, {
     metrics: outputMetrics,
-    getArt: () => ({ text: artText, colours: shownColours, cols: artCols }),
+    getArt: () => ({ text: artText, colours: shownColours, ground: shownGround, cols: artCols }),
   });
   lattice.enabled = dom.evenGrid.checked;
   dom.evenGrid.addEventListener('change', () => {

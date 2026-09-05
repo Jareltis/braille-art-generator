@@ -17,7 +17,8 @@ window.addEventListener('unhandledrejection', (event) => {
 </script>
 <script type="module">
 import {
-  binarize, encode, imageDataToBraille, toChroma, toLightness, toLuminance, tonePlane, trimBlank,
+  CELL_H, DOT_BITS, binarize, encode, imageDataToBraille, toChroma, toLightness, toLuminance,
+  tonePlane, trimBlank,
 } from '../src/core/braille.js';
 import { DIFFUSING, DITHER_METHODS, DEFAULT_DITHER, edgeBias } from '../src/core/dither.js';
 import { BLUE_NOISE_SIZE, blueNoiseMatrix } from '../src/core/bluenoise.js';
@@ -46,7 +47,7 @@ import { FALLBACK, LOCALES, formatNumber, setLocale, t } from '../src/i18n/index
 import { fromHash, textFits, toHash } from '../src/ui/link.js';
 import { brailleToAnsi, brailleToHtml, brailleToSvg, renderDotsToCanvas } from '../src/ui/export.js';
 import { drawLattice } from '../src/ui/lattice.js';
-import { cellColours, cellHex, colourRuns } from '../src/core/colour.js';
+import { cellColours, cellHex, colourRuns, sameColour } from '../src/core/colour.js';
 import { PALETTES, TERMINAL_PALETTES, ansiForeground, medianCut, nearest, paletteFor, snap } from '../src/core/palette.js';
 import { lab } from '../src/core/gamma.js';
 import {
@@ -2032,6 +2033,75 @@ async function run() {
     const secondAnsi = ansi.split(NEWLINE_)[1];
     check('and the terminal export opens there too',
       (secondAnsi.match(/38;2;(\d+;\d+;\d+)/) ?? [])[1], '0;40;0');
+  }
+
+
+  // --- a colour behind the dots as well --------------------------------------
+  // As text a cell carries one colour, and the unraised dots are whatever the
+  // page is. Anywhere with a background -- the page itself, a PNG, an HTML
+  // file, a terminal -- it can carry two, and that is most of the colour error
+  // gone: measured over six pictures, 24-36 down to 4.3-7.9 per dot.
+  {
+    // One cell exactly: the left column dark, the right bright, so the dots
+    // split down the middle and each colour has something to average.
+    const wide = 2;
+    const tall = 4;
+    const half = new ImageData(wide, tall);
+    for (let y = 0; y < tall; y++) {
+      for (let x = 0; x < wide; x++) {
+        const i = (y * wide + x) * 4;
+        const bright = x >= wide / 2;
+        half.data[i] = bright ? 240 : 20;
+        half.data[i + 1] = bright ? 200 : 30;
+        half.data[i + 2] = bright ? 40 : 180;
+        half.data[i + 3] = 255;
+      }
+    }
+
+    const out = encode(half, { threshold: 128, method: 'threshold', colour: true, ground: true });
+    check('the ink and the ground are one cell each', `${out.colours.length}/${out.background.length}`, '3/3');
+    // The right-hand column of dots, and only it -- built from the dot map
+    // rather than typed, so the expectation cannot drift from the encoder.
+    let rightColumn = 0;
+    for (let row = 0; row < CELL_H; row++) rightColumn |= 1 << DOT_BITS[1][row];
+    check('and the cell is exactly the lit half', out.text, String.fromCharCode(0x2800 + rightColumn));
+    ok('the ink is the bright half', out.colours[0] > 200 && out.colours[2] < 90,
+       `rgb(${out.colours[0]}, ${out.colours[1]}, ${out.colours[2]})`);
+    ok('and the ground is the dark one', out.background[0] < 90 && out.background[2] > 120,
+       `rgb(${out.background[0]}, ${out.background[1]}, ${out.background[2]})`);
+
+    const plain = encode(half, { threshold: 128, method: 'threshold', colour: true });
+    check('without asking, there is no ground at all', plain.background, null);
+    check('and asking for it changes no dots', plain.text, out.text);
+
+    // A run is a run of *both* colours: two cells that share an ink but not a
+    // ground are two runs, or one of them would be painted over the other.
+    const inks = new Uint8ClampedArray([200, 0, 0, 200, 0, 0]);
+    const grounds = new Uint8ClampedArray([0, 0, 0, 0, 0, 200]);
+    check('same ink, different ground: two runs', colourRuns(inks, 0, 2, 8, grounds).length, 2);
+    check('and with no ground given, one', colourRuns(inks, 0, 2).length, 1);
+
+    // Every export that has somewhere to put it, puts it there.
+    const style = {
+      fontFamily: 'monospace', fontSize: 12, lineHeight: 1, advancePx: 8, lineHeightPx: 12,
+      foreground: '#ffffff', background: '#000000',
+    };
+    const cell = String.fromCharCode(0x28FF);
+    const html = brailleToHtml(cell, out.colours, 1, { ...style, ground: out.background });
+    ok('html paints behind the glyph', /background:#[0-9a-f]{6}/.test(html), html.match(/<span[^>]*>/)?.[0] ?? '');
+    const ansi = brailleToAnsi(cell, out.colours, 1, 'full', out.background);
+    ok('the terminal export sets a background too', /48;2;\d+;\d+;\d+/.test(ansi), JSON.stringify(ansi));
+    const svg = brailleToSvg(cell, { ...style, colours: out.colours, ground: out.background });
+    ok('and the svg lays a rectangle under the run', /<rect x="0.00"/.test(svg));
+
+    // The drawn picture fills the cell rather than leaving the page showing.
+    const drawn = renderDotsToCanvas(cell + String.fromCharCode(0x2800), {
+      ...style, colours: new Uint8ClampedArray([255, 0, 0, 0, 0, 255]),
+      ground: new Uint8ClampedArray([0, 128, 0, 0, 128, 0]),
+    }).canvas;
+    const shade = drawn.getContext('2d', { willReadFrequently: true }).getImageData(9, 6, 1, 1).data;
+    ok('the second cell is drawn on its own ground', shade[1] > 100 && shade[0] < 60,
+       `rgb(${shade[0]}, ${shade[1]}, ${shade[2]})`);
   }
 
   const failed = log.filter((l) => l.startsWith('FAIL')).length;

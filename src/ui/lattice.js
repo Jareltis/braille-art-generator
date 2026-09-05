@@ -56,6 +56,7 @@ export function drawLattice(ctx, lines, {
   cols,
   foreground = '#ffffff',
   colours = null,
+  ground = null,
   offsetX = 0,
   offsetY = 0,
   width,
@@ -80,6 +81,28 @@ export function drawLattice(ctx, lines, {
   const afterRow = Math.min(lines.length, Math.ceil((offsetY + viewH) / cellH));
   const firstCol = Math.max(0, Math.floor(offsetX / cellW));
   const afterColAt = Math.ceil((offsetX + viewW) / cellW);
+
+  // Where the cells carry a colour behind them, that goes down first: the
+  // unraised dots stop being whatever the page is and become part of the
+  // picture. Whole cells, in one pass, so the dots are not drawn over twice.
+  if (ground) {
+    for (let row = firstRow; row < afterRow; row++) {
+      const line = lines[row];
+      const top = row * cellH - offsetY;
+      const afterCol = Math.min(line.length, afterColAt);
+      // Snapped to whole pixels, and to the *next* cell's edge rather than to a
+      // width: at a fractional advance two neighbours otherwise land either
+      // side of a pixel boundary and the seam between them shows as a line.
+      const bottom = Math.round(top + cellH);
+      const snappedTop = Math.round(top);
+      for (let cell = firstCol; cell < afterCol; cell++) {
+        const left = Math.round(cell * cellW - offsetX);
+        const right = Math.round((cell + 1) * cellW - offsetX);
+        ctx.fillStyle = cellHex(ground, row * stride + cell);
+        ctx.fillRect(left, snappedTop, right - left, bottom - snappedTop);
+      }
+    }
+  }
 
   if (!colours) ctx.fillStyle = foreground;
 
@@ -142,7 +165,7 @@ export function createLatticeView(canvas, view, { metrics, getArt }) {
   function paint() {
     if (!enabled || selecting) return hide();
 
-    const { text, colours, cols } = getArt();
+    const { text, colours, ground, cols } = getArt();
     if (!text) return hide();
 
     const { advancePx, lineHeightPx } = metrics();
@@ -178,6 +201,7 @@ export function createLatticeView(canvas, view, { metrics, getArt }) {
       cols: cols || undefined,
       foreground: ink,
       colours,
+      ground,
       // Content sits at the padding edge and slides under the box as it
       // scrolls, so the two together are where the first cell has got to.
       offsetX: view.scrollLeft - padLeft,

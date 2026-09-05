@@ -195,3 +195,15 @@ export function ansiForeground(kind, index) {
   if (kind === 'ansi16') return index < 8 ? `${30 + index}` : `${90 + index - 8}`;
   return `38;5;${index}`;
 }
+
+/**
+ * The same, for what is behind the glyph.
+ *
+ * Backgrounds sit ten higher than foregrounds in every one of these families,
+ * which is the whole of the difference: 40-47 and 100-107 for the sixteen, and
+ * 48 where the foreground says 38.
+ */
+export function ansiBackground(kind, index) {
+  if (kind === 'ansi16') return index < 8 ? `${40 + index}` : `${100 + index - 8}`;
+  return `48;5;${index}`;
+}

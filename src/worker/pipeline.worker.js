@@ -29,7 +29,7 @@ const handlers = {
 
   generate({ image, params, options }) {
     const pixels = applyAdjustments(unpack(image), params);
-    const { text, colours, cols, rows, plane } = encode(pixels, options);
+    const { text, colours, background, cols, rows, plane } = encode(pixels, options);
 
     // Grey from the plane the dots were actually judged from, rather than the
     // raster it came from: at this size the two are no longer the same thing.
@@ -43,7 +43,8 @@ const handlers = {
     const out = pack(preview);
     const transfer = transferOf(out);
     if (colours) transfer.push(colours.buffer);
-    return { payload: { text, colours, cols, rows, image: out }, transfer };
+    if (background) transfer.push(background.buffer);
+    return { payload: { text, colours, background, cols, rows, image: out }, transfer };
   },
 
   variants({ image, params, options, want, seed }) {

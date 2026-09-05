@@ -544,10 +544,13 @@ async function run() {
     // Otsu and the hand are different answers and the panel says which it has.
     $('threshold').value = '96';
     $('threshold').dispatchEvent(new Event('input', { bubbles: true }));
-    // Waiting for the number, not for the word: the word may already be there
-    // from whatever set the threshold last, and then this waits for nothing.
-    await until(() => rows().some((row) => row.includes('96')), 8000);
-    ok('a threshold set by hand says so', rows().some((row) => row.includes('96') && row.includes('вручную')),
+    // Waiting for the number in the row that is about the threshold. Not for
+    // the word alone -- it may already be there from whatever set the threshold
+    // last -- and not for the number alone either, which is how this once
+    // matched "last redraw 96 ms" and went on to compare a stale list.
+    const thresholdRow = () => rows().find((row) => row.startsWith('Порог')) ?? '';
+    await until(() => thresholdRow().includes('96'), 8000);
+    ok('a threshold set by hand says so', thresholdRow().includes('96') && thresholdRow().includes('вручную'),
        rows().join(' | '));
 
     $('autoThreshold').click();
@@ -1456,6 +1459,35 @@ async function run() {
     ok('runs are far fewer than cells',
        $('output').querySelectorAll('span').length < plainArt.replace(/\n/g, '').length / 4,
        `${$('output').querySelectorAll('span').length} runs for ${plainArt.replace(/\n/g, '').length} cells`);
+
+    // And the second colour, which is where most of the colour error lives: the
+    // unraised dots stop being the page and take a colour of their own.
+    {
+      check('the second colour waits for the first', $('cellGround').disabled, false);
+      $('cellGround').checked = true;
+      $('cellGround').dispatchEvent(new Event('change', { bubbles: true }));
+      ok('turning it on paints behind the glyphs',
+         await until(() => /background:#[0-9a-f]{6}/.test($('output').innerHTML), 6000),
+         ($('output').querySelector('span')?.getAttribute('style') ?? 'no spans'));
+      ok('and it travels in the link',
+         await until(() => /(^|[#&])cg=1([&]|$)/.test(frame.contentWindow.location.hash), 3000),
+         frame.contentWindow.location.hash);
+
+      const drawn = $('lattice');
+      if (!drawn.hidden) {
+        const face = drawn.getContext('2d', { willReadFrequently: true });
+        const strip = face.getImageData(0, 0, drawn.width, Math.min(30, drawn.height)).data;
+        let painted = 0;
+        for (let i = 3; i < strip.length; i += 4) if (strip[i] > 200) painted++;
+        ok('and the drawn copy fills its cells rather than leaving the page',
+           painted > strip.length / 8, `${painted} opaque of ${strip.length / 4}`);
+      }
+
+      $('cellGround').checked = false;
+      $('cellGround').dispatchEvent(new Event('change', { bubbles: true }));
+      ok('turning it off goes back to ink alone',
+         await until(() => !/background:#/.test($('output').innerHTML), 6000));
+    }
 
     // The tint has to reach the drawn copy as well, or the page would show a
     // white art while claiming a coloured one.

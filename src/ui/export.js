@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Saving and copying the finished art.
 
-import { TERMINAL_PALETTES, ansiForeground, nearest } from '../core/palette.js';
+import { TERMINAL_PALETTES, ansiBackground, ansiForeground, nearest } from '../core/palette.js';
 import { createCanvas } from './canvas.js';
 import { cellHex, colourRuns } from '../core/colour.js';
 import { drawLattice } from './lattice.js';
@@ -46,7 +46,7 @@ export function downloadCanvas(canvas, filename) {
  * the line height measured from the page -- so the exported picture has the
  * shape the screen promised.
  */
-export function renderDotsToCanvas(text, { advancePx, lineHeightPx, foreground, background, colours }) {
+export function renderDotsToCanvas(text, { advancePx, lineHeightPx, foreground, background, colours, ground = null }) {
   const lines = text.split('\n');
   const widest = lines.reduce((most, line) => Math.max(most, line.length), 0);
   const cellW = Math.max(2, advancePx);
@@ -65,7 +65,7 @@ export function renderDotsToCanvas(text, { advancePx, lineHeightPx, foreground, 
   ctx.fillStyle = background;
   ctx.fillRect(0, 0, width, height);
 
-  drawLattice(ctx, lines, { cellW, cellH, cols: widest, foreground, colours });
+  drawLattice(ctx, lines, { cellW, cellH, cols: widest, foreground, colours, ground });
 
   return { canvas, scale };
 }
@@ -186,7 +186,9 @@ const escapeXml = (s) => s.replace(/[&<>"']/g, (c) => XML_ESCAPES[c]);
  * editable. The cost is that it renders in whatever monospace font the viewer
  * has, so the font stack is written out in full.
  */
-export function brailleToSvg(text, { fontFamily, fontSize, lineHeight, foreground, background, colours }) {
+export function brailleToSvg(text, {
+  fontFamily, fontSize, lineHeight, foreground, background, colours, ground = null,
+}) {
   const lines = text.split('\n');
   const rowHeight = fontSize * lineHeight;
 
@@ -203,10 +205,17 @@ export function brailleToSvg(text, { fontFamily, fontSize, lineHeight, foregroun
     if (!colours) {
       return `<text x="0" y="${y}" xml:space="preserve">${escapeXml(line)}</text>`;
     }
-    // One element per run of equal colour, not per cell.
-    return colourRuns(colours, i, line.length).map(({ start, end, index }) =>
-      `<text x="${(start * advance).toFixed(2)}" y="${y}" fill="${cellHex(colours, index)}"`
-      + ` xml:space="preserve">${escapeXml(line.slice(start, end))}</text>`).join('\n  ');
+    // One element per run of equal colour, not per cell -- and a rectangle
+    // under it wherever the cells carry a background of their own.
+    return colourRuns(colours, i, line.length, 8, ground).map(({ start, end, index }) => {
+      const x = (start * advance).toFixed(2);
+      const painted = `<text x="${x}" y="${y}" fill="${cellHex(colours, index)}"`
+        + ` xml:space="preserve">${escapeXml(line.slice(start, end))}</text>`;
+      if (!ground) return painted;
+      const behind = `<rect x="${x}" y="${y}" width="${((end - start) * advance).toFixed(2)}"`
+        + ` height="${rowHeight.toFixed(2)}" fill="${cellHex(ground, index)}"/>`;
+      return `${behind}\n  ${painted}`;
+    }).join('\n  ');
   }).join('\n  ');
 
   return [
@@ -243,7 +252,9 @@ const RESET = `${ESC}[0m`;
  * out, and the background travels with the art -- light dots on a light page
  * would be invisible.
  */
-export function brailleToHtml(text, colours, cols, { fontFamily, fontSize, lineHeight, foreground, background }) {
+export function brailleToHtml(text, colours, cols, {
+  fontFamily, fontSize, lineHeight, foreground, background, ground = null,
+}) {
   const lines = text.split('\n');
   // Runs are cut over the grid the colours were built on, not over the row:
   // the two agree today because every row is the same length, and the colour
@@ -251,9 +262,13 @@ export function brailleToHtml(text, colours, cols, { fontFamily, fontSize, lineH
   const stride = cols || Math.max(...lines.map((line) => line.length));
   const body = lines.map((line, row) => {
     if (!colours) return escapeHtml(line);
-    return colourRuns(colours, row, stride)
-      .map(({ start, end, index }) =>
-        `<span style="color:${cellHex(colours, index)}">${escapeHtml(line.slice(start, end))}</span>`)
+    return colourRuns(colours, row, stride, 8, ground)
+      .map(({ start, end, index }) => {
+        const paint = ground
+          ? `color:${cellHex(colours, index)};background:${cellHex(ground, index)}`
+          : `color:${cellHex(colours, index)}`;
+        return `<span style="${paint}">${escapeHtml(line.slice(start, end))}</span>`;
+      })
       .join('');
   }).join('\n');
 
@@ -285,19 +300,23 @@ export function brailleToHtml(text, colours, cols, { fontFamily, fontSize, lineH
  * arrives buried in escape sequences. So when the colours have been snapped to
  * one of those palettes, the entry is named by its index instead.
  */
-export function brailleToAnsi(text, colours, cols, palette = 'full') {
+export function brailleToAnsi(text, colours, cols, palette = 'full', ground = null) {
   const fixed = TERMINAL_PALETTES[palette] ?? null;
   const known = fixed ? new Map() : null;
   const lines = text.split('\n');
   const stride = cols || Math.max(...lines.map((line) => line.length));
   return lines.map((line, row) => {
     if (!colours) return line;
-    const painted = colourRuns(colours, row, stride).map(({ start, end, index }) => {
+    const painted = colourRuns(colours, row, stride, 8, ground).map(({ start, end, index }) => {
       const at = index * 3;
       const select = fixed
         ? ansiForeground(palette, nearest(fixed, colours[at], colours[at + 1], colours[at + 2], known))
         : `38;2;${colours[at]};${colours[at + 1]};${colours[at + 2]}`;
-      return `${ESC}[${select}m${line.slice(start, end)}`;
+      if (!ground) return `${ESC}[${select}m${line.slice(start, end)}`;
+      const behind = fixed
+        ? ansiBackground(palette, nearest(fixed, ground[at], ground[at + 1], ground[at + 2], known))
+        : `48;2;${ground[at]};${ground[at + 1]};${ground[at + 2]}`;
+      return `${ESC}[${select};${behind}m${line.slice(start, end)}`;
     }).join('');
     return painted + RESET;
   }).join('\n') + '\n';

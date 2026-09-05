@@ -196,10 +196,20 @@ export function encode(imageData, options = {}) {
     // the sampled-pixels pane should be showing.
     plane,
     // Colour takes no part in choosing the dots; it only tints them afterwards.
-    colours: options.colour ? cellColours(imageData, bits, cols, rows) : null,
+    // With `ground` asked for, the unraised dots get a colour of their own --
+    // still after the fact, and still no say in which dots those are.
+    ...colourFor(imageData, bits, cols, rows, options),
     cols,
     rows,
   };
+}
+
+/** Ink alone, or ink and ground, depending on what was asked for. */
+function colourFor(imageData, bits, cols, rows, options) {
+  if (!options.colour) return { colours: null, background: null };
+  if (!options.ground) return { colours: cellColours(imageData, bits, cols, rows), background: null };
+  const { ink, ground } = cellColours(imageData, bits, cols, rows, true);
+  return { colours: ink, background: ground };
 }
 
 /** The text alone, which is what most callers want. */

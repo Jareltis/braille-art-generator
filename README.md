@@ -27,7 +27,7 @@ only ever hands out static files.
 | **Thresholds** | global, automatic by Otsu, and local adaptive (Sauvola) |
 | **Edge detection** | XDoG for drawn strokes, Sobel for gradients, a slider between fill and lines |
 | **Colour in the edges** | boundaries between colours of the same brightness, which brightness alone cannot see |
-| **Colour** | one tint per cell: on screen, in PNG, SVG, HTML and ANSI for the terminal |
+| **Colour** | one tint per cell, or two -- ink and a ground -- wherever there is a background to paint |
 | **Palette** | full colour, the 256 or 16 a terminal has, or a few drawn from the picture |
 | **Copying** | as text, or as a picture for rooms that squash the line height |
 | **Sharing** | straight to another app, which on a phone is where the chat actually is |
@@ -637,6 +637,32 @@ wants a fraction, rendering every candidate at a strength of 35 instead of 0.35,
 which flattens error diffusion into solid blobs and inverts the ranking. The
 bench now goes through the same function the application does, which is the only
 version of this that stays true.
+
+### A colour behind the dots
+
+As text a braille cell is one glyph and carries one colour, so the unraised
+dots are simply whatever the page is. That is most of the colour error: measured
+over six pictures as the mean CIE distance between a dot and the colour it
+should have had, one tint on a shared background is **24 to 36** out. The eye
+reads a picture out of it because the tone is right, not because the colours
+are.
+
+Anywhere with a background as well as a foreground — the page itself, the PNG,
+the HTML file, a terminal — the cell can carry two, and the same measurement
+falls to **4.3 to 7.9**. Nothing about the dots changes: they are still decided
+from luminance alone, and **and a colour behind them** only says what to do with
+the ones that were left unraised. The run-length painting had to learn that a
+run now needs both colours to match, or one cell's ink would be painted over
+another cell's ground.
+
+Going further — letting colour choose the pattern too, by splitting each cell's
+eight dots between the two colours that fit them best — reaches **2.0 to 3.8**,
+and that is a different kind of picture: the art stops reading as tone and
+becomes a mosaic. It is measured and kept aside as its own mode rather than
+folded into this one.
+
+What this cannot do is help a chat: plain text has no background, so pasting is
+unchanged. It is for the picture, the page and the terminal.
 
 ### Fewer colours, on purpose
 

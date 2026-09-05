@@ -141,6 +141,8 @@ export const en = {
     'invert.no': 'No',
     'invert.yes': 'Yes',
     'colour.label': 'Colour: tint the cells',
+    'colour.ground': 'and a colour behind them',
+    'colour.ground.hint': 'The unraised dots stop being the page and take a colour of their own. Measured over six pictures, it takes the average error of a dot from 24-36 down to 4.3-7.9. Only where there is a background to paint: the page, the PNG, the HTML file and the terminal. Plain text has none, so what gets pasted into a chat is unchanged.',
     'palette.label': 'Palette',
     'palette.full': 'Full colour',
     'palette.terminal': 'For a terminal',
