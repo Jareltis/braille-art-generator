@@ -3,7 +3,7 @@
 
 import { lab, lightness, luminance, thresholdToLinear } from './gamma.js';
 import { CELL_H, CELL_W } from './pixels.js';
-import { cellColours } from './colour.js';
+import { cellColours, colourPattern } from './colour.js';
 import { DIFFUSING, DITHER_METHODS, DEFAULT_DITHER, edgeBias } from './dither.js';
 import { lineMap, mixLines, structureMap } from './edges.js';
 import { reduceMax, reduceStats, withDetail } from './sample.js';
@@ -180,6 +180,22 @@ export function encode(imageData, options = {}) {
       `image must be a multiple of ${CELL_W}x${CELL_H}, got ${imageData.width}x${imageData.height}`,
     );
   }
+  // The one mode where colour decides the dots rather than tinting them. It
+  // answers a different question -- which two colours is this cell made of --
+  // so none of the tone machinery below applies to it.
+  if (options.pattern === 'colour') {
+    const { bits: chosen, ink, ground } = colourPattern(imageData, cols, rows, options);
+    return {
+      text: bitsToBraille(chosen, cols, rows),
+      bits: chosen,
+      plane: tonePlane(imageData, options).plane,
+      colours: ink,
+      background: ground,
+      cols,
+      rows,
+    };
+  }
+
   const { plane, linear } = tonePlane(imageData, options);
   const threshold = thresholdFor(options.threshold ?? 128, linear);
   // Where the control sits when centred, so a method that picks its own

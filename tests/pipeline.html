@@ -47,7 +47,7 @@ import { FALLBACK, LOCALES, formatNumber, setLocale, t } from '../src/i18n/index
 import { fromHash, textFits, toHash } from '../src/ui/link.js';
 import { brailleToAnsi, brailleToHtml, brailleToSvg, renderDotsToCanvas } from '../src/ui/export.js';
 import { drawLattice } from '../src/ui/lattice.js';
-import { cellColours, cellHex, colourRuns, sameColour } from '../src/core/colour.js';
+import { cellColours, cellHex, colourPattern, colourRuns, sameColour } from '../src/core/colour.js';
 import { PALETTES, TERMINAL_PALETTES, ansiForeground, medianCut, nearest, paletteFor, snap } from '../src/core/palette.js';
 import { lab } from '../src/core/gamma.js';
 import {
@@ -2102,6 +2102,79 @@ async function run() {
     const shade = drawn.getContext('2d', { willReadFrequently: true }).getImageData(9, 6, 1, 1).data;
     ok('the second cell is drawn on its own ground', shade[1] > 100 && shade[0] < 60,
        `rgb(${shade[0]}, ${shade[1]}, ${shade[2]})`);
+  }
+
+
+  // --- and the mode where colour chooses the dots ----------------------------
+  // The one place in the app where colour decides rather than tints, which is
+  // why it is a mode of its own: the art stops being a tone and becomes a
+  // mosaic of two colours per cell.
+  {
+    const wide = 2;
+    const tall = 4;
+    const pair = new ImageData(wide, tall);
+    for (let y = 0; y < tall; y++) {
+      for (let x = 0; x < wide; x++) {
+        const i = (y * wide + x) * 4;
+        // Two hues of much the same brightness, so a tone pattern could not
+        // have found this split at all.
+        const left = x === 0;
+        pair.data[i] = left ? 192 : 0;
+        pair.data[i + 1] = left ? 48 : 121;
+        pair.data[i + 2] = left ? 48 : 42;
+        pair.data[i + 3] = 255;
+      }
+    }
+
+    const { bits, ink, ground } = colourPattern(pair, 1, 1);
+    const raised = [...bits].reduce((n, v) => n + v, 0);
+    check('the cell splits down the middle', raised, 4);
+    ok('the brighter half is the raised one', ink[1] > ground[1],
+       `ink ${[...ink].join(',')} against ground ${[...ground].join(',')}`);
+
+    const flipped = colourPattern(pair, 1, 1, { invert: true });
+    ok('inverting swaps the two', flipped.ink[1] === ground[1] && flipped.ground[1] === ink[1],
+       `${[...flipped.ink].join(',')} / ${[...flipped.ground].join(',')}`);
+
+    // None of the tone machinery has anything to say here.
+    const asColour = (extra) => encode(pair, {
+      colour: true, ground: true, pattern: 'colour', grid: { cols: 1, rows: 1 }, ...extra,
+    }).text;
+    check('the method makes no difference to it', asColour({ method: 'bayer4' }), asColour({ method: 'floyd-steinberg' }));
+    check('and neither does the threshold', asColour({ threshold: 20 }), asColour({ threshold: 230 }));
+
+    // What it costs: as plain text, without any colour to carry, the pattern is
+    // no longer the picture. Measured on a landscape at sixty columns, the tone
+    // art covers 0.30 of its dots with a spread of 0.28 and this covers 0.51
+    // with a spread of 0.18 -- much flatter, which is the trade being made.
+    const ramp = new ImageData(16, 16);
+    for (let y = 0; y < 16; y++) {
+      for (let x = 0; x < 16; x++) {
+        const i = (y * 16 + x) * 4;
+        ramp.data[i] = ramp.data[i + 1] = ramp.data[i + 2] = Math.round((x / 15) * 255);
+        ramp.data[i + 3] = 255;
+      }
+    }
+    const grid = { cols: 8, rows: 4 };
+    const mosaic = encode(ramp, { colour: true, ground: true, pattern: 'colour', grid });
+    const tone = encode(ramp, { colour: true, ground: true, threshold: 128, method: 'threshold', grid });
+    // The mean says nothing -- both land near half on a ramp. What separates
+    // them is how much the cells differ from each other, which is exactly what
+    // carries the tone.
+    const spread = (out) => {
+      const perCell = [...out.text.split(String.fromCharCode(10)).join('')]
+        .map((glyph) => {
+          let lit = 0;
+          const mask = glyph.charCodeAt(0) - 0x2800;
+          for (let bit = 0; bit < 8; bit++) if (mask & (1 << bit)) lit++;
+          return lit / 8;
+        });
+      const mean = perCell.reduce((a, b) => a + b, 0) / perCell.length;
+      return Math.sqrt(perCell.reduce((a, b) => a + (b - mean) ** 2, 0) / perCell.length);
+    };
+    ok('a ramp is carried by how much the cells differ', spread(tone) > 0.3, spread(tone).toFixed(2));
+    ok('and the mosaic gives that up: every cell is about half lit',
+       spread(mosaic) < 0.15, spread(mosaic).toFixed(2));
   }
 
   const failed = log.filter((l) => l.startsWith('FAIL')).length;

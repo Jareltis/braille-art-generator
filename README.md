@@ -655,11 +655,21 @@ the ones that were left unraised. The run-length painting had to learn that a
 run now needs both colours to match, or one cell's ink would be painted over
 another cell's ground.
 
-Going further — letting colour choose the pattern too, by splitting each cell's
-eight dots between the two colours that fit them best — reaches **2.0 to 3.8**,
-and that is a different kind of picture: the art stops reading as tone and
-becomes a mosaic. It is measured and kept aside as its own mode rather than
-folded into this one.
+Going further — **let colour choose the dots** — splits each cell's eight dots
+between the two colours that fit them best, k-means with k=2 in L\*a\*b\* started
+from the two furthest apart, which for eight points is a handful of comparisons
+rather than an optimisation. That reaches **2.0 to 3.8**, the closest of the
+three, and it is a mode of its own because it is a different kind of picture.
+
+The dots stop carrying tone. Every cell is split between its two colours, so
+roughly half of them are raised wherever you look: measured on a landscape, the
+usual art covers 0.30 of its dots with a spread of 0.28 from cell to cell, and
+this covers 0.51 with a spread of 0.18. On a plain ramp the spread goes from
+0.50 to 0.00. Pasted somewhere with no colour it is grey mush; with the colours
+it is the most faithful picture the grid can carry. Nothing else in the panel
+applies to it — the method, the threshold and the lines all answer questions it
+does not ask — and the brighter of the two groups is the raised one, so
+inversion still means what it means everywhere else.
 
 What this cannot do is help a chat: plain text has no background, so pasting is
 unchanged. It is for the picture, the page and the terminal.

@@ -1483,10 +1483,26 @@ async function run() {
            painted > strip.length / 8, `${painted} opaque of ${strip.length / 4}`);
       }
 
+      // And the mode where colour picks the dots as well, which needs both.
+      check('choosing dots by colour waits for both', $('colourPattern').disabled, false);
+      const byTone = await stable(() => $('output').textContent);
+      $('colourPattern').checked = true;
+      $('colourPattern').dispatchEvent(new Event('change', { bubbles: true }));
+      const byColour = await stable(() => $('output').textContent);
+      ok('turning it on redraws the art from the colours', byColour !== byTone,
+         `${byTone.slice(0, 12)} against ${byColour.slice(0, 12)}`);
+      ok('and it travels in the link as well',
+         await until(() => /(^|[#&])cp=1([&]|$)/.test(frame.contentWindow.location.hash), 3000),
+         frame.contentWindow.location.hash);
+      $('colourPattern').checked = false;
+      $('colourPattern').dispatchEvent(new Event('change', { bubbles: true }));
+      await stable(() => $('output').textContent);
+
       $('cellGround').checked = false;
       $('cellGround').dispatchEvent(new Event('change', { bubbles: true }));
       ok('turning it off goes back to ink alone',
          await until(() => !/background:#/.test($('output').innerHTML), 6000));
+      check('and choosing dots by colour goes dead with it', $('colourPattern').disabled, true);
     }
 
     // The tint has to reach the drawn copy as well, or the page would show a

@@ -87,6 +87,7 @@ const dom = {
   fitLimit: el('fitLimit'),
   colour: el('colour'),
   cellGround: el('cellGround'),
+  colourPattern: el('colourPattern'),
   palette: el('palette'),
   decided: el('decided'),
   decidedList: el('decidedList'),
@@ -246,6 +247,8 @@ const readOptions = () => ({
   // The second colour is only meaningful where something can draw a background,
   // so it is asked for separately rather than implied by colour.
   ground: dom.colour.checked && dom.cellGround.checked,
+  // Colour picks the dots only where it has both colours to pick between.
+  pattern: dom.colour.checked && dom.cellGround.checked && dom.colourPattern.checked ? 'colour' : 'tone',
   detail: controls.detail.value / 100,
   edge: {
     mode: dom.edgeMode.value,
@@ -796,6 +799,7 @@ function collectSettings() {
     textBold: dom.textBold.checked,
     colour: dom.colour.checked,
     cellGround: dom.cellGround.checked,
+    colourPattern: dom.colourPattern.checked,
     transparent: dom.transparent.checked,
     trimBlank: dom.trimBlank.checked,
     edgeColour: dom.edgeColour.checked,
@@ -890,7 +894,9 @@ function applySettings(values) {
   if (typeof values.edgeColour === 'boolean') dom.edgeColour.checked = values.edgeColour;
   if (typeof values.colour === 'boolean') dom.colour.checked = values.colour;
   if (typeof values.cellGround === 'boolean') dom.cellGround.checked = values.cellGround;
+  if (typeof values.colourPattern === 'boolean') dom.colourPattern.checked = values.colourPattern;
   dom.cellGround.disabled = !dom.colour.checked;
+  dom.colourPattern.disabled = !dom.colour.checked || !dom.cellGround.checked;
   if (typeof values.transparent === 'boolean') dom.transparent.checked = values.transparent;
   if (typeof values.smooth === 'boolean') smoothScaling = values.smooth;
   if (typeof values.evenGrid === 'boolean') dom.evenGrid.checked = values.evenGrid;
@@ -927,6 +933,8 @@ function resetEverything() {
   dom.colour.checked = false;
   dom.cellGround.checked = false;
   dom.cellGround.disabled = true;
+  dom.colourPattern.checked = false;
+  dom.colourPattern.disabled = true;
   dom.transparent.checked = false;
   describeDecisions();
   smoothScaling = true;
@@ -1767,12 +1775,20 @@ function init() {
   });
 
   // The second colour means nothing without the first, so the box follows it.
-  const syncColour = () => { dom.cellGround.disabled = !dom.colour.checked; };
+  const syncColour = () => {
+    dom.cellGround.disabled = !dom.colour.checked;
+    // Choosing dots by colour needs somewhere to put the second colour.
+    dom.colourPattern.disabled = !dom.colour.checked || !dom.cellGround.checked;
+  };
   dom.colour.addEventListener('change', () => {
     syncColour();
     changed({ affectsPreview: false });
   });
-  dom.cellGround.addEventListener('change', () => changed({ affectsPreview: false }));
+  dom.cellGround.addEventListener('change', () => {
+    syncColour();
+    changed({ affectsPreview: false });
+  });
+  dom.colourPattern.addEventListener('change', () => changed({ affectsPreview: false }));
   syncColour();
 
   dom.downloadHtml.addEventListener('click', () => {

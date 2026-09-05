@@ -142,6 +142,8 @@ export const en = {
     'invert.yes': 'Yes',
     'colour.label': 'Colour: tint the cells',
     'colour.ground': 'and a colour behind them',
+    'colour.pattern': 'let colour choose the dots',
+    'colour.pattern.hint': 'Each cell is split between the two colours that fit its eight dots best, instead of the dots being decided from brightness. The most accurate picture of the three (an average error of 2.0-3.8 against 4.3-7.9), and a different thing to look at: a mosaic rather than a tone, so dithering, threshold and lines have nothing to say about it.',
     'colour.ground.hint': 'The unraised dots stop being the page and take a colour of their own. Measured over six pictures, it takes the average error of a dot from 24-36 down to 4.3-7.9. Only where there is a background to paint: the page, the PNG, the HTML file and the terminal. Plain text has none, so what gets pasted into a chat is unchanged.',
     'palette.label': 'Palette',
     'palette.full': 'Full colour',
