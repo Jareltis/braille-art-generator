@@ -420,6 +420,24 @@ async function run() {
        $('status').textContent);
   }
 
+  mark('the art can be shared');
+  // --- the art can be shared -----------------------------------------------
+  // On a phone the chat is behind the share sheet rather than on the clipboard.
+  // Whether the sheet opens depends on the browser and on a real tap, so what is
+  // checked is that the path runs and says which of the ways it went -- in the
+  // page's own language, as the clipboard path does.
+  {
+    if (typeof frame.contentWindow.navigator.share === 'function') {
+      ok('the button is offered when the browser can share', !$('share').hidden);
+      $('share').click();
+      ok('and pressing it says what happened',
+         await until(() => /ушёл|отменена|не умеет|не открыл/.test($('status').textContent), 6000),
+         $('status').textContent);
+    } else {
+      ok('a browser that cannot share is not shown the button', $('share').hidden);
+    }
+  }
+
   mark('the art is drawn, not typeset');
   // --- the art is drawn, not typeset ---------------------------------------
   // A braille glyph inks about two thirds of the cell the font gives it, so the

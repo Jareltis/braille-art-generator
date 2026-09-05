@@ -71,6 +71,60 @@ export function renderDotsToCanvas(text, { advancePx, lineHeightPx, foreground, 
 }
 
 /**
+ * Hand the art to another app.
+ *
+ * Sharing is the phone's version of copying: the chat is not on the clipboard
+ * there, it is behind the share sheet. What travels is the picture, because the
+ * text is already one button away and a picture is the thing a room with its own
+ * line height cannot squash. A browser that shares text but not files still gets
+ * the art, as text -- and the caller is told which of the two went, because
+ * saying "shared" about the wrong one would be a lie.
+ *
+ * Dismissing the sheet is not a failure and is not reported as one.
+ */
+export function canShare() {
+  return typeof navigator.share === 'function';
+}
+
+async function handOver(payload) {
+  try {
+    await navigator.share(payload);
+    return true;
+  } catch (error) {
+    if (error?.name === 'AbortError') return false;
+    throw Object.assign(new Error('share refused'), { i18n: 'status.shareRefused' });
+  }
+}
+
+/**
+ * The picture, built without waiting for anything.
+ *
+ * `toBlob` is the tidier call and the wrong one here: sharing needs the tap it
+ * was started by, and on iOS an await between the two loses it. `toDataURL` is
+ * synchronous, so the sheet opens while the tap still counts. The base64 detour
+ * costs a third more memory for the moment it takes to unpack.
+ */
+function pictureOf(canvas, filename) {
+  const url = canvas.toDataURL('image/png');
+  const encoded = atob(url.slice(url.indexOf(',') + 1));
+  const bytes = new Uint8Array(encoded.length);
+  for (let i = 0; i < encoded.length; i++) bytes[i] = encoded.charCodeAt(i);
+  return new File([bytes], filename, { type: 'image/png' });
+}
+
+export function shareArt(canvas, text, { filename, title }) {
+  if (!canShare()) {
+    throw Object.assign(new Error('no share'), { i18n: 'status.shareUnavailable' });
+  }
+
+  const file = pictureOf(canvas, filename);
+  const takesFiles = typeof navigator.canShare !== 'function' || navigator.canShare({ files: [file] });
+  const payload = takesFiles ? { files: [file], title } : { text, title };
+
+  return handOver(payload).then((went) => (went ? (takesFiles ? 'picture' : 'text') : 'cancelled'));
+}
+
+/**
  * Copy to the clipboard, reporting why it failed when it does.
  * The async API needs a secure context, so this is one of the things that stops
  * working if the page is opened straight off the filesystem.

@@ -29,6 +29,7 @@ only ever hands out static files.
 | **Colour** | one tint per cell: on screen, in PNG, SVG, HTML and ANSI for the terminal |
 | **Palette** | full colour, the 256 or 16 a terminal has, or a few drawn from the picture |
 | **Copying** | as text, or as a picture for rooms that squash the line height |
+| **Sharing** | straight to another app, which on a phone is where the chat actually is |
 | **On screen** | the art drawn dot by dot, so the font's gutters and hollow rings stay out of it |
 | **PNG** | drawn the same way, from the same function |
 | **Image adjustment** | brightness, contrast, saturation, sharpness |
@@ -405,6 +406,18 @@ across the whole screen.
 
 None of this is a second interface: it is the same markup with a different
 order, which is the same rule the Simple and Advanced modes follow.
+
+**Share** belongs to the same screen. On a phone the chat is not on the
+clipboard, it is behind the share sheet, so the art can go straight to another
+app as a picture — the drawn one, so the room's own font never gets at it. A
+browser that shares text but not files is handed the art as text instead, and
+the status line says which of the two went; saying "shared" about the wrong one
+would be a lie. Where there is no share sheet at all the button is not shown,
+rather than sitting there unable to answer.
+
+The picture is built with `toDataURL` rather than the tidier `toBlob`: sharing
+has to happen while the tap that started it still counts, and on iOS an await
+between the two loses it.
 
 ### Offline, and actually up to date
 

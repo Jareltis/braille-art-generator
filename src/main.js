@@ -18,8 +18,8 @@ import { createCanvas, drawScaled, putImageData, readImageData } from './ui/canv
 import { bindRange, clampInt, coalesce } from './ui/controls.js';
 import { keepsUp } from './ui/pace.js';
 import {
-  brailleToAnsi, brailleToHtml, brailleToSvg, copyCanvas, copyText, downloadCanvas, downloadHtml,
-  downloadSvg, downloadText, renderDotsToCanvas,
+  brailleToAnsi, brailleToHtml, brailleToSvg, canShare, copyCanvas, copyText, downloadCanvas,
+  downloadHtml, downloadSvg, downloadText, renderDotsToCanvas, shareArt,
 } from './ui/export.js';
 import {
   PLATFORMS, calibrationOf, clearCalibration, forPlatform, messageLength, partsFit, ruler,
@@ -147,6 +147,7 @@ const dom = {
   downloadTxt: el('downloadTxt'),
   copy: el('copy'),
   copyImage: el('copyImage'),
+  share: el('share'),
   downloadPng: el('downloadPng'),
 };
 
@@ -1916,6 +1917,24 @@ function init() {
       const { canvas } = renderDotsToCanvas(artText, exportStyle());
       await copyCanvas(canvas);
       setStatus(t('status.copiedImage'), 'ok');
+    } catch (error) {
+      fail(error);
+    }
+  });
+
+  // On a phone the chat is not on the clipboard, it is behind the share sheet.
+  // A browser without one is not shown a button it could never answer.
+  dom.share.hidden = !canShare();
+  dom.share.addEventListener('click', async () => {
+    if (!requireArt()) return;
+    try {
+      const { canvas } = renderDotsToCanvas(artText, exportStyle());
+      const went = await shareArt(canvas, artText, {
+        filename: 'braille.png',
+        title: t('share.title'),
+      });
+      const said = { picture: 'status.shared', text: 'status.sharedText', cancelled: 'status.shareCancelled' };
+      setStatus(t(said[went]), went === 'cancelled' ? 'info' : 'ok');
     } catch (error) {
       fail(error);
     }
