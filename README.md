@@ -460,11 +460,16 @@ circle is almost entirely its own anti-aliased edge and the art greys out. In a
 cell four pixels by eight, round dots lay down 4016 of ink where squares lay
 down 5760.
 
-The SVG stays text, and that is deliberate: a 400×400 grid holds up to 1.28
-million dots, and drawn individually that is a file nobody can open. As text it
-is a few kilobytes and stays selectable and editable — at the price, stated in
-full there, of rendering in whatever monospace font the viewer happens to have,
-gutters and all. It is the one output still typeset rather than drawn.
+The SVG draws its dots too, up to a point. Drawn is the better picture — the
+same even lattice, no font in the chain — and it costs about 27 bytes a dot.
+Measured on a landscape photograph, where roughly a third of the dots are
+raised: forty columns comes to 118 KB, sixty to 259, a hundred and twenty to a
+megabyte, four hundred to eleven megabytes, which is a file nobody opens. So
+forty thousand raised dots is the line. Below it the SVG is shapes and looks the
+same everywhere; above it the art is written out as text, a few kilobytes that
+stay selectable and editable at the price of rendering in whatever monospace
+font the viewer happens to have, gutters and all. The status line says which of
+the two it just saved.
 
 ### For someone who cannot see it
 

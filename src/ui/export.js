@@ -6,6 +6,7 @@ import { createCanvas } from './canvas.js';
 import { cellHex, colourRuns } from '../core/colour.js';
 import { drawLattice } from './lattice.js';
 import { cellsOf } from '../core/glyphs.js';
+import { BRAILLE_BLANK, CELL_H, CELL_W, DOT_BITS } from '../core/braille.js';
 
 /** Canvas dimension browsers can be relied on to allocate. */
 const MAX_PNG_SIDE = 8192;
@@ -189,6 +190,30 @@ const escapeXml = (s) => s.replace(/[&<>"']/g, (c) => XML_ESCAPES[c]);
  * editable. The cost is that it renders in whatever monospace font the viewer
  * has, so the font stack is written out in full.
  */
+/**
+ * How many raised dots an SVG may draw before it is written as text instead.
+ *
+ * Drawing is the better picture -- the same even lattice the screen and the PNG
+ * have, with no font in the chain -- and it costs about 27 bytes a dot. Measured
+ * on a landscape photograph, where roughly a third of the dots are raised: a
+ * forty-column art comes to 118 KB drawn, sixty to 259, a hundred and twenty to
+ * a megabyte, and four hundred to eleven megabytes, which is a file nobody
+ * opens. Forty thousand dots is where that stops being worth it, and it takes in
+ * every width this app was built for.
+ */
+export const SVG_DOT_LIMIT = 40000;
+
+/** How many dots the art actually raises, which is what drawing it costs. */
+export function raisedDots(text) {
+  let raised = 0;
+  for (const glyph of text) {
+    const mask = glyph.codePointAt(0) - BRAILLE_BLANK;
+    if (mask <= 0 || mask > 255) continue;
+    for (let bit = 0; bit < 8; bit++) if (mask & (1 << bit)) raised++;
+  }
+  return raised;
+}
+
 export function brailleToSvg(text, {
   fontFamily, fontSize, lineHeight, foreground, background, colours, ground = null, glyphs = 'braille',
 }) {
@@ -203,6 +228,16 @@ export function brailleToSvg(text, {
   const height = Math.max(1, Math.ceil(lines.length * rowHeight));
 
   const advance = probe.measureText(String.fromCharCode(0x28FF)).width;
+
+  // Small enough to draw: the same lattice the page and the PNG use, with no
+  // font in the chain and therefore none of the font's gaps. Above the limit
+  // the art is written out as text, as it always was.
+  if (raisedDots(text) <= SVG_DOT_LIMIT) {
+    return drawnSvg(lines, {
+      advance, rowHeight, width, height, background, foreground, colours, ground, glyphs,
+    });
+  }
+
   const body = lines.map((line, i) => {
     const y = (i * rowHeight).toFixed(2);
     const cells = cellsOf(line, glyphs);
@@ -335,4 +370,68 @@ export function downloadHtml(html, filename) {
   const url = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
   triggerDownload(url, filename);
   URL.revokeObjectURL(url);
+}
+
+/**
+ * The art as shapes rather than as letters.
+ *
+ * One `<use>` per raised dot against a single definition, which is the shortest
+ * way to say "a dot here" that a plain SVG reader understands -- about a third
+ * less than repeating a circle. Runs of one colour share a group, so a
+ * photograph's flat areas cost one fill attribute rather than thousands.
+ */
+function drawnSvg(lines, {
+  advance, rowHeight, width, height, background, foreground, colours, ground, glyphs,
+}) {
+  const stride = lines.reduce((most, line) => Math.max(most, line.length), 0);
+  const pitchX = advance / CELL_W;
+  const pitchY = rowHeight / CELL_H;
+  const radius = Math.min(pitchX, pitchY) * 0.42;
+  const blocks = glyphs === 'octants';
+
+  const at = (value) => Math.round(value * 10) / 10;
+  const dotsIn = (line, from, to, top) => {
+    const marks = [];
+    for (let cell = from; cell < to; cell++) {
+      const mask = line.charCodeAt(cell) - BRAILLE_BLANK;
+      if (!(mask > 0) || mask > 255) continue;
+      const left = cell * advance;
+      for (let dx = 0; dx < CELL_W; dx++) {
+        for (let dy = 0; dy < CELL_H; dy++) {
+          if (!(mask & (1 << DOT_BITS[dx][dy]))) continue;
+          if (blocks) {
+            marks.push(`<rect x="${at(left + dx * pitchX)}" y="${at(top + dy * pitchY)}"`
+              + ` width="${at(pitchX)}" height="${at(pitchY)}"/>`);
+          } else {
+            marks.push(`<use x="${at(left + (dx + 0.5) * pitchX)}" y="${at(top + (dy + 0.5) * pitchY)}"/>`);
+          }
+        }
+      }
+    }
+    return marks.join('');
+  };
+
+  const body = lines.map((line, row) => {
+    const top = row * rowHeight;
+    if (!colours) return dotsIn(line, 0, line.length, top);
+    return colourRuns(colours, row, stride, 8, ground).map(({ start, end, index }) => {
+      const behind = ground
+        ? `<rect x="${at(start * advance)}" y="${at(top)}" width="${at((end - start) * advance)}"`
+          + ` height="${at(rowHeight)}" fill="${cellHex(ground, index)}"/>`
+        : '';
+      const marks = dotsIn(line, start, end, top);
+      return marks ? `${behind}<g fill="${cellHex(colours, index)}">${marks}</g>` : behind;
+    }).join('');
+  }).join('\n' + '  ');
+
+  return [
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`,
+    `  <defs><circle id="d" r="${at(radius)}"/></defs>`,
+    `  <rect width="100%" height="100%" fill="${escapeXml(background)}"/>`,
+    `  <g fill="${escapeXml(foreground)}">`,
+    `  ${body}`,
+    '  </g>',
+    '</svg>',
+    '',
+  ].join('\n');
 }

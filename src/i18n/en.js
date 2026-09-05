@@ -279,6 +279,8 @@ export const en = {
     'status.pngSaved': 'PNG saved.',
     'status.pngScaled': 'PNG saved, scaled to {percent}% — it would have exceeded 8192 px.',
     'status.svgSaved': 'SVG saved.',
+    'status.svgDrawn': 'Saved as SVG, drawn dot by dot — it looks the same anywhere.',
+    'status.svgTypeset': 'Saved as SVG. This many dots are written as text, so it takes the font the reader has.',
     'status.htmlSaved': 'HTML saved.',
     'status.htmlSavedColour': 'HTML saved with its colour.',
     'status.ansiSaved': 'ANSI saved. View it with: cat braille.ans',

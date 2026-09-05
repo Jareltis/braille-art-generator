@@ -18,8 +18,8 @@ import { canDraw, createCanvas, drawScaled, putImageData, readImageData } from '
 import { bindRange, clampInt, coalesce } from './ui/controls.js';
 import { keepsUp } from './ui/pace.js';
 import {
-  brailleToAnsi, brailleToHtml, brailleToSvg, canShare, copyCanvas, copyText, downloadCanvas,
-  downloadHtml, downloadSvg, downloadText, renderDotsToCanvas, shareArt,
+  SVG_DOT_LIMIT, brailleToAnsi, brailleToHtml, brailleToSvg, canShare, copyCanvas, copyText,
+  downloadCanvas, downloadHtml, downloadSvg, downloadText, raisedDots, renderDotsToCanvas, shareArt,
 } from './ui/export.js';
 import {
   PLATFORMS, calibrationOf, clearCalibration, forPlatform, messageLength, partsFit, ruler,
@@ -787,7 +787,9 @@ function syncPlatform() {
 
 function exportSvg() {
   downloadSvg(brailleToSvg(artText, exportStyle()), 'braille.svg');
-  setStatus(t('status.svgSaved'), 'ok');
+  // Which of the two forms it got is worth saying: one is the lattice the page
+  // shows, the other is at the mercy of the reader's font.
+  setStatus(t(raisedDots(artText) <= SVG_DOT_LIMIT ? 'status.svgDrawn' : 'status.svgTypeset'), 'ok');
 }
 
 /* ------------------------------------------------------------------------ *

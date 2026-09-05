@@ -278,6 +278,8 @@ export const ru = {
     'status.pngSaved': 'PNG сохранён.',
     'status.pngScaled': 'PNG сохранён, уменьшен до {percent}% — иначе он превысил бы 8192 px.',
     'status.svgSaved': 'SVG сохранён.',
+    'status.svgDrawn': 'Сохранено в SVG, нарисовано по точкам — выглядит везде одинаково.',
+    'status.svgTypeset': 'Сохранено в SVG. Столько точек пишется текстом, так что вид зависит от шрифта у читающего.',
     'status.htmlSaved': 'HTML сохранён.',
     'status.htmlSavedColour': 'HTML сохранён вместе с цветом.',
     'status.ansiSaved': 'ANSI сохранён. Смотреть так: cat braille.ans',

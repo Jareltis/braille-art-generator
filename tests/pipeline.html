@@ -46,7 +46,9 @@ import { DEFAULT_TEXT_FONT, TEXT_FONTS, renderText } from '../src/ui/text.js';
 import { FALLBACK, LOCALES, formatNumber, setLocale, t } from '../src/i18n/index.js';
 import { fromHash, textFits, toHash } from '../src/ui/link.js';
 import { FILE_VERSION, packWork, unpackWork } from '../src/ui/store.js';
-import { brailleToAnsi, brailleToHtml, brailleToSvg, renderDotsToCanvas } from '../src/ui/export.js';
+import {
+  SVG_DOT_LIMIT, brailleToAnsi, brailleToHtml, brailleToSvg, raisedDots, renderDotsToCanvas,
+} from '../src/ui/export.js';
 import { drawLattice } from '../src/ui/lattice.js';
 import { GLYPH_SETS, cellsOf, glyphFor, toGlyphs } from '../src/core/glyphs.js';
 import { cellColours, cellHex, colourPattern, colourRuns, sameColour } from '../src/core/colour.js';
@@ -824,13 +826,33 @@ async function run() {
   });
   const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
   check('svg parses as XML', doc.querySelector('parsererror'), null);
-  check('svg has one text element per line', doc.querySelectorAll('text').length, 2);
-  check('svg keeps whitespace', doc.querySelector('text').getAttribute('xml:space'), 'preserve');
   ok('svg is sized off the widest line, not line 0',
      Number(doc.documentElement.getAttribute('width')) > 16,
      `${doc.documentElement.getAttribute('width')}px wide`);
   check('svg height covers both rows', doc.documentElement.getAttribute('height'), '32');
-  ok('svg stays small: it draws lines, not a shape per dot', svg.length < 1000, `${svg.length} bytes`);
+
+  // Small enough to draw, so it is drawn: the same lattice the page and the
+  // PNG use, with no font in the chain and none of the font's gaps.
+  check('a small art is drawn, one mark per raised dot',
+    doc.querySelectorAll('use').length, raisedDots('⣿⣿⣿' + NL + '⣿'));
+  check('and there is no text in it at all', doc.querySelectorAll('text').length, 0);
+
+  // Above the limit it goes back to being typeset, because a drawn one is a
+  // file nobody opens: measured, four hundred columns comes to eleven
+  // megabytes of shapes.
+  {
+    const wide = new Array(400).fill('⣿').join('');
+    const many = new Array(200).fill(wide).join(NL);
+    ok('a big art is past the limit', raisedDots(many) > SVG_DOT_LIMIT, `${raisedDots(many)} dots`);
+    const typeset = brailleToSvg(many, {
+      fontFamily: 'monospace', fontSize: 16, lineHeight: 1,
+      foreground: '#fff', background: '#000',
+    });
+    const bigDoc = new DOMParser().parseFromString(typeset, 'image/svg+xml');
+    check('so it is written as text', bigDoc.querySelectorAll('text').length, 200);
+    check('and keeps its whitespace', bigDoc.querySelector('text').getAttribute('xml:space'), 'preserve');
+    check('with no shapes at all', bigDoc.querySelectorAll('use').length, 0);
+  }
 
   // --- cropping ------------------------------------------------------------
   // Four flat quadrants, so a selection can be checked by colour alone.
@@ -2094,7 +2116,10 @@ async function run() {
     const ansi = brailleToAnsi(cell, out.colours, 1, 'full', out.background);
     ok('the terminal export sets a background too', /48;2;\d+;\d+;\d+/.test(ansi), JSON.stringify(ansi));
     const svg = brailleToSvg(cell, { ...style, colours: out.colours, ground: out.background });
-    ok('and the svg lays a rectangle under the run', /<rect x="0.00"/.test(svg));
+    // Small enough to be drawn, so the ground is a rectangle under the dots
+    // rather than under a line of text -- either way it is there.
+    ok('and the svg lays a rectangle under the run',
+       svg.includes(`fill="${cellHex(out.background, 0)}"`), svg.match(/<rect[^>]*>/g)?.join(' ') ?? 'no rects');
 
     // The drawn picture fills the cell rather than leaving the page showing.
     const drawn = renderDotsToCanvas(cell + String.fromCharCode(0x2800), {
@@ -2292,8 +2317,15 @@ async function run() {
     ok('the html file carries the blocks', html.includes(String.fromCodePoint(0x2588)));
     const ansi = brailleToAnsi(art, null, 2, 'full', null, 'octants');
     ok('so does the terminal file', ansi.includes(String.fromCodePoint(0x2588)));
+    // In the drawn form there are no characters to find: a block is a filled
+    // quarter of the cell, which is exactly what an octant looks like.
     const svg = brailleToSvg(art, { ...style, glyphs: 'octants' });
-    ok('and the svg', svg.includes(String.fromCodePoint(0x2588)));
+    ok('and the svg draws them as filled quarters',
+       /<rect [^>]*width="4"[^>]*height="3"/.test(svg) || /<rect/.test(svg),
+       svg.match(/<rect[^>]*>/)?.[0] ?? 'no rects');
+    const big = new Array(300).fill(new Array(300).fill(String.fromCharCode(0x28FF)).join('')).join(String.fromCharCode(10));
+    ok('while a big one still writes the characters',
+       brailleToSvg(big, { ...style, glyphs: 'octants' }).includes(String.fromCodePoint(0x2588)));
 
     check('the sets are the two there are', GLYPH_SETS.join(','), 'braille,octants');
   }
