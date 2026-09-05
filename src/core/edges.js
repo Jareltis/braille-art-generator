@@ -162,15 +162,49 @@ export const structureMap = (plane, width, height) => sobel(gaussianBlur(plane, 
  * lines are found on the detailed raster, where the structure still exists, and
  * mixed with tone afterwards, at the size of the cell grid.
  */
-export function lineMap(plane, width, height, { mode = 'none', radius = 1, clean = 0 } = {}) {
+/**
+ * How much wider the eye's blur is for colour than for brightness.
+ *
+ * Chroma acuity is a fraction of luma acuity -- which is why JPEG has been
+ * throwing away three quarters of the colour resolution since 1992 -- so fine
+ * colour detail is not detail, it is noise to look for edges in. Measured on
+ * six pictures: without this the ink on a photograph nearly triples, because
+ * every speck of chroma noise answers as an edge. At four it is the shapes that
+ * answer -- the continents on a globe, the mouth in a drawing -- and the
+ * photographs move by a tenth or so.
+ */
+const CHROMA_SOFTEN = 4;
+
+/** The same detector on one plane. */
+function findOn(plane, width, height, mode, radius) {
+  return mode === 'sobel'
+    ? thin(gradient(gaussianBlur(plane, width, height, radius), width, height), width, height)
+    : xdog(plane, width, height, radius);
+}
+
+export function lineMap(plane, width, height, {
+  mode = 'none', radius = 1, clean = 0, chroma = null,
+} = {}) {
   if (mode === 'none') return null;
   if (!EDGE_MODES.includes(mode)) throw new RangeError(`unknown edge mode: ${mode}`);
 
   // Both detectors amplify noise, so smooth first. For xdog this same radius is
   // the stroke width; for sobel it is purely denoising.
-  const found = mode === 'sobel'
-    ? thin(gradient(gaussianBlur(plane, width, height, radius), width, height), width, height)
-    : xdog(plane, width, height, radius);
+  const found = findOn(plane, width, height, mode, radius);
+
+  // With colour in play the same detector runs on each colour axis and the
+  // three are combined by taking the largest, as line maps always are here:
+  // averaging would rub out a boundary that only one of them can see, which is
+  // the entire reason for looking at them.
+  const softened = chroma
+    ? [chroma.a, chroma.b].map((axis) => gaussianBlur(axis, width, height, radius * CHROMA_SOFTEN))
+    : null;
+  if (softened) {
+    for (const soft of softened) {
+      const also = findOn(soft, width, height, mode, radius);
+      for (let i = 0; i < found.length; i++) if (also[i] > found[i]) found[i] = also[i];
+    }
+  }
 
   // Cleaning comes last, after thinning: seeds should be crests, not the
   // shoulders of a band that is about to be thrown away.
@@ -182,7 +216,13 @@ export function lineMap(plane, width, height, { mode = 'none', radius = 1, clean
   // Then, given what survived that, is it strong or at least joined to
   // something strong. Weighting first means the seeds are chosen from ink that
   // has already been judged, rather than from whatever happened to be brightest.
-  const directed = weighByCoherence(found, coherenceMap(plane, width, height), amount);
+  // The gate has to look where the detector looked. A boundary that only
+  // colour can see has next to no brightness gradient, so a tensor built from
+  // brightness alone would find no direction there and the cleaning would throw
+  // away precisely the ink the colour axes just won.
+  const directed = weighByCoherence(
+    found, coherenceMap(plane, width, height, COHERENCE_RADIUS, softened), amount,
+  );
   const { high, low } = cleanThresholds(directed, amount);
   const kept = hysteresis(directed, width, height, high, low);
 
@@ -246,22 +286,28 @@ const COHERENCE_RADIUS = 4;
  * that mechanism is for. At sixty columns the whole redraw is around 310ms and
  * still live; the price appears on large grids with lines turned on.
  */
-export function coherenceMap(plane, width, height, radius = COHERENCE_RADIUS) {
-  const { gx, gy } = gradient(plane, width, height);
-  const xx = new Float32Array(gx.length);
-  const yy = new Float32Array(gx.length);
-  const xy = new Float32Array(gx.length);
-  for (let i = 0; i < gx.length; i++) {
-    xx[i] = gx[i] * gx[i];
-    yy[i] = gy[i] * gy[i];
-    xy[i] = gx[i] * gy[i];
+export function coherenceMap(plane, width, height, radius = COHERENCE_RADIUS, extra = null) {
+  const xx = new Float32Array(plane.length);
+  const yy = new Float32Array(plane.length);
+  const xy = new Float32Array(plane.length);
+
+  // With more than one channel this is Di Zenzo's tensor: the products are
+  // summed across channels before they are smoothed, so what comes out is how
+  // far the whole colour agrees with itself rather than each axis separately.
+  for (const channel of extra ? [plane, ...extra] : [plane]) {
+    const { gx, gy } = gradient(channel, width, height);
+    for (let i = 0; i < gx.length; i++) {
+      xx[i] += gx[i] * gx[i];
+      yy[i] += gy[i] * gy[i];
+      xy[i] += gx[i] * gy[i];
+    }
   }
 
   const sxx = gaussianBlur(xx, width, height, radius);
   const syy = gaussianBlur(yy, width, height, radius);
   const sxy = gaussianBlur(xy, width, height, radius);
 
-  const out = new Float32Array(gx.length);
+  const out = new Float32Array(plane.length);
   for (let i = 0; i < out.length; i++) {
     const trace = sxx[i] + syy[i];
     if (trace <= 1e-6) continue;

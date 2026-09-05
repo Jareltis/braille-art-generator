@@ -18,6 +18,7 @@ export const CONTENT_PRESETS = Object.freeze({
       edgeAmount: 100,
       edgeRadius: 1,
       edgeClean: 90,
+      edgeColour: false,
       emphasis: 0,
       brightness: 0,
       contrast: 10,
@@ -36,6 +37,10 @@ export const CONTENT_PRESETS = Object.freeze({
       edgeAmount: 100,
       edgeRadius: 1,
       edgeClean: 90,
+      // Drawings are where the flat colour lives, and where a boundary the
+      // light cannot see -- a green continent on a blue globe, a mouth on a
+      // face -- is most often the subject rather than an accident.
+      edgeColour: true,
       emphasis: 0,
       brightness: 0,
       contrast: 0,
@@ -54,6 +59,7 @@ export const CONTENT_PRESETS = Object.freeze({
       edgeAmount: 100,
       edgeRadius: 1,
       edgeClean: 90,
+      edgeColour: false,
       emphasis: 100,
       brightness: 0,
       contrast: 45,
@@ -72,6 +78,7 @@ export const CONTENT_PRESETS = Object.freeze({
       edgeAmount: 100,
       edgeRadius: 1,
       edgeClean: 0,
+      edgeColour: false,
       emphasis: 0,
       brightness: 0,
       contrast: 0,

@@ -107,6 +107,11 @@ export const VARIANT_FAMILIES = Object.freeze([
         amount: between(random, 0.85, 1),
         radius: oneDecimal(between(random, 0.6, 1.6)),
         clean: between(random, 0.5, 1),
+        // Whether to look at colour as well is a dial like any other here: on a
+        // drawing of flat colours it finds boundaries the light cannot see, and
+        // on a photograph it finds texture. Which of those a picture has is
+        // exactly the sort of question the draw is here to answer.
+        colour: pick(random, [false, true]),
       },
     }),
   },

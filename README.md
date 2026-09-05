@@ -26,6 +26,7 @@ only ever hands out static files.
 | **Dithering** | variable coefficients, Floyd–Steinberg, Atkinson, blue noise, Bayer 4×4, with optional edge emphasis |
 | **Thresholds** | global, automatic by Otsu, and local adaptive (Sauvola) |
 | **Edge detection** | XDoG for drawn strokes, Sobel for gradients, a slider between fill and lines |
+| **Colour in the edges** | boundaries between colours of the same brightness, which brightness alone cannot see |
 | **Colour** | one tint per cell: on screen, in PNG, SVG, HTML and ANSI for the terminal |
 | **Palette** | full colour, the 256 or 16 a terminal has, or a few drawn from the picture |
 | **Copying** | as text, or as a picture for rooms that squash the line height |
@@ -324,6 +325,46 @@ coherence gate it would very likely have been the right thing to build.
 Below 1 the flat-field response is `l·(1−τ)` — proportional to brightness — so
 an even mid-grey answers with ink and dark areas silt up with strokes that are
 not edges.
+
+#### A boundary the light cannot see
+
+All of the above reads brightness, and brightness is not all there is. Two
+colours can be the same weight of light and nothing alike: a green continent on
+a blue globe, red lettering on a green field. Measured, such a join moves the
+lightness plane by 1 part in 255, the detector answers 7 out of 255, and the art
+gets **no ink at all** — the shape is simply absent from a picture that plainly
+has one.
+
+**Look at colour as well** runs the same detector on the two colour axes of
+L\*a\*b\* and combines the three by taking the largest, the way line maps are
+always combined here — averaging would rub out a boundary only one channel can
+see, which is the entire point. The axes are scaled by the same 2.55 as the
+lightness plane, because in L\*a\*b\* a step of one along any axis is meant to
+look about as big as a step of one along any other.
+
+The colour is blurred first, four times as wide as the detector's own radius.
+Chroma acuity is a fraction of luma acuity — which is why JPEG has been
+discarding three quarters of the colour resolution since 1992 — so fine colour
+detail is not detail, it is noise to find edges in. Measured over the six test
+pictures, the softening is what keeps the gradient detector usable at all: its
+ink goes up 1.9 to 3.3 times without it and 1.05 to 2 times with it. The stroke
+detector is less exposed, its own blur having already discarded some of that
+noise — 2.0 to 2.6 times against 1.6 to 2.5. Four is the middle that holds: at
+eight the photographs settle further but the equiluminant join answers 40 out of
+255 instead of 146, and at two both detectors are noisier than at four.
+
+The coherence gate had to learn the same lesson: a tensor built from brightness
+alone finds no direction where only colour changes, and the cleaning would have
+thrown away exactly the ink the colour axes had just won. With colour in play
+the tensor sums its products across all three channels — Di Zenzo's form — so
+the gate looks where the detector looked.
+
+On the equiluminant join above this takes the answer from 7 to 146 out of 255,
+and the art from no ink to a line. On a picture with no colour in it, the axes
+are zero and nothing changes at all, which is checked. On a photograph it does
+add texture ink, so it is off by default and the line-art preset switches it on;
+the suggester treats it as one more dial to try. It costs 1.6 to 2.3 times the
+line path, which the pacing already knows how to absorb.
 
 ### The art is drawn, not typed
 

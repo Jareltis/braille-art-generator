@@ -406,6 +406,12 @@ async function run() {
   {
     ok('the button is offered in simple mode too', $('copyImage').offsetParent !== null);
 
+    // Nothing in flight, or the redraw that lands afterwards writes "Done." over
+    // the answer this is waiting for -- a redraw started after a message is
+    // entitled to replace it, and the heavier the line path gets the likelier
+    // that is.
+    await stable(() => $('output').textContent);
+
     let reached = false;
     $('copyImage').addEventListener('click', () => { reached = true; }, { once: true });
     $('copyImage').click();
@@ -596,10 +602,18 @@ async function run() {
   // What has to be true either way is that the picture on screen belongs to the
   // last setting, so that is what is checked.
   {
+    // "Done." is a poor sign that a redraw has finished: it is already on the
+    // status line from the last one, so waiting for it can return while the
+    // next render is still in the worker -- which is how this test came to
+    // compare a half-finished art against a finished one once the line path
+    // grew heavier. Wait for the art itself to stop moving as well.
     const settle = async () => {
       await until(() => $('status').textContent.includes('Готово'), 10000);
-      await wait(120);
-      return $('output').textContent;
+      // And then give a redraw that has only just been asked for time to start:
+      // the request rides a coalesced frame, so at this instant the art can be
+      // sitting perfectly still with the next one not yet begun.
+      await wait(300);
+      return stable(() => $('output').textContent);
     };
 
     $('contrast').value = '60';
@@ -1658,11 +1672,70 @@ async function run() {
     // deliberate act.
     ok('a stored setting is overridden by the link', $('dither').value !== 'bayer4');
 
+    // Settings are written on a coalesced frame, so reopening the instant the
+    // status appears can beat the write and read back the previous run's width.
+    // The stored blob is the thing being tested, so wait for it, not for a
+    // guess at how long it takes.
+    const stored = () => {
+      try { return JSON.parse(localStorage.getItem('braille-art.settings') ?? '{}'); } catch { return {}; }
+    };
+    ok('the link is what got stored', await until(() => stored().outWidth === '37', 3000),
+       String(stored().outWidth));
+
     await reopen();
     await until(() => $('status').textContent.length > 0);
     check('without a link, storage is used again', $('outWidth').value, '37');
     $('language').value = 'ru';
     $('language').dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  {
+    mark('edges can look at colour');
+    // --- edges can look at colour -------------------------------------------
+    // A boundary between two colours of the same brightness leaves no trace in
+    // the light, so the detector has to be told to look at the colour axes too.
+    // It costs ink on a photograph, which is why it arrives with the preset
+    // that asks for it rather than switched on for everyone. This goes last
+    // because it needs a picture with colour in it, and leaves one loaded.
+    const split = document.createElement('canvas');
+    split.width = 240;
+    split.height = 160;
+    const face = split.getContext('2d');
+    face.fillStyle = '#c03030'; face.fillRect(0, 0, 120, 160);
+    face.fillStyle = '#00792a'; face.fillRect(120, 0, 120, 160);
+    const halves = new win.DataTransfer();
+    halves.items.add(new File([await new Promise((r) => split.toBlob(r, 'image/png'))],
+      'halves.png', { type: 'image/png' }));
+
+    $('sourceKind').value = 'image';
+    $('sourceKind').dispatchEvent(new Event('change', { bubbles: true }));
+    $('file').files = halves.files;
+    $('file').dispatchEvent(new Event('change', { bubbles: true }));
+    await until(() => $('srcMeta').textContent === '240×160');
+
+    $('preset').value = 'photo';
+    $('preset').dispatchEvent(new Event('change', { bubbles: true }));
+    await until(() => $('edgeMode').value === 'none');
+    check('a photograph is left with brightness alone', $('edgeColour').checked, false);
+    check('and the box is dead while no detector is chosen', $('edgeColour').disabled, true);
+
+    $('preset').value = 'lineart';
+    $('preset').dispatchEvent(new Event('change', { bubbles: true }));
+    ok('a drawing asks for colour', await until(() => $('edgeColour').checked, 3000));
+    check('and the box comes alive with it', $('edgeColour').disabled, false);
+
+    const withColour = await stable(() => $('output').textContent);
+    $('edgeColour').checked = false;
+    $('edgeColour').dispatchEvent(new Event('change', { bubbles: true }));
+    const brightnessOnly = await stable(() => $('output').textContent);
+
+    const dots = (text) => [...text.split(NEWLINE).join('')].filter((glyph) => glyph !== BLANK).length;
+    ok('the join is drawn when colour is looked at, and not when it is not',
+       dots(withColour) > dots(brightnessOnly),
+       `${dots(brightnessOnly)} cells against ${dots(withColour)}`);
+    ok('and the colour choice travels in the link too',
+       await until(() => /(^|[#&])eco=0([&]|$)/.test(frame.contentWindow.location.hash), 3000),
+       frame.contentWindow.location.hash);
   }
 
   const failed = log.filter((l) => l.startsWith('FAIL')).length;

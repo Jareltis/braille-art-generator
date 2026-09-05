@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // The encoder. No DOM, no canvas: ImageData in, text out.
 
-import { lightness, luminance, thresholdToLinear } from './gamma.js';
+import { lab, lightness, luminance, thresholdToLinear } from './gamma.js';
 import { CELL_H, CELL_W } from './pixels.js';
 import { cellColours } from './colour.js';
 import { DIFFUSING, DITHER_METHODS, DEFAULT_DITHER, edgeBias } from './dither.js';
@@ -53,6 +53,31 @@ export const toLuminance = (imageData) => samplePlane(imageData, luminance);
 export const toLightness = (imageData) => samplePlane(imageData, lightness);
 
 /**
+ * The two colour axes, in the units the lightness plane uses.
+ *
+ * A boundary between two hues of the same brightness -- red against green, at
+ * the extreme -- is invisible to every plane above: measured, such a join moves
+ * the lightness by 1 of 255 and gets no ink at all, and a whole shape can
+ * disappear from a picture that plainly has one. What marks it is a and b.
+ *
+ * L* is scaled to 0..255 by 2.55, so a and b are scaled by the same 2.55 and
+ * nothing else: in L*a*b* a step of one along any axis is meant to look about
+ * as big as a step of one along any other, and keeping the scale shared is what
+ * lets a detector treat them the same way.
+ */
+export function toChroma(imageData) {
+  const { data } = imageData;
+  const a = new Float32Array(imageData.width * imageData.height);
+  const b = new Float32Array(a.length);
+  for (let p = 0, i = 0; p < a.length; p++, i += 4) {
+    const colour = lab(data[i], data[i + 1], data[i + 2]);
+    a[p] = colour[1] * 2.55;
+    b[p] = colour[2] * 2.55;
+  }
+  return { a, b };
+}
+
+/**
  * The plane the encoder will actually threshold, and the units it is in.
  *
  * The image handed in may be larger than the grid -- that is the point. Lines
@@ -88,8 +113,9 @@ export function tonePlane(imageData, options = {}) {
   // Line strength is not a light measurement, so no gamma applies to it, and
   // the tone it is mixed with is perceptual for the same reason.
   const lightness = toLightness(imageData);
+  const chroma = edge.colour ? toChroma(imageData) : null;
   const lines = reduceMax(
-    lineMap(lightness, width, height, edge), width, height, gridW, gridH,
+    lineMap(lightness, width, height, { ...edge, chroma }), width, height, gridW, gridH,
   );
   return { plane: mixLines(blend(lightness), lines, edge.amount ?? 1), linear: false };
 }

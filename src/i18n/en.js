@@ -163,6 +163,10 @@ export const en = {
     'edges.radius': 'Stroke width',
     'edges.clean': 'Clean-up',
     'edges.clean.hint': 'A faint line is kept where it continues a strong one and dropped where it stands alone. Texture answers as specks, a contour as a stretch.',
+    'edges.colour': 'Look at colour as well',
+    'edges.colour.hint': 'A boundary between two colours of the same brightness — green on blue, red on green — leaves no trace in light and is missed entirely. Adds ink on photographs, so it is off unless the preset asks for it.',
+    'edges.colour.on': 'colour in the edges',
+    'edges.colour.off': 'edges from brightness alone',
 
     'adjust.group': 'Image adjustment',
     'adjust.brightness': 'Brightness',

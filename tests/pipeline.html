@@ -16,7 +16,9 @@ window.addEventListener('unhandledrejection', (event) => {
 });
 </script>
 <script type="module">
-import { binarize, encode, imageDataToBraille, toLuminance, tonePlane, trimBlank } from '../src/core/braille.js';
+import {
+  binarize, encode, imageDataToBraille, toChroma, toLightness, toLuminance, tonePlane, trimBlank,
+} from '../src/core/braille.js';
 import { DIFFUSING, DITHER_METHODS, DEFAULT_DITHER, edgeBias } from '../src/core/dither.js';
 import { BLUE_NOISE_SIZE, blueNoiseMatrix } from '../src/core/bluenoise.js';
 import { otsuThreshold } from '../src/core/otsu.js';
@@ -1849,6 +1851,75 @@ async function run() {
     let ink = 0;
     for (let i = 3; i < pixels.length; i += 4) ink += pixels[i];
     ok('a cell four pixels wide still lays down its ink', ink > 5000, `total alpha ${ink}`);
+  }
+
+
+  // --- a boundary the light cannot see -------------------------------------
+  // Red against green of the same brightness. Every plane above this one is
+  // flat across the join, so a detector that only reads light reports nothing
+  // and a whole shape can go missing from a picture that plainly has one.
+  {
+    const wide = 64;
+    const tall = 32;
+    const split = new ImageData(wide, tall);
+    for (let y = 0; y < tall; y++) {
+      for (let x = 0; x < wide; x++) {
+        const i = (y * wide + x) * 4;
+        const left = x < wide / 2;
+        split.data[i] = left ? 192 : 0;
+        split.data[i + 1] = left ? 48 : 121;
+        split.data[i + 2] = left ? 48 : 42;
+        split.data[i + 3] = 255;
+      }
+    }
+
+    const light = toLightness(split);
+    const step = Math.abs(light[10 * wide + 10] - light[10 * wide + 54]);
+    ok('the two halves are the same brightness', step < 4, `${step.toFixed(1)} of 255`);
+
+    const overJoin = (map) => {
+      let most = 0;
+      for (let y = 0; y < tall; y++) {
+        for (let x = wide / 2 - 5; x <= wide / 2 + 5; x++) most = Math.max(most, map[y * wide + x]);
+      }
+      return most;
+    };
+
+    const settings = { mode: 'xdog', radius: 1, clean: 0 };
+    const blind = overJoin(lineMap(light, wide, tall, settings));
+    const seeing = overJoin(lineMap(light, wide, tall, { ...settings, chroma: toChroma(split) }));
+    ok('brightness alone barely notices the join', blind < 40, blind.toFixed(1));
+    // Not the full 255: the colour axes are blurred first, and at this size
+    // that softening takes the top off a join only a few dozen pixels long.
+    ok('and with colour it is a line', seeing > 100 && seeing > blind * 5,
+       `${blind.toFixed(1)} against ${seeing.toFixed(1)}`);
+
+    // The colour axes of a grey picture are zero, so asking for them there has
+    // to change nothing at all -- the option is free where it is useless.
+    const grey = new ImageData(wide, tall);
+    for (let y = 0; y < tall; y++) {
+      for (let x = 0; x < wide; x++) {
+        const i = (y * wide + x) * 4;
+        const v = x < wide / 2 ? 40 : 210;
+        grey.data[i] = grey.data[i + 1] = grey.data[i + 2] = v;
+        grey.data[i + 3] = 255;
+      }
+    }
+    const greyLight = toLightness(grey);
+    const plain = lineMap(greyLight, wide, tall, { ...settings, clean: 0.9 });
+    const asked = lineMap(greyLight, wide, tall, { ...settings, clean: 0.9, chroma: toChroma(grey) });
+    let apart = 0;
+    for (let i = 0; i < plain.length; i++) apart = Math.max(apart, Math.abs(plain[i] - asked[i]));
+    check('on a grey picture it changes nothing', apart, 0);
+
+    // And it reaches the encoder through the same option the panel sets.
+    const inked = (text) => [...text.split(String.fromCharCode(10)).join('')]
+      .filter((glyph) => glyph !== String.fromCharCode(0x2800)).length;
+    const edge = { mode: 'xdog', amount: 1, radius: 1, clean: 0 };
+    const without = encode(split, { threshold: 128, method: 'threshold', edge });
+    const with_ = encode(split, { threshold: 128, method: 'threshold', edge: { ...edge, colour: true } });
+    ok('and the option carries it into the art', inked(with_.text) > inked(without.text),
+       `${inked(without.text)} cells against ${inked(with_.text)}`);
   }
 
   const failed = log.filter((l) => l.startsWith('FAIL')).length;

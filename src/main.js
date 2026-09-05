@@ -83,6 +83,7 @@ const dom = {
   cropToggle: el('cropToggle'),
   cropReset: el('cropReset'),
   trimBlank: el('trimBlank'),
+  edgeColour: el('edgeColour'),
   fitLimit: el('fitLimit'),
   colour: el('colour'),
   palette: el('palette'),
@@ -247,6 +248,7 @@ const readOptions = () => ({
     amount: controls.edgeAmount.value / 100,
     radius: controls.edgeRadius.value,
     clean: controls.edgeClean.value / 100,
+    colour: dom.edgeColour.checked,
   },
 });
 
@@ -261,6 +263,7 @@ function syncEdgeControls() {
   controls.edgeAmount.input.disabled = off;
   controls.edgeRadius.input.disabled = off;
   controls.edgeClean.input.disabled = off;
+  dom.edgeColour.disabled = off;
   syncEmphasis();
 }
 
@@ -687,6 +690,7 @@ function applyPreset(key) {
   controls.edgeAmount.set(chosen.edgeAmount);
   controls.edgeRadius.set(chosen.edgeRadius);
   controls.edgeClean.set(chosen.edgeClean);
+  dom.edgeColour.checked = Boolean(chosen.edgeColour);
   controls.emphasis.set(chosen.emphasis);
   controls.brightness.set(chosen.brightness);
   controls.contrast.set(chosen.contrast);
@@ -782,6 +786,7 @@ function collectSettings() {
     colour: dom.colour.checked,
     transparent: dom.transparent.checked,
     trimBlank: dom.trimBlank.checked,
+    edgeColour: dom.edgeColour.checked,
     evenGrid: dom.evenGrid.checked,
     smooth: smoothScaling,
   };
@@ -870,6 +875,7 @@ function applySettings(values) {
   if (typeof values.keepAspect === 'boolean') dom.keepAspect.checked = values.keepAspect;
   if (typeof values.textBold === 'boolean') dom.textBold.checked = values.textBold;
   if (typeof values.trimBlank === 'boolean') dom.trimBlank.checked = values.trimBlank;
+  if (typeof values.edgeColour === 'boolean') dom.edgeColour.checked = values.edgeColour;
   if (typeof values.colour === 'boolean') dom.colour.checked = values.colour;
   if (typeof values.transparent === 'boolean') dom.transparent.checked = values.transparent;
   if (typeof values.smooth === 'boolean') smoothScaling = values.smooth;
@@ -901,6 +907,7 @@ function resetEverything() {
   }
   dom.keepAspect.checked = true;
   dom.trimBlank.checked = false;
+  dom.edgeColour.checked = false;
   dom.evenGrid.checked = true;
   if (lattice) lattice.enabled = true;
   dom.colour.checked = false;
@@ -988,6 +995,11 @@ function whatChanges(recipe) {
   if (recipe.threshold != null && Math.round(recipe.threshold) !== Math.round(controls.threshold.value)) {
     changes.push(`${t('threshold.label')} ${Math.round(recipe.threshold)}`);
   }
+  // Only worth saying where there is a detector to say it about: with no lines
+  // at all the flag changes nothing, and announcing it would be noise.
+  if (recipe.edge.mode !== 'none' && Boolean(recipe.edge.colour) !== dom.edgeColour.checked) {
+    changes.push(t(recipe.edge.colour ? 'edges.colour.on' : 'edges.colour.off'));
+  }
   if (recipe.detail !== Math.round(controls.detail.value)) {
     changes.push(`${t('detail.label')} ${recipe.detail}`);
   }
@@ -1005,6 +1017,7 @@ function applyRecipe(recipe) {
     controls.edgeAmount.set(Math.round((recipe.edge.amount ?? 1) * 100));
     controls.edgeRadius.set(recipe.edge.radius ?? 1);
     controls.edgeClean.set(Math.round((recipe.edge.clean ?? 0) * 100));
+    dom.edgeColour.checked = Boolean(recipe.edge.colour);
   }
   syncEdgeControls();
 }
@@ -1776,6 +1789,7 @@ function init() {
 
   dom.cropReset.addEventListener('click', () => cropper.reset());
   dom.trimBlank.addEventListener('change', () => changed({ affectsPreview: false }));
+  dom.edgeColour.addEventListener('change', () => changed({ affectsPreview: false }));
   dom.fitLimit.addEventListener('click', () => { fitToLimit().catch(fail); });
 
   lattice = createLatticeView(dom.lattice, dom.output, {
