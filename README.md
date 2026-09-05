@@ -23,7 +23,7 @@ only ever hands out static files.
 | | |
 |---|---|
 | **Detail** | thin structure survives the reduction instead of being averaged away |
-| **Dithering** | variable coefficients, Floyd–Steinberg, Atkinson, blue noise, Bayer 4×4, with optional edge emphasis |
+| **Dithering** | variable coefficients (plain or with a jogged threshold), Floyd–Steinberg, Atkinson, blue noise, Bayer 4×4, with optional edge emphasis |
 | **Thresholds** | global, automatic by Otsu, and local adaptive (Sauvola) |
 | **Edge detection** | XDoG for drawn strokes, Sobel for gradients, a slider between fill and lines |
 | **Colour in the edges** | boundaries between colours of the same brightness, which brightness alone cannot see |
@@ -177,6 +177,19 @@ to correct a bias, which is exactly how they drifted for nine versions after
 tone moved to linear light — a flat mid-grey came out at 81% coverage instead of
 50%, while error diffusion sailed through the same change because it corrects
 itself.
+**Variable coefficients with a jogged threshold** is Zhou and Fang's follow-up to
+Ostromoukhov: the same shape of table, refitted, plus a second one saying how
+hard to push the threshold about at each level. Variable coefficients on their
+own leave regular patterns in the mid-tones, and a level-dependent random jog
+breaks them — safely, because error diffusion still measures its error against
+the true value, so the neighbourhood puts the tone back. Measured over six
+pictures at forty and sixty columns it scores above the plain coefficients on
+nine of the twelve, by up to 0.011, and below on three, by up to 0.014. The
+losses are all on the same drawing, where a jogged threshold puts noise into
+flat colour — so it is offered rather than made the default, which by this
+project's own rule needs a method that wins everywhere. The jog is seeded, so
+the same picture comes out the same twice.
+
 **Edge emphasis** leans on the threshold at an edge, after Eschbach and Knox:
 subtract a scaled high-pass of the picture from it, so a pixel on the bright
 side of an edge finds it easier to light and one on the dark side harder. One

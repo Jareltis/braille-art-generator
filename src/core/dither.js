@@ -10,7 +10,7 @@
 // units as the plane. Only the local method needs it: it chooses thresholds
 // itself, so the control can only shift what it chose.
 
-import { BLUE_NOISE_SIZE, blueNoiseMatrix } from './bluenoise.js';
+import { BLUE_NOISE_SIZE, blueNoiseMatrix, seededRandom } from './bluenoise.js';
 import { gaussianBlur } from './blur.js';
 import { sobel } from './edges.js';
 import { STRUCTURE_FULL } from './sample.js';
@@ -25,7 +25,7 @@ import { STRUCTURE_FULL } from './sample.js';
  * tone, full stop, which is the same trap the ordered methods were already
  * caught in once.
  */
-export const DIFFUSING = Object.freeze(new Set(['floyd-steinberg', 'atkinson', 'ostromoukhov']));
+export const DIFFUSING = Object.freeze(new Set(['floyd-steinberg', 'atkinson', 'ostromoukhov', 'zhoufang']));
 
 /**
  * How much to lean on the threshold at an edge, per pixel.
@@ -404,10 +404,117 @@ function blueNoise(plane, width, height, threshold, neutral = threshold) {
   return bits;
 }
 
+
+/**
+ * Zhou and Fang's coefficients, and the strength of their threshold noise.
+ *
+ * The same shape as Ostromoukhov's -- one set of three weights per input level,
+ * mirrored above the midpoint -- refitted, and paired with a second table that
+ * says how hard to jog the threshold at each level. The jog is what the paper
+ * is named for: variable coefficients alone leave regular patterns in the
+ * mid-tones, and a level-dependent random push at the threshold breaks them
+ * without moving the tone, because error diffusion still measures its error
+ * against the true value.
+ *
+ * The numbers are the paper's, taken from the authors' own reference
+ * implementation (SIGGRAPH 2003; github.com/cczbf/TMED) rather than typed from
+ * a figure. Weights are already fractions of one, so nothing here has to be
+ * normalised the way the Ostromoukhov table does.
+ */
+const ZHOU_FANG_SHARE = new Float32Array([
+  0.722222, 0.000000, 0.277778, 0.722562, 0.000000, 0.277438, 0.682418, 0.000915, 0.316668, 0.637626, 0.000000, 0.362374,   // 0-3
+  0.619999, 0.000000, 0.380001, 0.606570, 0.037983, 0.355447, 0.593141, 0.075967, 0.330892, 0.579712, 0.113951, 0.306337,   // 4-7
+  0.566283, 0.151934, 0.281783, 0.552854, 0.189918, 0.257228, 0.539424, 0.227902, 0.232674, 0.533317, 0.235508, 0.231175,   // 8-11
+  0.527210, 0.243114, 0.229676, 0.521102, 0.250720, 0.228178, 0.514995, 0.258326, 0.226679, 0.508887, 0.265932, 0.225181,   // 12-15
+  0.502780, 0.273538, 0.223682, 0.496672, 0.281144, 0.222184, 0.490564, 0.288749, 0.220686, 0.484457, 0.296356, 0.219187,   // 16-19
+  0.478349, 0.303961, 0.217689, 0.472242, 0.311567, 0.216190, 0.466135, 0.319173, 0.214692, 0.467003, 0.317873, 0.215123,   // 20-23
+  0.467872, 0.316573, 0.215554, 0.468741, 0.315273, 0.215985, 0.469610, 0.313973, 0.216416, 0.470479, 0.312673, 0.216847,   // 24-27
+  0.471348, 0.311373, 0.217278, 0.472217, 0.310073, 0.217709, 0.473086, 0.308773, 0.218140, 0.473955, 0.307473, 0.218571,   // 28-31
+  0.474825, 0.306173, 0.219002, 0.472921, 0.298013, 0.229065, 0.471018, 0.289853, 0.239128, 0.469115, 0.281693, 0.249191,   // 32-35
+  0.467212, 0.273534, 0.259255, 0.465308, 0.265374, 0.269317, 0.463405, 0.257214, 0.279380, 0.461502, 0.249054, 0.289443,   // 36-39
+  0.459599, 0.240895, 0.299506, 0.452280, 0.286019, 0.261702, 0.444960, 0.331142, 0.223897, 0.437641, 0.376266, 0.186092,   // 40-43
+  0.430322, 0.421390, 0.148288, 0.427011, 0.421930, 0.151058, 0.423701, 0.422471, 0.153828, 0.420391, 0.423011, 0.156598,   // 44-47
+  0.417081, 0.423551, 0.159368, 0.413769, 0.424091, 0.162139, 0.410459, 0.424631, 0.164909, 0.407149, 0.425172, 0.167679,   // 48-51
+  0.403839, 0.425712, 0.170449, 0.400529, 0.426252, 0.173219, 0.397217, 0.426792, 0.175990, 0.393907, 0.427332, 0.178760,   // 52-55
+  0.390597, 0.427873, 0.181530, 0.387287, 0.428413, 0.184300, 0.383976, 0.428953, 0.187070, 0.380665, 0.429493, 0.189841,   // 56-59
+  0.377355, 0.430033, 0.192611, 0.374045, 0.430574, 0.195381, 0.370735, 0.431114, 0.198151, 0.367424, 0.431654, 0.200921,   // 60-63
+  0.364114, 0.432194, 0.203692, 0.366696, 0.445475, 0.187828, 0.369280, 0.458756, 0.171964, 0.371863, 0.472037, 0.156100,   // 64-67
+  0.374446, 0.485318, 0.140236, 0.377029, 0.498599, 0.124372, 0.379611, 0.511880, 0.108509, 0.382195, 0.525160, 0.092645,   // 68-71
+  0.384778, 0.538441, 0.076782, 0.388830, 0.533849, 0.077321, 0.392882, 0.529257, 0.077861, 0.396934, 0.524665, 0.078401,   // 72-75
+  0.400986, 0.520073, 0.078941, 0.405038, 0.515480, 0.079482, 0.399240, 0.493681, 0.107078, 0.393442, 0.471884, 0.134674,   // 76-79
+  0.387644, 0.450085, 0.162272, 0.381846, 0.428285, 0.189869, 0.376047, 0.406484, 0.217468, 0.370250, 0.384684, 0.245066,   // 80-83
+  0.364452, 0.362884, 0.272665, 0.358654, 0.341083, 0.300263, 0.356906, 0.343875, 0.299220, 0.355158, 0.346666, 0.298177,   // 84-87
+  0.353410, 0.349457, 0.297134, 0.351662, 0.352248, 0.296091, 0.349914, 0.355039, 0.295048, 0.348166, 0.357830, 0.294005,   // 88-91
+  0.346418, 0.360621, 0.292962, 0.344670, 0.363412, 0.291919, 0.342922, 0.366203, 0.290876, 0.341173, 0.368994, 0.289833,   // 92-95
+  0.342624, 0.367795, 0.289582, 0.344075, 0.366595, 0.289331, 0.345525, 0.365396, 0.289080, 0.346976, 0.364196, 0.288829,   // 96-99
+  0.348426, 0.362997, 0.288578, 0.349877, 0.361797, 0.288327, 0.351327, 0.360597, 0.288076, 0.346971, 0.363720, 0.289310,   // 100-103
+  0.342615, 0.366842, 0.290544, 0.338259, 0.369964, 0.291778, 0.333903, 0.373086, 0.293012, 0.329547, 0.376208, 0.294246,   // 104-107
+  0.330358, 0.376875, 0.292768, 0.331169, 0.377542, 0.291288, 0.331980, 0.378209, 0.289810, 0.332792, 0.378877, 0.288332,   // 108-111
+  0.333603, 0.379544, 0.286853, 0.334876, 0.378285, 0.286838, 0.336149, 0.377027, 0.286825, 0.337422, 0.375768, 0.286811,   // 112-115
+  0.338694, 0.374509, 0.286796, 0.339967, 0.373251, 0.286783, 0.341240, 0.371992, 0.286769, 0.342512, 0.370733, 0.286754,   // 116-119
+  0.343785, 0.369475, 0.286741, 0.345058, 0.368216, 0.286727, 0.346330, 0.366957, 0.286712, 0.347603, 0.365699, 0.286699,   // 120-123
+  0.348876, 0.364440, 0.286685, 0.350149, 0.363181, 0.286671, 0.351421, 0.361923, 0.286657, 0.352694, 0.360664, 0.286643,   // 124-127
+]);
+
+/** Percent of a half-range jog to allow at each level, again mirrored. */
+const ZHOU_FANG_JOG = new Uint8Array([
+0, 0, 1, 2, 3, 3, 4, 5, 6, 6, 7, 8, 9, 9, 10, 11,
+  12, 12, 13, 14, 15, 15, 16, 17, 18, 18, 19, 20, 21, 21, 22, 23,
+  24, 24, 25, 26, 27, 27, 28, 29, 30, 31, 32, 33, 34, 34, 35, 36,
+  37, 38, 38, 39, 40, 41, 42, 42, 43, 44, 45, 46, 46, 47, 48, 49,
+  50, 53, 56, 59, 62, 65, 68, 71, 75, 78, 81, 84, 87, 90, 93, 96,
+  100, 100, 100, 100, 100, 100, 91, 83, 75, 66, 58, 50, 41, 33, 25, 17,
+  21, 26, 31, 35, 40, 45, 50, 54, 58, 62, 66, 70, 71, 73, 75, 77,
+  79, 80, 81, 83, 84, 86, 87, 88, 90, 91, 93, 94, 95, 97, 98, 100,
+]);
+
+/** Half the range, which is how far the paper's jog reaches at full strength. */
+const JOG_RANGE = 128;
+
+/**
+ * Variable coefficients with threshold modulation.
+ *
+ * Seeded rather than left to chance: two runs of the same picture have to give
+ * the same art, or the tile that offered a recipe would not be showing what
+ * choosing it produces.
+ */
+function zhouFang(plane, width, height, threshold, neutral = threshold, bias = null) {
+  const buf = Float32Array.from(plane);
+  const bits = new Uint8Array(plane.length);
+  const random = seededRandom(1);
+
+  for (let y = 0; y < height; y++) {
+    const ahead = y & 1 ? -1 : 1;
+    for (let step = 0; step < width; step++) {
+      const x = ahead > 0 ? step : width - 1 - step;
+      const i = y * width + x;
+
+      const level = plane[i] < 0 ? 0 : plane[i] > 255 ? 255 : Math.round(plane[i]);
+      const mirrored = level < 128 ? level : 255 - level;
+      const jog = random() * JOG_RANGE * (ZHOU_FANG_JOG[mirrored] / 100);
+
+      const lit = buf[i] > threshold + jog + (bias ? bias[i] : 0);
+      bits[i] = lit ? 1 : 0;
+      const err = buf[i] - (lit ? 255 : 0);
+
+      const at = mirrored * 3;
+      const nextTo = x + ahead;
+      const behind = x - ahead;
+      if (nextTo >= 0 && nextTo < width) buf[i + ahead] += err * ZHOU_FANG_SHARE[at];
+      if (y + 1 < height) {
+        if (behind >= 0 && behind < width) buf[i + width - ahead] += err * ZHOU_FANG_SHARE[at + 1];
+        buf[i + width] += err * ZHOU_FANG_SHARE[at + 2];
+      }
+    }
+  }
+  return bits;
+}
+
 /** Registry. Keys are the values stored in the UI and in saved settings. */
 export const DITHER_METHODS = Object.freeze({
   'floyd-steinberg': floydSteinberg,
   ostromoukhov,
+  zhoufang: zhouFang,
   atkinson,
   bluenoise: blueNoise,
   bayer4,

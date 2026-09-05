@@ -2214,6 +2214,35 @@ async function run() {
     check('and asking for none still gives none', edgeBias(field, wide, tall, 0), null);
   }
 
+
+  // --- variable coefficients with a jogged threshold -------------------------
+  // Zhou and Fang's addition to Ostromoukhov: a level-dependent random push at
+  // the threshold, which breaks the regular patterns variable coefficients
+  // leave in the mid-tones. Error diffusion still measures its error against
+  // the true value, so the tone comes back -- which is the whole reason a
+  // threshold may be jogged at all.
+  {
+    const wide = 96;
+    const tall = 96;
+    const grey = new Float32Array(wide * tall).fill(128);
+    const bits = DITHER_METHODS.zhoufang(grey, wide, tall, 128, 128, null);
+    const covered = bits.reduce((n, v) => n + v, 0) / bits.length;
+    ok('a flat mid-grey still comes out half lit', Math.abs(covered - 0.5) < 0.06, covered.toFixed(3));
+
+    // Twice over, the same picture: the jog is seeded, or the tile that offers
+    // a recipe would not be showing what choosing it produces.
+    const again = DITHER_METHODS.zhoufang(grey, wide, tall, 128, 128, null);
+    check('and the same picture twice running', bits.join('') === again.join(''), true);
+
+    // It is a method on the list rather than the default: measured over six
+    // pictures at forty and sixty columns it scores above the plain variable
+    // coefficients on nine of the twelve, by up to 0.011, and below on the
+    // other three, by up to 0.014 -- and the losses are all on the drawing,
+    // where a jogged threshold puts noise into flat colour.
+    ok('it is offered, and it is not the default', DEFAULT_DITHER !== 'zhoufang' && 'zhoufang' in DITHER_METHODS);
+    ok('and it hands its error on, so the emphasis reaches it', DIFFUSING.has('zhoufang'));
+  }
+
   const failed = log.filter((l) => l.startsWith('FAIL')).length;
   out(`${log.join('\n')}\n${failed ? `\n${failed} FAILED` : '\nAll pipeline checks passed.'}`);
 }
