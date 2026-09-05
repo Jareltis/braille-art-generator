@@ -92,3 +92,35 @@ export function putImageData(canvas, imageData) {
   canvas.height = imageData.height;
   context2d(canvas).putImageData(imageData, 0, 0);
 }
+
+
+/**
+ * Whether this machine can actually draw a character.
+ *
+ * Not "is the character in Unicode" -- it always is -- but "does the font in
+ * front of the user have a glyph for it". A missing glyph is drawn as the
+ * font's own notdef box, so the test is to draw the character and the one code
+ * point guaranteed to have no glyph anywhere, and compare the pixels. Blank is
+ * compared too, or a space would pass as a drawn character.
+ *
+ * Needed because the octant blocks are new enough (Unicode 16, 2024) that
+ * offering them blind would put boxes in someone's picture.
+ */
+export function canDraw(codePoint, fontFamily, size = 28) {
+  const canvas = createCanvas(size * 2, size * 2);
+  const ctx = context2d(canvas);
+  const paint = (text) => {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.font = `${size}px ${fontFamily}`;
+    ctx.fillStyle = '#000000';
+    ctx.fillText(text, size * 0.2, size * 1.2);
+    return ctx.getImageData(0, 0, canvas.width, canvas.height).data.join(',');
+  };
+
+  // U+10FFFF is a noncharacter: nothing has a glyph for it, so whatever comes
+  // back is this font's way of saying "I cannot draw that".
+  const notdef = paint(String.fromCodePoint(0x10FFFF));
+  const blank = paint(' ');
+  const wanted = paint(String.fromCodePoint(codePoint));
+  return wanted !== notdef && wanted !== blank;
+}

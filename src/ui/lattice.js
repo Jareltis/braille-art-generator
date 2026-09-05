@@ -57,6 +57,7 @@ export function drawLattice(ctx, lines, {
   foreground = '#ffffff',
   colours = null,
   ground = null,
+  fill = 'dots',
   offsetX = 0,
   offsetY = 0,
   width,
@@ -123,6 +124,17 @@ export function drawLattice(ctx, lines, {
       for (let dx = 0; dx < CELL_W; dx++) {
         for (let dy = 0; dy < CELL_H; dy++) {
           if (!(pattern & (1 << DOT_BITS[dx][dy]))) continue;
+          if (fill === 'blocks') {
+            // Solid quarters, snapped like the grounds: this is what the octant
+            // characters look like, and the drawn copy has to agree with the
+            // text under it.
+            const x0 = Math.round(left + dx * pitchX);
+            const x1 = Math.round(left + (dx + 1) * pitchX);
+            const y0 = Math.round(top + dy * pitchY);
+            const y1 = Math.round(top + (dy + 1) * pitchY);
+            ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
+            continue;
+          }
           const cx = left + (dx + 0.5) * pitchX;
           const cy = top + (dy + 0.5) * pitchY;
           if (round) {
@@ -165,7 +177,7 @@ export function createLatticeView(canvas, view, { metrics, getArt }) {
   function paint() {
     if (!enabled || selecting) return hide();
 
-    const { text, colours, ground, cols } = getArt();
+    const { text, colours, ground, cols, fill } = getArt();
     if (!text) return hide();
 
     const { advancePx, lineHeightPx } = metrics();
@@ -202,6 +214,7 @@ export function createLatticeView(canvas, view, { metrics, getArt }) {
       foreground: ink,
       colours,
       ground,
+      fill,
       // Content sits at the padding edge and slides under the box as it
       // scrolls, so the two together are where the first cell has got to.
       offsetX: view.scrollLeft - padLeft,

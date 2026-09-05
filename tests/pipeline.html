@@ -47,6 +47,7 @@ import { FALLBACK, LOCALES, formatNumber, setLocale, t } from '../src/i18n/index
 import { fromHash, textFits, toHash } from '../src/ui/link.js';
 import { brailleToAnsi, brailleToHtml, brailleToSvg, renderDotsToCanvas } from '../src/ui/export.js';
 import { drawLattice } from '../src/ui/lattice.js';
+import { GLYPH_SETS, cellsOf, glyphFor, toGlyphs } from '../src/core/glyphs.js';
 import { cellColours, cellHex, colourPattern, colourRuns, sameColour } from '../src/core/colour.js';
 import { PALETTES, TERMINAL_PALETTES, ansiForeground, medianCut, nearest, paletteFor, snap } from '../src/core/palette.js';
 import { lab } from '../src/core/gamma.js';
@@ -2241,6 +2242,59 @@ async function run() {
     // where a jogged threshold puts noise into flat colour.
     ok('it is offered, and it is not the default', DEFAULT_DITHER !== 'zhoufang' && 'zhoufang' in DITHER_METHODS);
     ok('and it hands its error on, so the emphasis reaches it', DIFFUSING.has('zhoufang'));
+  }
+
+
+  // --- the same cell, written as solid blocks --------------------------------
+  // Unicode 16 added the octants: the same two-by-four cell with no gaps at
+  // all. The art stays braille -- this is a way of writing it out, and the
+  // mapping is Unicode's own order with the twenty-six patterns older block
+  // characters already cover taken out of it.
+  {
+    const cell = (mask) => String.fromCharCode(0x2800 + mask);
+    const point = (glyph) => glyph.codePointAt(0);
+
+    check('nothing raised is a blank of its own', point(glyphFor(cell(0x00), 'octants')), 0xA0);
+    check('every dot raised is a full block', point(glyphFor(cell(0xFF), 'octants')), 0x2588);
+    // Braille dots 1,2,3,7 are the left-hand column.
+    check('the left column is the left half block',
+      point(glyphFor(cell((1 << 0) | (1 << 1) | (1 << 2) | (1 << 6)), 'octants')), 0x258C);
+    // Dots 1 and 4 are the top row.
+    check('the top row has its own character',
+      point(glyphFor(cell((1 << 0) | (1 << 3)), 'octants')), 0x1FB82);
+    ok('and the rest come out of the new block',
+       point(glyphFor(cell(1 << 1), 'octants')) >= 0x1CD00
+       && point(glyphFor(cell(1 << 1), 'octants')) <= 0x1CDE5,
+       point(glyphFor(cell(1 << 1), 'octants')).toString(16));
+
+    // Every one of the 256 patterns has a character, and no two share one.
+    const seen = new Set();
+    for (let mask = 0; mask < 256; mask++) seen.add(glyphFor(cell(mask), 'octants'));
+    check('all 256 patterns are distinct', seen.size, 256);
+
+    // Asking for braille changes nothing at all.
+    const art = [cell(0xFF) + cell(0x00), cell(0x2D) + cell(0x11)].join(String.fromCharCode(10));
+    check('braille is left exactly as it was', toGlyphs(art, 'braille'), art);
+
+    // A cell is one cell however many UTF-16 units it takes.
+    const cells = cellsOf(cell(1 << 1) + cell(0xFF), 'octants');
+    check('cells count cells, not code units', cells.length, 2);
+    ok('even where a glyph is two units wide', cells[0].length === 2 && cells[1].length === 1,
+       `${cells[0].length} and ${cells[1].length}`);
+
+    // And the exports write what they are asked for.
+    const style = {
+      fontFamily: 'monospace', fontSize: 12, lineHeight: 1, advancePx: 8, lineHeightPx: 12,
+      foreground: '#ffffff', background: '#000000',
+    };
+    const html = brailleToHtml(art, null, 2, { ...style, glyphs: 'octants' });
+    ok('the html file carries the blocks', html.includes(String.fromCodePoint(0x2588)));
+    const ansi = brailleToAnsi(art, null, 2, 'full', null, 'octants');
+    ok('so does the terminal file', ansi.includes(String.fromCodePoint(0x2588)));
+    const svg = brailleToSvg(art, { ...style, glyphs: 'octants' });
+    ok('and the svg', svg.includes(String.fromCodePoint(0x2588)));
+
+    check('the sets are the two there are', GLYPH_SETS.join(','), 'braille,octants');
   }
 
   const failed = log.filter((l) => l.startsWith('FAIL')).length;

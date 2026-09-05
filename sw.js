@@ -17,7 +17,7 @@
 // refreshed in the background after it is served, so even a worker that never
 // changes cannot serve last month's app twice.
 
-const VERSION = 'v0.41.0';
+const VERSION = 'v0.42.0';
 const CACHE = `braille-art-${VERSION}`;
 
 const ASSETS = [
@@ -39,6 +39,7 @@ const ASSETS = [
   './src/core/dither.js',
   './src/core/edges.js',
   './src/core/gamma.js',
+  './src/core/glyphs.js',
   './src/i18n/en.js',
   './src/i18n/index.js',
   './src/i18n/ru.js',

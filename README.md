@@ -32,6 +32,7 @@ only ever hands out static files.
 | **Copying** | as text, or as a picture for rooms that squash the line height |
 | **Sharing** | straight to another app, which on a phone is where the chat actually is |
 | **On screen** | the art drawn dot by dot, so the font's gutters and hollow rings stay out of it |
+| **Characters** | braille dots, or Unicode 16's solid blocks where the reader's font has them |
 | **PNG** | drawn the same way, from the same function |
 | **Image adjustment** | brightness, contrast, saturation, sharpness |
 | **Output** | width and height in cells, proportions kept automatically, inversion |
@@ -395,6 +396,32 @@ are zero and nothing changes at all, which is checked. On a photograph it does
 add texture ink, so it is off by default and the line-art preset switches it on;
 the suggester treats it as one more dial to try. It costs 1.6 to 2.3 times the
 line path, which the pacing already knows how to absorb.
+
+### The same cell, written as blocks
+
+Braille was chosen because every machine has it and because its cell is exactly
+two dots across by four down. Unicode 16, in 2024, added the **octants**: the
+same two-by-four cell drawn as solid blocks, with no gaps at all. Same grid,
+same encoder, and in a terminal with the font it is simply the better picture.
+
+The art stays braille. The blocks are a way of writing it out — the eight-bit
+pattern of a cell is mapped to a character, and everything else in the app goes
+on working on the braille it always had. The mapping is Unicode's own: the 230
+characters of U+1CD00…U+1CDE5 in ascending order of the pattern, skipping the
+twenty-six patterns that older block characters already cover — the full block,
+the halves, the quadrants. All 256 have a character and no two share one, which
+is checked.
+
+The catch is the font, and it is a real one: measured on a Windows 11 machine in
+2026, neither this app's own font stack nor plain `monospace` can draw a single
+octant, while braille and the quadrants are everywhere. So the page checks
+before it offers — it draws the character and the one code point guaranteed to
+have no glyph anywhere, and compares the pixels — and where the font is missing
+the option is switched off and says why. Hand editing steps aside while the
+blocks are shown, since it counts dots in a braille cell.
+
+One thing to know when pasting: a block outside the basic plane counts as two
+characters in a limit that counts UTF-16, so the counter counts it that way too.
 
 ### The art is drawn, not typed
 

@@ -14,7 +14,7 @@ import { classifyImage } from './core/classify.js';
 import { APP_VERSION } from './version.js';
 import { DRAWS_PER_FAMILY, VARIANT_FAMILIES } from './core/variants.js';
 import { fitWithin } from './core/pixels.js';
-import { createCanvas, drawScaled, putImageData, readImageData } from './ui/canvas.js';
+import { canDraw, createCanvas, drawScaled, putImageData, readImageData } from './ui/canvas.js';
 import { bindRange, clampInt, coalesce } from './ui/controls.js';
 import { keepsUp } from './ui/pace.js';
 import {
@@ -30,6 +30,7 @@ import { fromHash, shareUrl, textFits, updateHash } from './ui/link.js';
 import { createCropper } from './ui/crop.js';
 import { createDotEditor } from './ui/dots.js';
 import { createLatticeView } from './ui/lattice.js';
+import { GLYPH_SETS, cellsOf, toGlyphs } from './core/glyphs.js';
 import { DEFAULT_TEXT_FONT, TEXT_FONTS, renderText } from './ui/text.js';
 import { createCamera } from './ui/camera.js';
 import { createSketchPad } from './ui/draw.js';
@@ -142,6 +143,8 @@ const dom = {
   output: el('output'),
   lattice: el('lattice'),
   evenGrid: el('evenGrid'),
+  glyphSet: el('glyphSet'),
+  glyphHint: el('glyphHint'),
   status: el('status'),
   meta: el('meta'),
   srcCanvas: el('srcCanvas'),
@@ -615,7 +618,9 @@ function updateMeta(text, sampled = null) {
     trimmed
       ? t('meta.trimmed', { fromCols: sampled.cols, fromRows: sampled.rows, cols, rows })
       : t('meta.size', { cols, rows }),
-    t('meta.characters', { count: text.length }),
+    // Counted the way a message limit counts: a block glyph outside the basic
+    // plane is two units, and a room that cuts at a number cuts at that one.
+    t('meta.characters', { count: toGlyphs(text, glyphSet()).length }),
   ];
 
   // Width is only half the problem: the message length limit is the wall that
@@ -788,7 +793,7 @@ const PERSISTED_RANGES = [
 ];
 const PERSISTED_FIELDS = [
   'preset', 'platform', 'dither', 'invert', 'edgeMode', 'outWidth', 'outHeight', 'fontSize', 'layout',
-  'sourceKind', 'textInput', 'textFont', 'palette',
+  'sourceKind', 'textInput', 'textFont', 'palette', 'glyphSet',
 ];
 
 function collectSettings() {
@@ -1456,10 +1461,10 @@ let nextPart = 0;
 
 async function copyArt() {
   const platform = dom.platform.value;
-  const parts = splitForPlatform(artText, platform);
+  const parts = splitForPlatform(written(), platform);
 
   if (parts.length === 1) {
-    await copyText(forPlatform(artText, platform));
+    await copyText(forPlatform(written(), platform));
     setStatus(
       PLATFORMS[platform].codeBlock
         ? t('status.copiedFenced')
@@ -1535,6 +1540,12 @@ const COLOUR_CELL_LIMIT = 40000;
 let artColours = null;
 let artGround = null;
 let artCols = 0;
+/** Braille, or the blocks -- the art itself is braille either way. */
+const glyphSet = () => (dom.glyphSet.value === 'octants' ? 'octants' : 'braille');
+
+/** The art as it should be pasted, which is not always how it is stored. */
+const written = () => toGlyphs(artText, glyphSet());
+
 /** What the page is actually showing: colour is dropped on a grid too big for it. */
 let shownColours = null;
 let shownGround = null;
@@ -1553,13 +1564,13 @@ function paintText() {
   if (!artColours || artCols === 0) {
     shownColours = null;
     shownGround = null;
-    dom.output.textContent = artText;
+    dom.output.textContent = written();
     return;
   }
   if (lines.length * artCols > COLOUR_CELL_LIMIT) {
     shownColours = null;
     shownGround = null;
-    dom.output.textContent = artText;
+    dom.output.textContent = written();
     setStatus(t('colour.tooLarge'), 'warn');
     return;
   }
@@ -1567,15 +1578,21 @@ function paintText() {
   shownGround = artGround;
 
   // Only braille glyphs and the markup built here ever reach innerHTML.
+  const kind = glyphSet();
   dom.output.innerHTML = lines
-    .map((line, row) => colourRuns(artColours, row, artCols, 8, artGround)
-      .map(({ start, end, index }) => {
-        const paint = artGround
-          ? `color:${cellHex(artColours, index)};background:${cellHex(artGround, index)}`
-          : `color:${cellHex(artColours, index)}`;
-        return `<span style="${paint}">${line.slice(start, end)}</span>`;
-      })
-      .join(''))
+    .map((line, row) => {
+      // Sliced as cells, not as characters: an octant can be two UTF-16 units
+      // wide, and the colour runs are counted in cells.
+      const cells = cellsOf(line, kind);
+      return colourRuns(artColours, row, artCols, 8, artGround)
+        .map(({ start, end, index }) => {
+          const paint = artGround
+            ? `color:${cellHex(artColours, index)};background:${cellHex(artGround, index)}`
+            : `color:${cellHex(artColours, index)}`;
+          return `<span style="${paint}">${cells.slice(start, end).join('')}</span>`;
+        })
+        .join('');
+    })
     .join('\n');
 }
 
@@ -1638,6 +1655,10 @@ function exportStyle() {
     background: dom.transparent.checked ? 'transparent' : style.backgroundColor,
     colours: artColours,
     ground: artGround,
+    // Which characters the art is written in, and therefore whether the drawn
+    // copy shows dots or solid quarters.
+    glyphs: glyphSet(),
+    fill: glyphSet() === 'octants' ? 'blocks' : 'dots',
   };
 }
 
@@ -1799,7 +1820,10 @@ function init() {
 
   dom.downloadAnsi.addEventListener('click', () => {
     if (!requireArt()) return;
-    downloadText(brailleToAnsi(artText, artColours, artCols, dom.palette.value, artGround), 'braille.ans');
+    downloadText(
+      brailleToAnsi(artText, artColours, artCols, dom.palette.value, artGround, glyphSet()),
+      'braille.ans',
+    );
     setStatus(
       artColours
         ? t('status.ansiSaved')
@@ -1835,9 +1859,38 @@ function init() {
   dom.edgeColour.addEventListener('change', () => changed({ affectsPreview: false }));
   dom.fitLimit.addEventListener('click', () => { fitToLimit().catch(fail); });
 
+  // Offering the blocks where the font has none would put empty boxes in
+  // someone's picture, so the page checks before offering them.
+  const blocksDrawn = canDraw(0x1CD00, getComputedStyle(dom.output).fontFamily);
+  if (!blocksDrawn) {
+    dom.glyphSet.querySelector('option[value="octants"]').disabled = true;
+    if (dom.glyphSet.value === 'octants') dom.glyphSet.value = 'braille';
+  }
+  const syncGlyphs = () => {
+    dom.glyphHint.textContent = blocksDrawn
+      ? (glyphSet() === 'octants' ? t('display.glyphs.hint') : '')
+      : t('display.glyphs.missing');
+    // Editing counts dots in a braille cell; the blocks are a way of writing
+    // the art out, not something to edit in.
+    dom.dotEdit.disabled = glyphSet() === 'octants';
+    if (glyphSet() === 'octants' && dotEditor?.isEnabled()) setEditing(false);
+  };
+  dom.glyphSet.addEventListener('change', () => {
+    syncGlyphs();
+    persist();
+    paintArt();
+    updateMeta(artText);
+  });
+
   lattice = createLatticeView(dom.lattice, dom.output, {
     metrics: outputMetrics,
-    getArt: () => ({ text: artText, colours: shownColours, ground: shownGround, cols: artCols }),
+    getArt: () => ({
+      text: artText,
+      colours: shownColours,
+      ground: shownGround,
+      cols: artCols,
+      fill: glyphSet() === 'octants' ? 'blocks' : 'dots',
+    }),
   });
   lattice.enabled = dom.evenGrid.checked;
   dom.evenGrid.addEventListener('change', () => {
@@ -1965,7 +2018,7 @@ function init() {
   });
 
   dom.downloadTxt.addEventListener('click', () => {
-    if (requireArt()) downloadText(artText, 'braille.txt');
+    if (requireArt()) downloadText(written(), 'braille.txt');
   });
 
   dom.copyImage.addEventListener('click', async () => {
@@ -2019,6 +2072,7 @@ function init() {
   });
 
   applyFontSize();
+  syncGlyphs();
   syncEdgeControls();
   syncPlatform();
   syncRows();

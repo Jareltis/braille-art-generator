@@ -1786,6 +1786,37 @@ async function run() {
        frame.contentWindow.location.hash);
   }
 
+  {
+    mark('the blocks, if this machine has them');
+    // --- the blocks, if this machine has them --------------------------------
+    // Unicode 16's octants are the same cell without the gaps, and new enough
+    // that the font may not have them. Offering them blind would put empty
+    // boxes in someone's picture, so the page checks first -- and what is
+    // checked here is that it answers one way or the other, in the page's own
+    // language, rather than that this particular machine has the font.
+    const blocks = $('glyphSet').querySelector('option[value="octants"]');
+    if (blocks.disabled) {
+      ok('a machine without the font is told so', /шрифта для блоков нет/.test($('glyphHint').textContent),
+         $('glyphHint').textContent);
+      check('and it stays on braille', $('glyphSet').value, 'braille');
+      check('so hand editing is still there', $('dotEdit').disabled, false);
+    } else {
+      const asBraille = await stable(() => $('output').textContent);
+      $('glyphSet').value = 'octants';
+      $('glyphSet').dispatchEvent(new Event('change', { bubbles: true }));
+      const asBlocks = await stable(() => $('output').textContent);
+      ok('switching writes the art in blocks', asBlocks !== asBraille && !/[⠀-⣿]/.test(asBlocks),
+         asBlocks.slice(0, 16));
+      check('and hand editing steps aside', $('dotEdit').disabled, true);
+      ok('and the choice travels in the link',
+         await until(() => /(^|[#&])gs=octants([&]|$)/.test(frame.contentWindow.location.hash), 3000),
+         frame.contentWindow.location.hash);
+      $('glyphSet').value = 'braille';
+      $('glyphSet').dispatchEvent(new Event('change', { bubbles: true }));
+      await stable(() => $('output').textContent);
+    }
+  }
+
   const failed = log.filter((l) => l.startsWith('FAIL')).length;
   out(`${log.join('\n')}\n${failed ? `\n${failed} FAILED` : '\nAll e2e checks passed.'}`);
 }

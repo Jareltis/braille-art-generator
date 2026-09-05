@@ -179,6 +179,11 @@ export const en = {
 
     'display.group': 'Display',
     'display.fontSize': 'Type size, px',
+    'display.glyphs': 'Characters',
+    'display.glyphs.braille': 'Braille dots',
+    'display.glyphs.octants': 'Solid blocks (octants)',
+    'display.glyphs.hint': 'The same 2×4 cell, written as solid blocks instead of dots — no gaps at all, where the reader has a font new enough for them (Unicode 16, 2024).',
+    'display.glyphs.missing': 'This machine has no font for the blocks, so they would arrive as empty boxes. Braille it is.',
     'display.evenGrid': 'Draw the dots evenly',
     'display.evenGridHint': 'The art is drawn rather than typeset, so the gaps a font leaves between cells do not show. What gets copied is unchanged.',
     'reset.edits': 'Reset adjustments',
