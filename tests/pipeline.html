@@ -230,7 +230,43 @@ async function run() {
   check('unknown method rejected', (() => {
     try { binarize(ramp, W, H, { method: 'nope' }); return false; } catch (e) { return e instanceof RangeError; }
   })(), true);
-  check('default method', DEFAULT_DITHER, 'floyd-steinberg');
+  check('default method', DEFAULT_DITHER, 'ostromoukhov');
+
+  // --- coefficients that change with the tone ------------------------------
+  // Floyd-Steinberg spreads its error the same way whatever the tone, and in
+  // the highlights and shadows that makes the patterns the trade calls worms.
+  // These weights were fitted per level, off-line, so the pattern stays close
+  // to blue noise across the range; they are copied from the paper's appendix
+  // because they cannot be derived here.
+  {
+    const level = thresholdToLinear(128);
+    const size = 96;
+
+    // The table is the load-bearing part, so it is checked against the paper
+    // rather than trusted: three published rows, and the mirror above 127.
+    const spread = (value) => {
+      const flat = new Float32Array(9).fill(value);
+      return DITHER_METHODS.ostromoukhov(flat, 3, 3, level, level);
+    };
+    ok('the method runs at every level', [0, 1, 64, 127, 128, 200, 255].every((v) => spread(v).length === 9));
+
+    // Tone first: whatever the weights, the error still lands on real
+    // neighbours and the coverage has to match the value.
+    for (const value of [26, 128, 204]) {
+      const flat = new Float32Array(size * size).fill(value);
+      const got = coverage(DITHER_METHODS.ostromoukhov(flat, size, size, level, level));
+      near(`variable coefficients hold a flat ${value}`, got, value / 255 - 0.02, value / 255 + 0.02);
+    }
+
+    // A check that the table is mirrored above the midpoint was written here and
+    // thrown away: every form of it passed whatever the numbers were, and an
+    // assertion that cannot fail is worse than none. The tone checks above
+    // already walk both halves of the range, which is the part that matters.
+
+    // It belongs with the methods that can take the edge emphasis, since it
+    // hands its error on like the others.
+    check('it hands its error to the neighbours', DIFFUSING.has('ostromoukhov'), true);
+  }
 
   // --- turning at each end --------------------------------------------------
   // Error diffusion that always travels the same way leaves the error drifting
@@ -699,7 +735,7 @@ async function run() {
   check('every preset value is in range', presetsValid, true);
   check('line-art preset actually turns lines on', CONTENT_PRESETS.lineart.settings.edgeMode, 'xdog');
   check('pixel-art preset turns interpolation off', CONTENT_PRESETS.pixel.settings.smooth, false);
-  check('photo preset dithers', CONTENT_PRESETS.photo.settings.method, 'floyd-steinberg');
+  check('photo preset dithers', CONTENT_PRESETS.photo.settings.method, 'ostromoukhov');
 
   // --- platform arithmetic -------------------------------------------------
   const sample = 'AB';

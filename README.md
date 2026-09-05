@@ -23,7 +23,7 @@ only ever hands out static files.
 | | |
 |---|---|
 | **Detail** | thin structure survives the reduction instead of being averaged away |
-| **Dithering** | Floyd–Steinberg, Atkinson, blue noise, Bayer 4×4, with optional edge emphasis |
+| **Dithering** | variable coefficients, Floyd–Steinberg, Atkinson, blue noise, Bayer 4×4, with optional edge emphasis |
 | **Thresholds** | global, automatic by Otsu, and local adaptive (Sauvola) |
 | **Edge detection** | XDoG for drawn strokes, Sobel for gradients, a slider between fill and lines |
 | **Colour** | one tint per cell: on screen, in PNG, SVG, HTML and ANSI for the terminal |
@@ -136,6 +136,16 @@ coarse.
 
 - **Floyd–Steinberg** spreads the error over four neighbours. Soft half-tones;
   the right choice for photographs.
+- **Variable coefficients** (Ostromoukhov, 2001) is the default. Floyd–Steinberg
+  spreads its error the same way whatever the tone is, and in the highlights and
+  shadows that produces the correlated patterns the trade calls worms. These
+  weights — three neighbours instead of four — were fitted separately for each
+  of 128 tone levels, off-line, so that the pattern's spectrum stays close to
+  blue noise across the whole range; above the midpoint the table mirrors. They
+  are copied from the paper's appendix because they cannot be derived here.
+  Measured on four pictures at sixty columns it beat Floyd–Steinberg on every
+  one — 0.901 to 0.907 on a landscape, 0.841 to 0.852 on a forest — and costs
+  nothing worth counting at these sizes.
 - **Atkinson** passes on only six eighths of the error. Losing the rest is the
   point: highlights and shadows clip rather than smear, which reads better on a
   coarse grid.

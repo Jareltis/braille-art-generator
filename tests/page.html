@@ -91,7 +91,7 @@ async function run() {
   check('and nothing to step forward to', $('settingsRedo').disabled, true);
   ok('worker is in use on the real page', $('status').textContent.includes('фоновом потоке'));
   check('height field starts derived', $('outHeight').disabled, true);
-  check('default method is floyd-steinberg', $('dither').value, 'floyd-steinberg');
+  check('the default method is the one measured best', $('dither').value, 'ostromoukhov');
 
   // Build a 200x100 gradient and hand it to the real file input.
   const c = document.createElement('canvas');
@@ -909,7 +909,7 @@ async function run() {
   $('resetAll').click();
   await wait(200);
   check('reset returns the contrast to zero', $('contrast').value, '0');
-  check('reset returns the method to the default', $('dither').value, 'floyd-steinberg');
+  check('reset returns the method to the default', $('dither').value, 'ostromoukhov');
   check('reset returns the layout to 2x2', $('app').dataset.layout, 'grid');
 
   mark('cropping');
@@ -1065,8 +1065,19 @@ async function run() {
   }
   artView.dispatchEvent(new win.PointerEvent('pointerup', pointAt(4, 8, 0.25, 0.1)));
   await wait(80);
-  const changedCells = [...artLines()[4]].filter((ch, i) => ch !== rowBefore[i]).length;
-  ok('dragging paints a run of cells', changedCells >= 3, `${changedCells} cells changed`);
+  // What a drag has to do is settle on one thing and do it all the way across,
+  // rather than flipping each dot it passes. Counting how many cells *changed*
+  // measured the picture underneath instead: with a different dithering method
+  // most of them already held the value being painted, and the count collapsed
+  // while the behaviour was perfectly correct.
+  const painted = artLines()[4];
+  const topLeft = (row, col) => (row.charCodeAt(col) - 0x2800) & 1;
+  const states = new Set();
+  for (let col = 2; col <= 8; col++) states.add(topLeft(painted, col));
+  check('dragging paints every cell it crosses the same way', states.size, 1);
+  ok('and it did paint rather than leave things alone',
+     [...painted].some((ch, i) => ch !== rowBefore[i]),
+     `${[...painted].filter((ch, i) => ch !== rowBefore[i]).length} cells changed`);
 
   mark('editing freezes regeneration');
   // --- editing freezes regeneration ---------------------------------------

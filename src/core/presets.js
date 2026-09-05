@@ -12,7 +12,7 @@ export const CONTENT_PRESETS = Object.freeze({
   photo: {
     settings: {
       detail: 35,
-      method: 'floyd-steinberg',
+      method: 'ostromoukhov',
       threshold: 128,
       edgeMode: 'none',
       edgeAmount: 100,

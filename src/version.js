@@ -9,4 +9,4 @@
 // A test compares this against the string in sw.js, so the two cannot drift
 // apart again without the suite saying so.
 
-export const APP_VERSION = '0.33.0';
+export const APP_VERSION = '0.34.0';

@@ -68,7 +68,7 @@ export const VARIANT_FAMILIES = Object.freeze([
       // Floyd-Steinberg twice over, so the draw leans towards the one that
       // measured best across every test picture rather than treating the two
       // as equals.
-      method: pick(random, ['floyd-steinberg', 'floyd-steinberg', 'atkinson']),
+      method: pick(random, ['ostromoukhov', 'ostromoukhov', 'floyd-steinberg', 'atkinson']),
       detail: step(random, 20, 60),
       edge: { mode: 'none' },
     }),
