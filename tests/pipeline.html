@@ -2177,6 +2177,43 @@ async function run() {
        spread(mosaic) < 0.15, spread(mosaic).toFixed(2));
   }
 
+
+  // --- and the emphasis only leans where there is something to lean on -------
+  // A high-pass answers to noise exactly as it answers to an edge, so at full
+  // strength the old form pushed the threshold about all over a hillside for
+  // nothing. Scaling it by how much structure is there keeps the sharpening.
+  {
+    const wide = 64;
+    const tall = 32;
+    const field = new Float32Array(wide * tall);
+    let seed = 7;
+    const random = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+    for (let y = 0; y < tall; y++) {
+      for (let x = 0; x < wide; x++) {
+        // Left half: flat grey with speckle. Right half: the same, past a step.
+        const base = x < wide / 2 ? 110 : 210;
+        field[y * wide + x] = base + (random() - 0.5) * 24;
+      }
+    }
+
+    const bias = edgeBias(field, wide, tall, 1);
+    const meanOver = (from, to) => {
+      let total = 0;
+      let seen = 0;
+      for (let y = 0; y < tall; y++) {
+        for (let x = from; x < to; x++) { total += Math.abs(bias[y * wide + x]); seen++; }
+      }
+      return total / seen;
+    };
+    const flat = meanOver(4, 26);
+    const atStep = meanOver(30, 34);
+    // Measured: without the gate the same field answers 5.5 in the speckle
+    // against 21.6 at the step, a ratio of four. With it the speckle falls to
+    // 0.1 and the step to 11, which is a ratio of a hundred.
+    ok('it leans at the edge and hardly at all in the speckle', atStep > flat * 20, `${flat.toFixed(1)} in the speckle, ${atStep.toFixed(1)} at the step`);
+    check('and asking for none still gives none', edgeBias(field, wide, tall, 0), null);
+  }
+
   const failed = log.filter((l) => l.startsWith('FAIL')).length;
   out(`${log.join('\n')}\n${failed ? `\n${failed} FAILED` : '\nAll pipeline checks passed.'}`);
 }

@@ -189,6 +189,18 @@ legibility, which that score cannot see: on a graphic with lettering, the word
 reads at strength 1 and mushes into its background at 0. Both were looked at.
 The logo preset turns it on because that is the case it was measured on.
 
+Most of that cost used to be paid where there was nothing to sharpen: a
+high-pass answers to speckle exactly as it answers to an edge, so at full
+strength the threshold was being pushed about all over a hillside for no gain.
+It is now scaled by how much structure is actually there — the same
+gradient-after-a-blur the detail blend leans on, and cheap, since the plane is
+already down at one value per dot. On a step buried in speckle of its own
+strength, the lean in the speckle falls from 5.5 to 0.1 while the step keeps
+22.0; over six pictures at forty and sixty columns the gated form scores at or
+above the flat one on ten of the twelve. The gate halves the lean at an edge as
+well, so the strength carries a measured factor of two to put the top of the
+slider back where it was.
+
 It reaches only the methods that hand their error to the neighbours. Those
 measure their error against the true value whatever the moved threshold decided,
 so the neighbourhood puts the tone back. An ordered tile has no such second
