@@ -172,7 +172,9 @@ export const en = {
     'edges.colour.hint': 'A boundary between two colours of the same brightness — green on blue, red on green — leaves no trace in light and is missed entirely. Adds ink on photographs, so it is off unless the preset asks for it.',
 
     'adjust.group': 'Image adjustment',
-    'adjust.brightness': 'Brightness',
+    'adjust.shadows': 'Shadows',
+  'adjust.highlights': 'Highlights',
+  'adjust.brightness': 'Brightness',
     'adjust.contrast': 'Contrast',
     'adjust.saturation': 'Saturation',
     'adjust.sharpness': 'Sharpness',

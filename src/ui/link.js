@@ -25,6 +25,8 @@ const KEYS = Object.freeze({
   theme: 'th',
   threshold: 't',
   detail: 'dt',
+  shadows: 'sd',
+  highlights: 'hl',
   brightness: 'b',
   contrast: 'c',
   saturation: 'sa',

@@ -1056,11 +1056,15 @@ async function run() {
     $('edgeMode').value = 'xdog';
     $('edgeMode').dispatchEvent(new Event('change', { bubbles: true }));
 
-    // brushSize belongs to the drawing tool and calibratedScale to the
-    // platform ruler; neither describes the art, and neither is in the link on
-    // purpose.
-    const settings = ['threshold', 'detail', 'edgeAmount', 'edgeRadius', 'edgeClean',
-                      'brightness', 'contrast', 'saturation', 'sharpness'];
+    // Found rather than listed. A written-out list is how `detail` went three
+    // versions without reaching the link: it was in storage, in the panel and
+    // nowhere in this array. brushSize belongs to the drawing tool and
+    // calibratedScale to the platform ruler; neither describes the art, and
+    // neither is in the link on purpose.
+    const notArt = new Set(['brushSize', 'calibratedScale']);
+    const settings = [...frame.contentWindow.document.querySelectorAll('input[type=range]')]
+      .map((input) => input.id)
+      .filter((id) => id && !notArt.has(id));
     const missing = [];
     for (const id of settings) {
       const input = $(id);

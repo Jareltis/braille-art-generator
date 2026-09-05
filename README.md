@@ -228,6 +228,43 @@ greys out when a method that cannot do it is chosen.
 - **Plain threshold** for logos, text and line art, where dithering only adds
   noise.
 
+### Shadows and highlights
+
+A dot is raised or it is not. The art has one bit where the photograph has
+eight, and a picture that lives in the bottom of its range spends that bit on
+nothing: a dark forest arrives as an empty frame with one bright patch in it.
+
+The frame-wide curve the other sliders offer cannot fix that, and this was
+measured rather than assumed. Against a global lift matched to the same mean
+light, counting the cells that carry no information at all — every dot down or
+every dot up, which both say the same nothing — the global one made two of four
+pictures **worse**, trading cells that were flat black for cells that were flat
+white:
+
+| picture | untouched | global lift, same mean light | shadows and highlights |
+|---|---|---|---|
+| dark forest | 56.2% | 48.0% | **41.7%** |
+| hard graphic | 19.5% | 25.9% | **17.1%** |
+| dark composite | 45.8% | 45.5% | **42.8%** |
+| landscape | 24.6% | 27.8% | **15.3%** |
+
+So the two sliders ask something else of every pixel: not how bright it is, but
+how bright it is next to what surrounds it. A gain built from the neighbourhood
+multiplies the **linear light** of all three channels alike, so a lifted shadow
+keeps its colour rather than drifting grey, and it falls off as the cube of the
+distance from the end it belongs to — measured against the square and against
+the fourth and sixth powers, the cube is the best on average and the worst on
+none, and it is the gentlest that keeps a lit sky out of the shadow slider's
+reach.
+
+The neighbourhood is judged on a picture an eighth the size and blurred there:
+the mask only has to be smooth, and a wide blur over a two-megapixel raster is
+the most expensive thing in this project. The whole pass costs 15 to 36 ms. It
+is read between the mask's samples rather than in blocks, because a step in the
+gain shows up as a rectangle. And the radius is a fraction of the frame rather
+than a count of pixels, so one setting means the same thing whatever size the
+raster happens to be.
+
 ### Two colour spaces, on purpose
 
 Dot coverage is linear in light: half the dots lit emits half the light, so the

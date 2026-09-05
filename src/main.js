@@ -247,6 +247,8 @@ function outputMetrics() {
 }
 
 const readAdjustments = () => ({
+  shadows: controls.shadows.value,
+  highlights: controls.highlights.value,
   brightness: controls.brightness.value,
   contrast: controls.contrast.value,
   saturation: controls.saturation.value,
@@ -744,6 +746,8 @@ function applyPreset(key) {
   controls.edgeClean.set(chosen.edgeClean);
   dom.edgeColour.checked = Boolean(chosen.edgeColour);
   controls.emphasis.set(chosen.emphasis);
+  controls.shadows.set(chosen.shadows);
+  controls.highlights.set(chosen.highlights);
   controls.brightness.set(chosen.brightness);
   controls.contrast.set(chosen.contrast);
   controls.saturation.set(chosen.saturation);
@@ -1028,7 +1032,8 @@ async function removeWork(id, name) {
  * Persistence
  * ------------------------------------------------------------------------ */
 const PERSISTED_RANGES = [
-  'detail', 'threshold', 'brightness', 'contrast', 'saturation', 'sharpness', 'edgeAmount', 'edgeRadius',
+  'detail', 'threshold', 'shadows', 'highlights', 'brightness', 'contrast', 'saturation', 'sharpness',
+  'edgeAmount', 'edgeRadius',
   'edgeClean', 'emphasis',
 ];
 const PERSISTED_FIELDS = [
@@ -1975,6 +1980,8 @@ function init() {
     // through here, which is what makes the flag reliable.
     onChange: () => { thresholdFromOtsu = false; changed({ affectsPreview: false }); },
   });
+  controls.shadows = bindRange(el('shadows'), el('shadowsVal'), { onChange: changed });
+  controls.highlights = bindRange(el('highlights'), el('highlightsVal'), { onChange: changed });
   controls.brightness = bindRange(el('brightness'), el('brightnessVal'), { onChange: changed });
   controls.contrast = bindRange(el('contrast'), el('contrastVal'), { onChange: changed });
   controls.saturation = bindRange(el('saturation'), el('saturationVal'), { onChange: changed });
@@ -2311,7 +2318,7 @@ function init() {
   });
 
   dom.reset.addEventListener('click', () => {
-    for (const name of ['brightness', 'contrast', 'saturation', 'sharpness']) {
+    for (const name of ['shadows', 'highlights', 'brightness', 'contrast', 'saturation', 'sharpness']) {
       controls[name].reset();
     }
     changed();

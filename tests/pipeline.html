@@ -17,14 +17,14 @@ window.addEventListener('unhandledrejection', (event) => {
 </script>
 <script type="module">
 import {
-  CELL_H, DOT_BITS, binarize, encode, imageDataToBraille, toChroma, toLightness, toLuminance,
+  CELL_H, CELL_W, DOT_BITS, binarize, encode, imageDataToBraille, toChroma, toLightness, toLuminance,
   tonePlane, trimBlank,
 } from '../src/core/braille.js';
 import { DIFFUSING, DITHER_METHODS, DEFAULT_DITHER, edgeBias } from '../src/core/dither.js';
 import { BLUE_NOISE_SIZE, blueNoiseMatrix } from '../src/core/bluenoise.js';
 import { otsuThreshold } from '../src/core/otsu.js';
-import { lightness, linearToThreshold, luminance, thresholdToLinear } from '../src/core/gamma.js';
-import { applyAdjustments } from '../src/core/adjust.js';
+import { lab, lightness, linearToThreshold, luminance, srgbToLinear, thresholdToLinear } from '../src/core/gamma.js';
+import { applyAdjustments, applyLocalTone } from '../src/core/adjust.js';
 import { gaussianBlur } from '../src/core/blur.js';
 import {
   sobel, xdog, applyEdges, gradient, thin, lineMap, structureMap,
@@ -53,7 +53,7 @@ import { drawLattice } from '../src/ui/lattice.js';
 import { GLYPH_SETS, cellsOf, glyphFor, toGlyphs } from '../src/core/glyphs.js';
 import { cellColours, cellHex, colourPattern, colourRuns, sameColour } from '../src/core/colour.js';
 import { PALETTES, TERMINAL_PALETTES, ansiForeground, medianCut, nearest, paletteFor, snap } from '../src/core/palette.js';
-import { fromLab, lab } from '../src/core/gamma.js';
+import { fromLab } from '../src/core/gamma.js';
 import {
   PLATFORMS, calibrationOf, clearCalibration, forPlatform, messageLength, partsFit, ruler,
   saveCalibration, splitForPlatform,
@@ -2469,6 +2469,154 @@ async function run() {
     later.somethingNew = { unknown: true };
     const forward = await unpackWork(JSON.stringify(later));
     check('a file from a later version still opens', forward.art, work.art);
+  }
+
+
+  // --- local tone ----------------------------------------------------------
+  {
+    // Dark on the left, bright on the right, both carrying a fine texture: the
+    // texture is what one bit per dot can show and what a crushed shadow loses.
+    const w = 160, h = 64;
+    const scene = new ImageData(w, h);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const at = (y * w + x) * 4;
+        const base = x < w / 2 ? 24 : 210;
+        const texture = ((x + y) % 8 < 4) ? 6 : -6;
+        scene.data[at] = scene.data[at + 1] = scene.data[at + 2] = base + texture;
+        scene.data[at + 3] = 255;
+      }
+    }
+
+    // In light, not in sRGB codes: the pass multiplies light, and the same
+    // multiplication is worth seventeen codes down in the shadows and seventeen
+    // up in the highlights while meaning two hundred percent and nineteen.
+    const lightOf = (image, from, to) => {
+      let total = 0;
+      let n = 0;
+      for (let y = 0; y < image.height; y++) {
+        for (let x = from; x < to; x++) {
+          total += srgbToLinear(image.data[(y * image.width + x) * 4]);
+          n++;
+        }
+      }
+      return total / n;
+    };
+
+    check('nothing asked for changes nothing',
+          applyLocalTone(scene, { shadows: 0, highlights: 0 }), scene);
+
+    {
+      const lifted = applyLocalTone(scene, { shadows: 100, highlights: 0 });
+      const dark = lightOf(lifted, 0, w / 2) / lightOf(scene, 0, w / 2);
+      const bright = lightOf(lifted, w / 2, w) / lightOf(scene, w / 2, w);
+      ok('the shadow slider is a shadow slider', dark > 1.8 && bright < 1.15,
+         `dark x${dark.toFixed(2)}, bright x${bright.toFixed(2)}`);
+    }
+
+    {
+      const pulled = applyLocalTone(scene, { shadows: 0, highlights: 100 });
+      const bright = lightOf(pulled, w / 2, w) / lightOf(scene, w / 2, w);
+      const dark = lightOf(pulled, 0, w / 2) / lightOf(scene, 0, w / 2);
+      ok('and the highlight slider is a highlight slider', bright < 0.85 && dark > 0.97,
+         `bright x${bright.toFixed(2)}, dark x${dark.toFixed(2)}`);
+    }
+
+    // Multiplying light keeps the colour; adding to sRGB codes would not. The
+    // ratio is preserved in light, which is where the multiplication happens.
+    {
+      const colour = new ImageData(40, 8);
+      for (let i = 0; i < colour.data.length; i += 4) {
+        colour.data[i] = 60; colour.data[i + 1] = 30; colour.data[i + 2] = 15; colour.data[i + 3] = 255;
+      }
+      const up = applyLocalTone(colour, { shadows: 100, highlights: 0 });
+      const hueOf = (r, g, b) => {
+        const [, a, second] = lab(r, g, b);
+        return Math.atan2(second, a) * 180 / Math.PI;
+      };
+      // Not zero, and it cannot be: the answer is rounded to whole sRGB
+      // channels, and down here one channel is a percent and a half of the
+      // light. A pass that added rather than multiplied would turn it much
+      // further than this.
+      const turned = Math.abs(hueOf(up.data[0], up.data[1], up.data[2]) - hueOf(60, 30, 15));
+      ok('a lifted shadow keeps its colour', turned < 3 && up.data[0] > 90,
+         `hue moved ${turned.toFixed(1)} degrees, red 60 -> ${up.data[0]}`);
+    }
+
+    // The mask is an eighth of the raster and is read between its samples: read
+    // in blocks, a ramp comes back as a staircase with a step every eight.
+    {
+      const ramp = new ImageData(200, 16);
+      for (let y = 0; y < 16; y++) {
+        for (let x = 0; x < 200; x++) {
+          const at = (y * 200 + x) * 4;
+          ramp.data[at] = ramp.data[at + 1] = ramp.data[at + 2] = Math.round(x * 255 / 199);
+          ramp.data[at + 3] = 255;
+        }
+      }
+      const shaped = applyLocalTone(ramp, { shadows: 60, highlights: 60 });
+      let onSeam = 0;
+      let seams = 0;
+      let between = 0;
+      let others = 0;
+      for (let x = 1; x < 200; x++) {
+        const step = Math.abs(shaped.data[(8 * 200 + x) * 4] - shaped.data[(8 * 200 + x - 1) * 4]);
+        if (x % 8 === 0) { onSeam += step; seams++; } else { between += step; others++; }
+      }
+      const seam = onSeam / seams;
+      const inside = between / others;
+      ok('a ramp stays a ramp rather than a staircase', seam < inside * 1.5,
+         `${seam.toFixed(2)} on the mask's seams against ${inside.toFixed(2)} between them`);
+    }
+
+    // What it is for: a cell with every dot down and a cell with every dot up
+    // both say nothing about what is there.
+    {
+      const flatShare = (image, from, to) => {
+        const cols = image.width / CELL_W;
+        const rows = image.height / CELL_H;
+        const { bits } = encode(image, { grid: { cols, rows } });
+        let flat = 0;
+        let seen = 0;
+        for (let cell = 0; cell < cols * rows; cell++) {
+          const x = (cell % cols) * CELL_W;
+          if (x < from || x >= to) continue;
+          const y = Math.floor(cell / cols) * CELL_H;
+          let lit = 0;
+          for (let dy = 0; dy < CELL_H; dy++) {
+            for (let dx = 0; dx < CELL_W; dx++) lit += bits[(y + dy) * image.width + (x + dx)] ? 1 : 0;
+          }
+          if (lit === 0 || lit === CELL_W * CELL_H) flat++;
+          seen++;
+        }
+        return flat / seen;
+      };
+      // A dark slope with a texture on it: every cell is below the threshold and
+      // says nothing, and the upper end has somewhere to go.
+      const slope = new ImageData(64, 64);
+      for (let y = 0; y < 64; y++) {
+        for (let x = 0; x < 64; x++) {
+          const at = (y * 64 + x) * 4;
+          const value = 8 + Math.round(y * 112 / 63) + (((x + y) % 6 < 3) ? 6 : -6);
+          slope.data[at] = slope.data[at + 1] = slope.data[at + 2] = value;
+          slope.data[at + 3] = 255;
+        }
+      }
+      const before = flatShare(slope, 0, 64);
+      const after = flatShare(applyLocalTone(slope, { shadows: 100, highlights: 0 }), 0, 64);
+      ok('and a crushed picture stops being flat cells', after < before - 0.15,
+         `${(before * 100).toFixed(0)}% -> ${(after * 100).toFixed(0)}%`);
+    }
+
+    // It belongs to the chain, and it runs before the frame-wide curve.
+    {
+      const chained = applyAdjustments(scene, {
+        shadows: 100, highlights: 0, brightness: 0, contrast: 0, saturation: 0, sharpness: 0,
+      });
+      ok('the chain runs it too',
+         lightOf(chained, 0, w / 2) / lightOf(scene, 0, w / 2) > 1.8,
+         `x${(lightOf(chained, 0, w / 2) / lightOf(scene, 0, w / 2)).toFixed(2)}`);
+    }
   }
 
   const failed = log.filter((l) => l.startsWith('FAIL')).length;
