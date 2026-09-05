@@ -94,7 +94,42 @@ export async function copyText(text) {
   if (!navigator.clipboard) {
     throw Object.assign(new Error('no clipboard'), { i18n: 'status.clipboardUnavailable' });
   }
-  await navigator.clipboard.writeText(text);
+  await refused(navigator.clipboard.writeText(text));
+}
+
+/**
+ * A clipboard the browser refuses is not an error worth quoting.
+ *
+ * Permission can be denied, or the page can have lost focus between the click
+ * and the write, and what comes back is an English sentence from the engine.
+ * Showing that raw is the one place this app would speak in a language it does
+ * not have a dictionary for.
+ */
+function refused(writing) {
+  return writing.catch(() => {
+    throw Object.assign(new Error('clipboard refused'), { i18n: 'status.clipboardRefused' });
+  });
+}
+
+/**
+ * Copy the art as a picture rather than as text.
+ *
+ * Braille survives most chats intact, but not all of them: line height is set
+ * by the room, and a picture cannot be squashed by it. This is the escape hatch
+ * for the places where the text arrives stretched.
+ *
+ * The write has to be started from the click itself -- a clipboard write that
+ * arrives after an await of its own is refused as untrusted in some browsers --
+ * so the blob is handed over as a promise and the browser waits for it.
+ */
+export async function copyCanvas(canvas) {
+  if (!navigator.clipboard?.write || typeof ClipboardItem === 'undefined') {
+    throw Object.assign(new Error('no image clipboard'), { i18n: 'status.clipboardNoImage' });
+  }
+  const png = new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('no blob'))), 'image/png');
+  });
+  await refused(navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]));
 }
 
 const XML_ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' };

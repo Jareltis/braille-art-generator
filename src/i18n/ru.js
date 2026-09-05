@@ -194,6 +194,12 @@ export const ru = {
 
     // --- actions ---
     'action.copy': 'Копировать',
+    'action.copyImage': 'Копировать картинкой',
+    'status.copiedImage': 'Арт в буфере обмена картинкой.',
+    'status.clipboardNoImage': 'Этот браузер не кладёт картинку в буфер. Сохраните PNG.',
+    'status.clipboardRefused': 'Браузер не дал странице записать в буфер обмена.',
+    'offer.differs': 'меняет: {what}',
+    'offer.same': 'ваши текущие настройки',
     'action.regenerate': 'Пересчитать',
     'action.suggest': 'Подобрать',
     'action.undo': 'Вернуть',

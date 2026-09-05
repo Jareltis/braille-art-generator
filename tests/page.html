@@ -396,6 +396,30 @@ async function run() {
        $('presetHint').textContent);
   }
 
+  mark('the art can be copied as a picture');
+  // --- the art can be copied as a picture ----------------------------------
+  // Braille survives most chats intact but not all: line height belongs to the
+  // room, and a picture cannot be squashed by it. Whether the clipboard accepts
+  // an image depends on the browser and on permissions, so what is checked here
+  // is that the path runs and says which of the two happened -- silence would be
+  // the real failure.
+  {
+    ok('the button is offered in simple mode too', $('copyImage').offsetParent !== null);
+
+    let reached = false;
+    $('copyImage').addEventListener('click', () => { reached = true; }, { once: true });
+    $('copyImage').click();
+    ok('pressing it reaches the handler', reached);
+
+    // Three ways this can end, and every one of them speaks Russian here: the
+    // picture is on the clipboard, the browser cannot do pictures, or the
+    // browser refused. A raw engine message would be the app talking in a
+    // language it has no dictionary for.
+    ok('and it says so in the page language, whichever way it went',
+       await until(() => /картинкой|не кладёт картинку|не дал странице/.test($('status').textContent), 6000),
+       $('status').textContent);
+  }
+
   mark('the art says what it is');
   // --- the art says what it is ---------------------------------------------
   // Left to itself a screen reader reads this element out as several thousand
@@ -731,6 +755,13 @@ async function run() {
     ok('each tile says how close it is',
        tiles().every((tile) => /\d+%/.test(tile.querySelector('.offer-why')?.textContent ?? '')),
        tiles()[0]?.querySelector('.offer-why')?.textContent);
+
+    // And what taking it would change, in the words on the panel rather than
+    // in the names of the settings behind them.
+    const explains = (tile) => [...tile.querySelectorAll('.offer-why')].map((n) => n.textContent).join(' | ');
+    ok('each tile says what it would change',
+       tiles().every((tile) => /меняет|текущие настройки/.test(explains(tile))),
+       explains(tiles()[0]));
     check('the first is focused', doc.activeElement, tiles()[0]);
 
     // Arrows walk the grid: right by one, down by two.

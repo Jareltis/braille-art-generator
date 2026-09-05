@@ -195,6 +195,12 @@ export const en = {
 
     // --- actions ---
     'action.copy': 'Copy',
+    'action.copyImage': 'Copy as picture',
+    'status.copiedImage': 'The art is on the clipboard as a picture.',
+    'status.clipboardNoImage': 'This browser will not put a picture on the clipboard. Save the PNG instead.',
+    'status.clipboardRefused': 'The browser would not let the page write to the clipboard.',
+    'offer.differs': 'changes: {what}',
+    'offer.same': 'the settings you have',
     'action.regenerate': 'Recalculate',
     'action.suggest': 'Suggest',
     'action.undo': 'Back',

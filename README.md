@@ -28,11 +28,12 @@ only ever hands out static files.
 | **Edge detection** | XDoG for drawn strokes, Sobel for gradients, a slider between fill and lines |
 | **Colour** | one tint per cell: on screen, in PNG, SVG, HTML and ANSI for the terminal |
 | **Palette** | full colour, the 256 or 16 a terminal has, or a few drawn from the picture |
+| **Copying** | as text, or as a picture for rooms that squash the line height |
 | **Image adjustment** | brightness, contrast, saturation, sharpness |
 | **Output** | width and height in cells, proportions kept automatically, inversion |
 | **Presets** | photographs, line art, logos, pixel art — each sets every control it covers |
 | **Detect the kind** | measures the picture and picks the preset for it, saying which way it went |
-| **Suggest** | renders a spread of recipes, scores each against the picture, offers the best four |
+| **Suggest** | renders a spread of recipes, scores each against the picture, offers the best four, and says what each would change |
 | **Back and forward** | steps the whole panel through what the automatic changes did to it |
 | **What was worked out** | the automatic choices in effect, and why each one is what it is |
 | **On a phone** | the result first, the source views as a strip beneath it, controls below |

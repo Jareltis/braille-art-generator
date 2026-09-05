@@ -18,8 +18,8 @@ import { createCanvas, drawScaled, putImageData, readImageData } from './ui/canv
 import { bindRange, clampInt, coalesce } from './ui/controls.js';
 import { keepsUp } from './ui/pace.js';
 import {
-  brailleToAnsi, brailleToHtml, brailleToSvg, copyText, downloadCanvas, downloadHtml, downloadSvg,
-  downloadText, renderTextToCanvas,
+  brailleToAnsi, brailleToHtml, brailleToSvg, copyCanvas, copyText, downloadCanvas, downloadHtml,
+  downloadSvg, downloadText, renderTextToCanvas,
 } from './ui/export.js';
 import {
   PLATFORMS, calibrationOf, clearCalibration, forPlatform, messageLength, partsFit, ruler,
@@ -143,6 +143,7 @@ const dom = {
   resCanvas: el('resCanvas'),
   downloadTxt: el('downloadTxt'),
   copy: el('copy'),
+  copyImage: el('copyImage'),
   downloadPng: el('downloadPng'),
 };
 
@@ -946,6 +947,34 @@ function acceptPastedImages() {
  * The three previews are small so all four panes fit one screen; this is how
  * you actually examine one without giving up that layout.
  * ------------------------------------------------------------------------ */
+/** What a dropdown calls the value it is set to, in whatever language it is in. */
+const optionLabel = (select, value) =>
+  [...select.options].find((option) => option.value === value)?.text ?? value;
+
+/**
+ * What taking this offer would change, in the words on the panel.
+ *
+ * A tile shows a picture and a name, and the name says what kind of thing it
+ * is, not which controls made it. Naming the differences turns each offer into
+ * a small lesson about the panel: the person can see that the one they liked is
+ * blue noise with the threshold moved, and go and do that themselves next time.
+ *
+ * Differences against what is set now, rather than the recipe in full, because
+ * the useful question in front of a tile is what would change.
+ */
+function whatChanges(recipe) {
+  const changes = [];
+  if (recipe.method !== dom.dither.value) changes.push(optionLabel(dom.dither, recipe.method));
+  if (recipe.edge.mode !== dom.edgeMode.value) changes.push(optionLabel(dom.edgeMode, recipe.edge.mode));
+  if (recipe.threshold != null && Math.round(recipe.threshold) !== Math.round(controls.threshold.value)) {
+    changes.push(`${t('threshold.label')} ${Math.round(recipe.threshold)}`);
+  }
+  if (recipe.detail !== Math.round(controls.detail.value)) {
+    changes.push(`${t('detail.label')} ${recipe.detail}`);
+  }
+  return changes;
+}
+
 /** A recipe writes the same controls a preset does, and nothing else. */
 function applyRecipe(recipe) {
   thresholdFromOtsu = false;
@@ -1010,7 +1039,14 @@ function showOffers(offers, { opener, onDismiss } = {}) {
     why.textContent = t(offer.judge === 'contour' ? 'offer.matchContour' : 'offer.matchTone',
                         { score: Math.round(offer.score * 100) });
 
-    tile.append(art, name, why);
+    const changes = whatChanges(offer.recipe);
+    const differs = document.createElement('span');
+    differs.className = 'offer-why';
+    differs.textContent = changes.length
+      ? t('offer.differs', { what: changes.slice(0, 3).join(' · ') })
+      : t('offer.same');
+
+    tile.append(art, name, why, differs);
     tile.addEventListener('click', () => {
       taken = true;
       remember();
@@ -1826,6 +1862,17 @@ function init() {
 
   dom.downloadTxt.addEventListener('click', () => {
     if (requireArt()) downloadText(artText, 'braille.txt');
+  });
+
+  dom.copyImage.addEventListener('click', async () => {
+    if (!requireArt()) return;
+    try {
+      const { canvas } = renderTextToCanvas(artText, exportStyle());
+      await copyCanvas(canvas);
+      setStatus(t('status.copiedImage'), 'ok');
+    } catch (error) {
+      fail(error);
+    }
   });
 
   dom.copy.addEventListener('click', async () => {
