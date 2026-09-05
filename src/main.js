@@ -13,7 +13,7 @@ import { CONTENT_PRESETS } from './core/presets.js';
 import { classifyImage, shadowLiftFor } from './core/classify.js';
 import { APP_VERSION } from './version.js';
 import { DRAWS_PER_FAMILY, VARIANT_FAMILIES } from './core/variants.js';
-import { fitWithin } from './core/pixels.js';
+import { detailSize, fitWithin } from './core/pixels.js';
 import { canDraw, createCanvas, drawScaled, putImageData, readImageData } from './ui/canvas.js';
 import { bindRange, clampInt, coalesce } from './ui/controls.js';
 import { keepsUp } from './ui/pace.js';
@@ -49,8 +49,6 @@ const PREVIEW_LIMIT = { w: 900, h: 700 };
  * browser. On ordinary sizes the budget never binds: an 80-column art asks for
  * 640x368.
  */
-const DETAIL_SCALE = 4;
-const DETAIL_BUDGET = 2_000_000;
 
 /**
  * What the last redraw cost, and how much of it there was.
@@ -315,19 +313,7 @@ function rowsFor(cols) {
   return Math.min(MAX_ROWS, Math.max(1, corrected));
 }
 
-function detailSize(cols, rows) {
-  const gridW = cols * CELL_W;
-  const gridH = rows * CELL_H;
-  let w = Math.max(gridW, Math.min(gridW * DETAIL_SCALE, sourceW()));
-  let h = Math.max(gridH, Math.min(gridH * DETAIL_SCALE, sourceH()));
-
-  const fit = Math.sqrt(DETAIL_BUDGET / (w * h));
-  if (fit < 1) {
-    w = Math.max(gridW, Math.round(w * fit));
-    h = Math.max(gridH, Math.round(h * fit));
-  }
-  return { w, h };
-}
+const detailFor = (cols, rows) => detailSize(cols, rows, sourceW(), sourceH());
 
 function resolveGrid() {
   const cols = clampInt(dom.cols.value, 1, MAX_COLS, 80);
@@ -387,7 +373,7 @@ async function render() {
   // Sample the ORIGINAL straight to the grid size. Generation used to run off
   // the <=800x600 preview, so anything larger was upscaled from detail that had
   // already been thrown away.
-  const detail = detailSize(cols, rows);
+  const detail = detailFor(cols, rows);
   lastSampling = { w: sourceW(), h: sourceH(), dw: detail.w, dh: detail.h, cols, rows };
   const target = drawScaled(source, detail.w, detail.h, backgroundFor(isInverted()), { smooth: smoothScaling, crop: cropRect });
 
@@ -590,7 +576,7 @@ async function autoThreshold() {
   const { cols, rows } = resolveGrid();
   // Measure the histogram of the pixels that will actually be encoded, not of
   // the preview -- downscaling changes the distribution.
-  const detail = detailSize(cols, rows);
+  const detail = detailFor(cols, rows);
   const target = drawScaled(source, detail.w, detail.h, backgroundFor(isInverted()), { smooth: smoothScaling, crop: cropRect });
   const threshold = await pipeline.otsu(readImageData(target), readAdjustments(), { ...readOptions(), grid: { cols, rows } });
   controls.threshold.set(threshold);
@@ -1506,7 +1492,7 @@ async function suggestVariants() {
     return;
   }
   const { cols, rows } = resolveGrid();
-  const detail = detailSize(cols, rows);
+  const detail = detailFor(cols, rows);
   const target = drawScaled(
     source, detail.w, detail.h, backgroundFor(isInverted()),
     { smooth: smoothScaling, crop: cropRect },
@@ -1738,7 +1724,7 @@ function setSourceKind(kind) {
 /** Render at a given width without touching the page, for searching. */
 async function artAtWidth(cols) {
   const rows = dom.keepAspect.checked ? rowsFor(cols) : clampInt(dom.rows.value, 1, MAX_ROWS, 30);
-  const detail = detailSize(cols, rows);
+  const detail = detailFor(cols, rows);
   const target = drawScaled(
     source, detail.w, detail.h, backgroundFor(isInverted()),
     { smooth: smoothScaling, crop: cropRect },

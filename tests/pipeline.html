@@ -53,6 +53,7 @@ import { drawLattice } from '../src/ui/lattice.js';
 import { GLYPH_SETS, cellsOf, glyphFor, toGlyphs } from '../src/core/glyphs.js';
 import { cellColours, cellHex, colourPattern, colourRuns, sameColour } from '../src/core/colour.js';
 import { PALETTES, TERMINAL_PALETTES, ansiForeground, medianCut, nearest, paletteFor, snap } from '../src/core/palette.js';
+import { DETAIL_SCALE, detailSize } from '../src/core/pixels.js';
 import { fromLab } from '../src/core/gamma.js';
 import {
   PLATFORMS, calibrationOf, clearCalibration, forPlatform, messageLength, partsFit, ruler,
@@ -2682,6 +2683,64 @@ async function run() {
             const base = 6 + Math.round(down * 90);
             return base + (((x >> 2) + (y >> 2)) % 2 ? 7 : -7);
           }, grid.cols, grid.rows)).shadows, crushed.shadows);
+  }
+
+  // --- how much raster the encoder is handed -------------------------------
+  {
+    const perDot = (cols, rows, sourceW, sourceH) => {
+      const { w, h } = detailSize(cols, rows, sourceW, sourceH);
+      return (w * h) / (cols * CELL_W * rows * CELL_H);
+    };
+
+    // No more of the picture is asked for than the picture has: an upscale
+    // holds nothing that was not there already.
+    {
+      const { w, h } = detailSize(50, 50, 300, 300);
+      ok('a small picture is taken as it is', w <= 300 && h <= 300, `${w}x${h}`);
+      // Unless the grid is larger than the picture, in which case the dot grid
+      // is the floor -- the encoder has that many dots to fill either way.
+      const stretched = detailSize(200, 200, 300, 300);
+      check('a grid larger than the picture still gets its dots',
+            `${stretched.w}x${stretched.h}`, `${200 * CELL_W}x${200 * CELL_H}`);
+      ok('and never smaller than the dots themselves',
+         detailSize(50, 50, 10, 10).w >= 50 * CELL_W && detailSize(50, 50, 10, 10).h >= 50 * CELL_H,
+         `${detailSize(50, 50, 10, 10).w}x${detailSize(50, 50, 10, 10).h}`);
+    }
+
+    // With a large enough picture behind it, a small grid samples as finely as
+    // it is ever worth sampling.
+    ok('a small grid gets the full sixteen samples a dot',
+       Math.abs(perDot(100, 100, 6000, 6000) - DETAIL_SCALE * DETAIL_SCALE) < 0.01,
+       perDot(100, 100, 6000, 6000).toFixed(2));
+
+    // And the largest grid this app will draw keeps the floor. A flat budget in
+    // pixels is what let this fall to 2.1 samples a dot, which is barely more
+    // than reading the picture straight -- measured at 0.9035 against 0.9094
+    // once the floor puts it back to four.
+    ok('the largest grid still gets four', perDot(400, 400, 6000, 9000) >= 4,
+       perDot(400, 400, 6000, 9000).toFixed(2));
+    ok('and so does a wide one', perDot(400, 200, 6000, 9000) >= 4,
+       perDot(400, 200, 6000, 9000).toFixed(2));
+
+    // The ceiling is what stops the floor from asking for a raster no phone
+    // will hold: twenty megabytes of ImageData at the largest grid.
+    {
+      const { w, h } = detailSize(400, 400, 12000, 12000);
+      ok('and the raster stays inside twenty megabytes', w * h * 4 <= 21_000_000,
+         `${w}x${h}, ${(w * h * 4 / 1048576).toFixed(1)} MB`);
+    }
+
+    // Asking for more of the same picture never asks for less raster.
+    {
+      let backwards = 0;
+      let last = 0;
+      for (const cols of [50, 100, 150, 200, 250, 300, 350, 400]) {
+        const { w, h } = detailSize(cols, cols, 9000, 9000);
+        if (w * h < last) backwards++;
+        last = w * h;
+      }
+      check('a bigger grid never asks for a smaller raster', backwards, 0);
+    }
   }
 
   const failed = log.filter((l) => l.startsWith('FAIL')).length;

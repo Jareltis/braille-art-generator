@@ -106,6 +106,29 @@ decision happen together: every source pixel under a dot is visited, and what
 the dot learns is not only the average but the extremes. Visiting them costs
 nothing extra — the average already had to touch every one.
 
+The raster this samples from is not a fixed size, and the reason is worth
+saying. It used to be capped at two million pixels, and a flat count of pixels
+means a different thing at every grid size: sixteen samples for every dot of a
+hundred-column art, and 1.6 for a four-hundred-column one — barely more than
+reading the picture straight, with nothing left for the statistics this whole
+section is about. So the cap follows the grid instead: **at least four samples
+per dot**, two each way, never more than the source holds and never more than
+twenty megabytes of raster.
+
+Measured on a 4912×7360 photograph at 400×400, against a reference sampled as
+finely as the picture allows: 1.56 samples per dot scored 0.9041 and 4.00 scores
+0.9221. Going further costs more than it returns — 8.3 samples reach 0.9140 and
+the full sixteen 0.9211 on a less extreme grid, for six times the time and sixty
+megabytes.
+
+The floor only binds above half a million dots, which is a grid larger than
+about 250×250 cells; at ordinary proportions four hundred columns come out
+between 130 and 260 rows and nothing changes. Where it does bind it costs: one
+render of that 400×400 art goes from 243 ms to 569 ms, and the variant search,
+which encodes and scores ten recipes on that same raster, from 13.5 seconds to
+30. That is the price of the tile showing exactly what the art will be — the
+search is not allowed a coarser picture than the thing it is choosing for.
+
 Which of them speaks is decided per dot by how much structure is there,
 measured as the gradient response after a light blur. That number separates a
 real feature from noise: on a cell holding a one-pixel line it reads about 66,
