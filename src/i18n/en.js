@@ -179,6 +179,10 @@ export const en = {
 
     'display.group': 'Display',
     'display.fontSize': 'Type size, px',
+    'theme.label': 'Theme',
+    'theme.auto': 'As the system says',
+    'theme.light': 'Light',
+    'theme.dark': 'Dark',
     'display.glyphs': 'Characters',
     'display.glyphs.braille': 'Braille dots',
     'display.glyphs.octants': 'Solid blocks (octants)',

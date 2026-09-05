@@ -178,6 +178,10 @@ export const ru = {
 
     'display.group': 'Отображение',
     'display.fontSize': 'Кегль, px',
+    'theme.label': 'Тема',
+    'theme.auto': 'Как в системе',
+    'theme.light': 'Светлая',
+    'theme.dark': 'Тёмная',
     'display.glyphs': 'Символы',
     'display.glyphs.braille': 'Точки Брайля',
     'display.glyphs.octants': 'Сплошные блоки (октанты)',

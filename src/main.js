@@ -144,6 +144,7 @@ const dom = {
   output: el('output'),
   lattice: el('lattice'),
   evenGrid: el('evenGrid'),
+  theme: el('theme'),
   glyphSet: el('glyphSet'),
   glyphHint: el('glyphHint'),
   status: el('status'),
@@ -420,6 +421,26 @@ async function render() {
   putImageData(dom.resCanvas, pixels);
   dom.gridMeta.textContent = `${cols * CELL_W}×${rows * CELL_H}`;
   updateMeta(artText, { cols, rows });
+}
+
+/**
+ * Light or dark, or whatever the system is saying.
+ *
+ * The attribute goes on the root element rather than on the app, because the
+ * page's own background is painted from there -- set it lower down and the
+ * margins keep the other theme. "As the system says" removes the attribute
+ * instead of setting one, so the media query is back in charge.
+ */
+function applyTheme() {
+  const chosen = dom.theme.value;
+  if (chosen === 'light' || chosen === 'dark') {
+    document.documentElement.dataset.theme = chosen;
+  } else {
+    delete document.documentElement.dataset.theme;
+  }
+  // The art is drawn from the page's own colours, so it has to be redrawn
+  // when they change; the text under it follows on its own.
+  lattice?.redraw();
 }
 
 function applyFontSize() {
@@ -992,7 +1013,7 @@ const PERSISTED_RANGES = [
 ];
 const PERSISTED_FIELDS = [
   'preset', 'platform', 'dither', 'invert', 'edgeMode', 'outWidth', 'outHeight', 'fontSize', 'layout',
-  'sourceKind', 'textInput', 'textFont', 'palette', 'glyphSet',
+  'sourceKind', 'textInput', 'textFont', 'palette', 'glyphSet', 'theme',
 ];
 
 function collectSettings() {
@@ -1108,6 +1129,7 @@ function applySettings(values) {
   if (lattice) lattice.enabled = dom.evenGrid.checked;
 
   setLayout(dom.layout.value);
+  applyTheme();
   dom.presetHint.textContent = hintFor(dom.preset.value);
 }
 
@@ -1141,6 +1163,7 @@ function resetEverything() {
   dom.colourPattern.disabled = true;
   dom.transparent.checked = false;
   describeDecisions();
+  applyTheme();
   smoothScaling = true;
   dom.presetHint.textContent = '';
   setLayout(LAYOUTS[0]);
@@ -2245,6 +2268,10 @@ function init() {
     changed({ affectsPreview: false });
   });
   dom.invert.addEventListener('change', () => changed());
+  dom.theme.addEventListener('change', () => {
+    applyTheme();
+    persist();
+  });
   dom.fontSize.addEventListener('input', () => {
     applyFontSize();
     syncRows();
@@ -2370,6 +2397,7 @@ function init() {
   });
 
   applyFontSize();
+  applyTheme();
   syncGlyphs();
   syncEdgeControls();
   syncPlatform();

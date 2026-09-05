@@ -2078,6 +2078,66 @@ async function run() {
        $('worksList').textContent.slice(0, 40));
   }
 
+  {
+    mark('the page can be light');
+    // --- the page can be light -----------------------------------------------
+    // It was dark whatever the system said, which is a poor answer for anyone
+    // whose system says otherwise -- and for eyes that read light on dark
+    // badly. What matters beyond the panel is that the art follows: the dots
+    // are drawn in the page's own ink, so a light page has to mean dark dots.
+    const root = frame.contentDocument.documentElement;
+    const paint = (sel, prop) => win.getComputedStyle(frame.contentDocument.querySelector(sel))[prop];
+    const brightness = (colour) => {
+      const [r, g, b] = colour.match(/\d+/g).map(Number);
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    };
+
+    check('it starts on whatever the system says', root.dataset.theme, undefined);
+    // Read off the body rather than the art: while the dots are drawn the art's
+    // own text is deliberately transparent, and transparent reads as black.
+    const darkPane = brightness(paint('body', 'backgroundColor'));
+    const darkInk = brightness(paint('body', 'color'));
+    ok('and here that is dark: pale text on a dark page', darkInk > darkPane,
+       `text ${Math.round(darkInk)}, page ${Math.round(darkPane)}`);
+
+    $('theme').value = 'light';
+    $('theme').dispatchEvent(new Event('change', { bubbles: true }));
+    await wait(300);
+    check('choosing light says so on the root element', root.dataset.theme, 'light');
+    const lightPane = brightness(paint('body', 'backgroundColor'));
+    const lightInk = brightness(paint('body', 'color'));
+    ok('the page turns to paper', lightPane > darkPane + 100, `${Math.round(darkPane)} to ${Math.round(lightPane)}`);
+    ok('and the text turns dark with it', lightInk < lightPane,
+       `text ${Math.round(lightInk)}, page ${Math.round(lightPane)}`);
+    ok('and the art pane is paper too',
+       brightness(paint('.shot-art', 'backgroundColor')) > 200,
+       paint('.shot-art', 'backgroundColor'));
+
+    // The drawn copy is painted from those same colours, so it has to have been
+    // redrawn: dark dots on a light ground, not the other way round.
+    const drawn = $('lattice');
+    if (!drawn.hidden && drawn.width > 0) {
+      const face = drawn.getContext('2d', { willReadFrequently: true });
+      const strip = face.getImageData(0, 0, drawn.width, Math.min(30, drawn.height)).data;
+      let dark = 0;
+      let lit = 0;
+      for (let i = 0; i < strip.length; i += 4) {
+        if (strip[i + 3] < 40) continue;
+        if (brightness(`rgb(${strip[i]}, ${strip[i + 1]}, ${strip[i + 2]})`) < 128) dark++;
+        else lit++;
+      }
+      ok('and the drawn dots are dark now', dark > lit, `${dark} dark against ${lit} pale`);
+    }
+
+    ok('the choice travels in the link', await until(() => /(^|[#&])th=light([&]|$)/.test(win.location.hash), 3000),
+       win.location.hash);
+
+    $('theme').value = 'auto';
+    $('theme').dispatchEvent(new Event('change', { bubbles: true }));
+    await wait(200);
+    check('and going back to the system removes the mark', root.dataset.theme, undefined);
+  }
+
   const failed = log.filter((l) => l.startsWith('FAIL')).length;
   out(`${log.join('\n')}\n${failed ? `\n${failed} FAILED` : '\nAll e2e checks passed.'}`);
 }

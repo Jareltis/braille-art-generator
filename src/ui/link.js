@@ -22,6 +22,7 @@ const KEYS = Object.freeze({
   outHeight: 'h',
   fontSize: 'fs',
   glyphSet: 'gs',
+  theme: 'th',
   threshold: 't',
   detail: 'dt',
   brightness: 'b',

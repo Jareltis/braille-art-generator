@@ -23,10 +23,61 @@
       --muted: #a7e9c9;
       --ink: #e6fff3;
       --art-bg: #00120a;
+      /* The well a preview sits in: darker than the panel in the dark theme,
+         lighter than the page in the light one. Fixed black at a third was
+         a grey slab on a white page. */
+      --sunk: rgba(0, 0, 0, 0.32);
       --warn: #fbbf24;
       --error: #fca5a5;
       --strip-h: 132px;
       color-scheme: dark;
+    }
+
+    /* The same page in daylight.
+     *
+     * Written out twice rather than once through a class, because a class is
+     * set by script and script arrives late: the page would show its dark self
+     * for a frame first. The values are the dark ones read the other way round
+     * -- paper rather than ink -- and the accent goes darker, since the green
+     * that carries white text does not carry black on white.
+     *
+     * The art follows without being told: the dots are drawn in --ink and the
+     * exports read the same properties off the page, so dark ink on white paper
+     * is what gets copied as a picture too. */
+    :root[data-theme="light"] {
+      --bg: #eef6f0;
+      --bg-far: #dfeee4;
+      --panel: rgba(4, 36, 15, 0.04);
+      --line: rgba(4, 36, 15, 0.14);
+      --line-strong: rgba(4, 36, 15, 0.28);
+      --accent: #0f7a3d;
+      --accent-ink: #ffffff;
+      --muted: #2f5d45;
+      --ink: #05210f;
+      --art-bg: #ffffff;
+      --sunk: rgba(4, 36, 15, 0.07);
+      --warn: #8a5a00;
+      --error: #a3231f;
+      color-scheme: light;
+    }
+
+    @media (prefers-color-scheme: light) {
+      :root:not([data-theme="dark"]) {
+        --bg: #eef6f0;
+        --bg-far: #dfeee4;
+        --panel: rgba(4, 36, 15, 0.04);
+        --line: rgba(4, 36, 15, 0.14);
+        --line-strong: rgba(4, 36, 15, 0.28);
+        --accent: #0f7a3d;
+        --accent-ink: #ffffff;
+        --muted: #2f5d45;
+        --ink: #05210f;
+        --art-bg: #ffffff;
+        --sunk: rgba(4, 36, 15, 0.07);
+        --warn: #8a5a00;
+        --error: #a3231f;
+        color-scheme: light;
+      }
     }
 
     *, *::before, *::after { box-sizing: border-box; }
@@ -86,7 +137,7 @@
     #status[data-kind="error"] { color: var(--error); }
 
     /* segmented mode switch */
-    .modes { display: flex; padding: 3px; background: rgba(0,0,0,0.28); border: 1px solid var(--line); border-radius: 9px; }
+    .modes { display: flex; padding: 3px; background: var(--sunk); border: 1px solid var(--line); border-radius: 9px; }
     .modes button {
       padding: 5px 13px; color: var(--muted); background: none; border: 0; border-radius: 6px;
       font: inherit; font-size: 0.8125rem; cursor: pointer;
@@ -124,12 +175,12 @@
     /* the source occupies the first pane, so drawing and framing have room */
     .canvas-wrap > video,
     .canvas-wrap > canvas { grid-area: 1 / 1; }
-    #camera { width: 100%; height: 100%; min-height: 0; object-fit: contain; background: rgba(0,0,0,0.32); border-radius: 6px; }
+    #camera { width: 100%; height: 100%; min-height: 0; object-fit: contain; background: var(--sunk); border-radius: 6px; }
     #drawCanvas { cursor: crosshair; touch-action: none; }
 
     textarea {
       width: 100%; min-height: 74px; padding: 8px 9px; resize: vertical;
-      color: inherit; background: rgba(0, 0, 0, 0.26);
+      color: inherit; background: var(--sunk);
       border: 1px solid var(--line); border-radius: 8px;
       font: inherit; font-size: 0.9375rem; line-height: 1.35;
     }
@@ -141,7 +192,7 @@
 
     input[type="file"], input[type="number"], select {
       width: 100%; padding: 7px 9px;
-      color: inherit; background: rgba(0, 0, 0, 0.26);
+      color: inherit; background: var(--sunk);
       border: 1px solid var(--line); border-radius: 8px;
       font: inherit; font-size: 0.875rem;
     }
@@ -202,7 +253,7 @@
     }
     .decided dt { color: var(--muted); }
     .decided dd { margin: 0; color: var(--ink); }
-    .panel-inset { margin-top: 10px; padding: 11px; background: rgba(0,0,0,0.24); border: 1px solid var(--line); border-radius: 8px; }
+    .panel-inset { margin-top: 10px; padding: 11px; background: var(--sunk); border: 1px solid var(--line); border-radius: 8px; }
     .ruler {
       margin: 8px 0; padding: 8px; overflow-x: auto; white-space: pre;
       background: var(--art-bg); border-radius: 6px;
@@ -285,7 +336,7 @@
     .shot canvas {
       width: 100%; height: 100%; min-height: 0;
       object-fit: contain;
-      background: rgba(0, 0, 0, 0.32);
+      background: var(--sunk);
       border-radius: 6px;
     }
     .canvas-wrap { position: relative; min-width: 0; min-height: 0; display: grid; }
@@ -899,6 +950,15 @@
 
         <div data-advanced>
           <p class="group-title" data-i18n="display.group"></p>
+
+          <div class="field">
+            <label for="theme" data-i18n="theme.label"></label>
+            <select id="theme">
+              <option value="auto" data-i18n="theme.auto" selected></option>
+              <option value="light" data-i18n="theme.light"></option>
+              <option value="dark" data-i18n="theme.dark"></option>
+            </select>
+          </div>
 
           <div class="field">
             <label for="layout" data-i18n="layout.label"></label>

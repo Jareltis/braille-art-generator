@@ -510,6 +510,26 @@ the same row, where the eye already is. The header keeps what is used before the
 art exists: the mode, and the language. **Layout** went into the display group —
 it is set once, and on a phone it does nothing at all.
 
+### Light and dark
+
+The page was dark whatever the system said, which is a poor answer for anyone
+whose system says otherwise, and for eyes that read light-on-dark badly. It now
+follows `prefers-color-scheme`, with **Theme** offering the two explicitly for
+anyone who wants the other one.
+
+The palette was already a set of custom properties, so the light theme is those
+properties read the other way round — paper rather than ink — with the accent
+taken darker, since the green that carries white text does not carry black on
+white. The two sets are written out twice rather than switched by a class,
+because a class is set by script and script arrives late: the page would show
+its dark self for a frame first.
+
+The art follows without being told. The dots are drawn in `--ink` and the
+exports read the same properties off the page, so a light page means dark dots —
+in the pane, in the PNG, and in what gets copied as a picture. Three fixed dark
+fills had to become a property first: the well a preview sits in was a third of
+black, which on a white page is a grey slab.
+
 ### On every screen
 
 Measured across twelve sizes rather than assumed: a folded phone at 320×568, a
