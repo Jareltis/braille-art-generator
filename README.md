@@ -550,7 +550,14 @@ announced once in the status line and then gone.
 as a log: the kind of picture and whether it was found or chosen, the threshold
 and whether Otsu picked it or a hand did, the chain from source pixels through
 the detail raster to the grid, whether redraws are following the controls and
-what the last one cost, and what cleaning is doing. Anything the app did not
+what the last one cost, what cleaning is doing, and **what copying it as text
+will carry**. That last one is there because it is easy to get wrong in a way
+the picture on screen hides: colour never survives a paste, which is harmless
+for the ordinary art — the dots carry it alone — and fatal for the mosaic, whose
+dots say which of two colours a spot belongs to rather than how bright it is. As
+plain text a mosaic is grey mush. The blocks travel, but only as far as the
+reader has a font for them. Copying and saving as text say the same thing at the
+moment it matters, rather than only in the panel. Anything the app did not
 decide for itself says so plainly rather than being left out — a missing line
 reads as a fault.
 

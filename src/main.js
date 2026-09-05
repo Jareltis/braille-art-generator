@@ -1459,17 +1459,25 @@ async function fitToLimit() {
  */
 let nextPart = 0;
 
+/** What to add to "copied", where the text will not carry what is on screen. */
+function copyCaveat() {
+  if (dom.colour.checked && dom.cellGround.checked && dom.colourPattern.checked) {
+    return t('status.copiedMosaic');
+  }
+  if (glyphSet() === 'octants') return t('status.copiedBlocks');
+  return '';
+}
+
 async function copyArt() {
   const platform = dom.platform.value;
   const parts = splitForPlatform(written(), platform);
 
   if (parts.length === 1) {
     await copyText(forPlatform(written(), platform));
+    const caveat = copyCaveat();
     setStatus(
-      PLATFORMS[platform].codeBlock
-        ? t('status.copiedFenced')
-        : t('status.copied'),
-      'ok',
+      (PLATFORMS[platform].codeBlock ? t('status.copiedFenced') : t('status.copied')) + caveat,
+      caveat ? 'warn' : 'ok',
     );
     return;
   }
@@ -1483,8 +1491,9 @@ async function copyArt() {
   setStatus(
     t('status.part', { index: index + 1, total: parts.length })
     + (nextPart < parts.length ? t('status.partNext') : t('status.partLast'))
-    + (oversized ? t('status.partOversized') : ''),
-    oversized ? 'warn' : 'ok',
+    + (oversized ? t('status.partOversized') : '')
+    + copyCaveat(),
+    oversized || copyCaveat() ? 'warn' : 'ok',
   );
 }
 
@@ -1540,6 +1549,25 @@ const COLOUR_CELL_LIMIT = 40000;
 let artColours = null;
 let artGround = null;
 let artCols = 0;
+/**
+ * What survives being pasted somewhere as plain text.
+ *
+ * Colour never does -- not the cell's ink, not its ground -- which is fine for
+ * the ordinary art, where the dots carry the picture on their own. It is not
+ * fine for the mosaic, where the dots say which of two colours a spot belongs
+ * to rather than how bright it is: measured, its coverage varies between cells
+ * by 0.18 against 0.28 for the usual art, and on a plain ramp not at all. The
+ * blocks travel, but only as far as the reader's font.
+ */
+function travelsAsText() {
+  if (dom.colour.checked && dom.cellGround.checked && dom.colourPattern.checked) {
+    return t('decided.travelsMosaic');
+  }
+  if (glyphSet() === 'octants') return t('decided.travelsBlocks');
+  if (dom.colour.checked) return t('decided.travelsTint');
+  return t('decided.travelsPlain');
+}
+
 /** Braille, or the blocks -- the art itself is braille either way. */
 const glyphSet = () => (dom.glyphSet.value === 'octants' ? 'octants' : 'braille');
 
@@ -1624,6 +1652,12 @@ function describeDecisions() {
     : t('decided.redrawNone'));
 
   add('decided.version', APP_VERSION);
+
+  // What copying as text will and will not carry. The panel is where the app
+  // says what state it is in, and this is a state worth saying out loud: the
+  // mosaic is a picture rather than a text, and the blocks need a font at the
+  // other end. Both are easy to copy into a chat and be disappointed by.
+  add('decided.travels', travelsAsText());
 
   const cleaning = Math.round(controls.edgeClean.value);
   add('decided.cleanup', dom.edgeMode.value === 'none'
@@ -2018,7 +2052,11 @@ function init() {
   });
 
   dom.downloadTxt.addEventListener('click', () => {
-    if (requireArt()) downloadText(written(), 'braille.txt');
+    if (!requireArt()) return;
+    downloadText(written(), 'braille.txt');
+    // A file of text carries no more colour than a paste does.
+    const caveat = copyCaveat();
+    if (caveat) setStatus(t('status.savedText') + caveat, 'warn');
   });
 
   dom.copyImage.addEventListener('click', async () => {

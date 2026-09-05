@@ -1483,6 +1483,14 @@ async function run() {
            painted > strip.length / 8, `${painted} opaque of ${strip.length / 4}`);
       }
 
+      // The panel says what a mode means for copying, because the mosaic is
+      // easy to copy into a chat and be disappointed by.
+      const rows = () => [...frame.contentDocument.querySelectorAll('.decided dt')]
+        .map((dt, i) => `${dt.textContent}: ${frame.contentDocument.querySelectorAll('.decided dd')[i]?.textContent ?? ''}`);
+      const travels = () => rows().find((row) => row.startsWith('Копирование текстом')) ?? '';
+      ok('with colour on, the panel says the colour will not travel',
+         /цвет — нет/.test(travels()), travels());
+
       // And the mode where colour picks the dots as well, which needs both.
       check('choosing dots by colour waits for both', $('colourPattern').disabled, false);
       const byTone = await stable(() => $('output').textContent);
@@ -1494,6 +1502,14 @@ async function run() {
       ok('and it travels in the link as well',
          await until(() => /(^|[#&])cp=1([&]|$)/.test(frame.contentWindow.location.hash), 3000),
          frame.contentWindow.location.hash);
+      ok('and the panel now says the mosaic needs a picture',
+         await until(() => /копируйте её картинкой/.test(travels()), 3000), travels());
+
+      // Copying says the same thing at the moment it matters.
+      $('copy').click();
+      ok('and so does the status when it is copied',
+         await until(() => /картинкой было бы видно|не дал странице|не умеет/.test($('status').textContent), 6000),
+         $('status').textContent);
       $('colourPattern').checked = false;
       $('colourPattern').dispatchEvent(new Event('change', { bubbles: true }));
       await stable(() => $('output').textContent);
