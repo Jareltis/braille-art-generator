@@ -488,6 +488,28 @@ One thing this cannot fix, and it is worth saying plainly: art pasted into a
 shared chat reaches anyone reading that chat on a braille display as noise. If
 the room is not yours, a line of description alongside it is a kindness.
 
+### Where the buttons are
+
+Everything you can do with a finished art used to live in the settings column,
+in one flat row of thirteen buttons between "measure your own chat" and the
+edge controls. Two things were wrong with that. The buttons were nowhere near
+the thing they act on — on a 390×844 phone, **Copy** sat about 1700px down, two
+screens past the art — and they all looked equally important, so the row had to
+be read from the start every time.
+
+They now sit under the art, in three groups in the order they are reached for:
+what to do with it (copy, copy as a picture, share, link), what to do to it
+(suggest, recalculate, back, forward, edit dots), and what to save. The saves
+are chips rather than buttons, because a file is a smaller act than a copy. On
+the same phone **Copy** is now around 690px down — on the first screen, with the
+art above it.
+
+The status line moved with them. It used to answer from the top-left corner of
+the page while the button was at the bottom of the middle column; now it sits in
+the same row, where the eye already is. The header keeps what is used before the
+art exists: the mode, and the language. **Layout** went into the display group —
+it is set once, and on a phone it does nothing at all.
+
 ### On a small screen
 
 Below 900px the page stops trying to hold four panes at once and scrolls. That

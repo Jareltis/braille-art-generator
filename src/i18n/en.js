@@ -290,6 +290,7 @@ export const en = {
     'inspect.label': 'Enlarged view',
 
     'action.link': 'Link',
+    'action.save': 'Save',
     'status.linkCopied': 'Link copied: it opens the generator with these same settings.',
     'status.linkNoText': 'Link copied. The lettering was too long to fit in it.',
     'status.linkApplied': 'Settings taken from the link.',

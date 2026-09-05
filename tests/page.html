@@ -732,6 +732,20 @@ async function run() {
        box('.shot-art').width > sources[0].getBoundingClientRect().width * 2,
        `${Math.round(box('.shot-art').width)}px against ${Math.round(sources[0].getBoundingClientRect().width)}px`);
 
+    // And what you do with the art is next to the art rather than halfway down
+    // the settings. It used to live in the panel, which on this screen put the
+    // first thing anyone wants -- copying -- about 1700px down.
+    ok('the action bar belongs to the art, not to the panel',
+       doc.querySelector('.stage .actions') !== null && doc.querySelector('.sidebar .actions') === null);
+    ok('copying is on the first screen', box('#copy').bottom < frame.contentWindow.innerHeight,
+       `copy ends at ${Math.round(box('#copy').bottom)}px of ${frame.contentWindow.innerHeight}px`);
+    ok('and it comes after the art rather than before it',
+       box('#copy').top > box('.shot-art').top,
+       `copy at ${Math.round(box('#copy').top)}px, art at ${Math.round(box('.shot-art').top)}px`);
+    ok('the answer to pressing it is next to it',
+       Math.abs(box('#status').top - box('#copy').bottom) < 200,
+       `status at ${Math.round(box('#status').top)}px, button ends at ${Math.round(box('#copy').bottom)}px`);
+
     // Wide enough for two columns of controls, narrow enough to still be one
     // stack: a landscape phone should not stretch every field across 844px.
     await resize(844, 390);
