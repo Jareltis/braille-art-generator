@@ -1247,7 +1247,17 @@ async function run() {
       ok('a frame is captured', await until(() => /Снят кадр/.test($('status').textContent)),
          $('status').textContent);
       ok('the frame becomes the source', /^\d+×\d+$/.test($('srcMeta').textContent), $('srcMeta').textContent);
-      ok('and it encodes to something', await until(() => inkCount() > 0), `${inkCount()} inked cells`);
+      // Shape, not ink. The synthetic camera cycles through flat colours, and a
+      // flat frame encodes to a legitimately blank grid -- demanding dots from
+      // whatever moment the capture landed on made this fail about once in
+      // three runs for no fault of the app.
+      const grid = () => {
+        const rows = $('output').textContent.split(NL).filter((line) => line.length);
+        return { rows: rows.length, cols: rows[0]?.length ?? 0 };
+      };
+      ok('and it encodes to a full grid',
+         await until(() => grid().rows > 1 && grid().cols === Number($('outWidth').value)),
+         `${grid().cols}×${grid().rows} cells, ${inkCount()} of them inked`);
     }
 
     // Leaving the camera has to release it, or the light stays on.

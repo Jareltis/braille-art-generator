@@ -1,12 +1,23 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Offline support.
 //
-// The app is entirely static and has no backend, so there is nothing to keep
-// fresh at runtime: the whole shell is precached and served from the cache.
-// Updates arrive by changing VERSION, which makes a new cache and drops the
-// old one on activation.
+// The app is entirely static and has no backend, so the whole shell is
+// precached and answered from the cache: that is what makes it work offline and
+// what makes it open instantly.
+//
+// It used to stop there, and that was a mistake with a twenty-release tail. The
+// cache is keyed by VERSION, and a browser only reinstalls a worker whose file
+// has changed, so a release that touched no module -- five of the last seven --
+// left both the worker and the cache untouched, and anyone who had the app
+// installed went on being served the shell they first cached. Nothing said so.
+//
+// So there are two defences now, because either alone has a hole in it. VERSION
+// tracks the app and is checked against src/version.js by the test suite, so a
+// forgotten bump fails the build rather than the user. And a cached answer is
+// refreshed in the background after it is served, so even a worker that never
+// changes cannot serve last month's app twice.
 
-const VERSION = 'v0.6.0';
+const VERSION = 'v0.27.0';
 const CACHE = `braille-art-${VERSION}`;
 
 const ASSETS = [
@@ -16,6 +27,7 @@ const ASSETS = [
   './icon-192.png',
   './icon-512.png',
   './src/main.js',
+  './src/version.js',
   './src/core/adjust.js',
   './src/core/blur.js',
   './src/core/colour.js',
@@ -68,6 +80,29 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+/**
+ * Answer from the cache, then quietly replace what was answered.
+ *
+ * The page still gets the cached copy immediately, so opening offline and
+ * opening instantly both survive. What changes is that the copy is not kept
+ * forever: a fresh one is fetched afterwards and stored for next time.
+ *
+ * A whole page load is served from whatever the cache held when it began, so
+ * the modules on any single load are a matching set; the new ones take effect
+ * on the following visit.
+ */
+function refresh(request, cache) {
+  return fetch(request)
+    .then((response) => {
+      // Only a real, complete, same-origin answer is worth keeping. An error
+      // page or an opaque cross-origin response would poison the shell.
+      if (response.ok && response.type === 'basic') cache.put(request, response.clone());
+      return response;
+    })
+    // Offline is the ordinary case here, not a failure worth reporting.
+    .catch(() => null);
+}
+
 self.addEventListener('fetch', (event) => {
   const { request } = event;
 
@@ -77,6 +112,14 @@ self.addEventListener('fetch', (event) => {
   if (new URL(request.url).origin !== self.location.origin) return;
 
   event.respondWith(
-    caches.match(request).then((cached) => cached ?? fetch(request)),
+    caches.open(CACHE).then(async (cache) => {
+      const cached = await cache.match(request);
+      if (cached) {
+        // Not awaited: the point is that the page does not wait for it.
+        event.waitUntil(refresh(request, cache));
+        return cached;
+      }
+      return (await refresh(request, cache)) ?? fetch(request);
+    }),
   );
 });

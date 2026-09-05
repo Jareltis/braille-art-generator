@@ -51,6 +51,7 @@ import {
   saveCalibration, splitForPlatform,
 } from '../src/ui/platforms.js';
 import { createPipeline } from '../src/ui/pipeline.js';
+import { APP_VERSION } from '../src/version.js';
 import { LIVE_BUDGET_MS, LIVE_RESUME_MS, keepsUp } from '../src/ui/pace.js';
 
 const out = (t) => {
@@ -1048,6 +1049,20 @@ async function run() {
      manifest.icons.some((icon) => icon.purpose === 'maskable'));
 
   const swSource = await (await fetch('/sw.js')).text();
+
+  // The offline cache is keyed by a version written into sw.js by hand, and a
+  // browser only reinstalls a worker whose file has changed. So a release that
+  // forgets this string leaves every installed copy serving the shell it first
+  // cached -- which is exactly what happened, for twenty releases, silently.
+  const swVersion = /const VERSION = '([^']+)'/.exec(swSource)?.[1];
+  check('the worker names a version', typeof swVersion, 'string');
+  check('and it is the version of the app', swVersion, `v${APP_VERSION}`);
+
+  // Serving from the cache and never looking again is how the above went
+  // unnoticed for so long. A cached answer has to be replaced behind it.
+  ok('a cached answer is refreshed behind the page',
+     swSource.includes('cache.put(') && swSource.includes('event.waitUntil('),
+     'the fetch handler writes back what it re-fetches');
   const listed = [...swSource.matchAll(/'(\.\/[^']*)'/g)].map((m) => m[1].replace('./', '/'));
   ok('the service worker precaches the whole shell', listed.length > 15, `${listed.length} entries`);
 

@@ -182,6 +182,7 @@ export const en = {
     'decided.redrawButton': 'waiting for the button, last one {#ms} ms',
     'decided.redrawNone': 'nothing drawn yet',
     'decided.cleanup': 'Line clean-up',
+    'decided.version': 'Version',
     'decided.cleanupOn': 'on at {value}, by direction then by strength',
     'decided.cleanupOff': 'off',
     'decided.cleanupNoEdges': 'no detector chosen',

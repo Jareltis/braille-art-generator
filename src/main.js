@@ -11,6 +11,7 @@ import { paletteFor, snap } from './core/palette.js';
 import { DEFAULT_DITHER } from './core/dither.js';
 import { CONTENT_PRESETS } from './core/presets.js';
 import { classifyImage } from './core/classify.js';
+import { APP_VERSION } from './version.js';
 import { DRAWS_PER_FAMILY, VARIANT_FAMILIES } from './core/variants.js';
 import { fitWithin } from './core/pixels.js';
 import { createCanvas, drawScaled, putImageData, readImageData } from './ui/canvas.js';
@@ -1446,6 +1447,8 @@ function describeDecisions() {
   add('decided.redraw', lastRender
     ? t(following ? 'decided.redrawLive' : 'decided.redrawButton', { ms: Math.round(lastRender.ms) })
     : t('decided.redrawNone'));
+
+  add('decided.version', APP_VERSION);
 
   const cleaning = Math.round(controls.edgeClean.value);
   add('decided.cleanup', dom.edgeMode.value === 'none'

@@ -278,6 +278,28 @@ across the whole screen.
 None of this is a second interface: it is the same markup with a different
 order, which is the same rule the Simple and Advanced modes follow.
 
+### Offline, and actually up to date
+
+The app is static and has no backend, so the whole shell is precached and served
+from the cache: that is what makes it work offline and open instantly.
+
+Stopping there was a mistake with a long tail. The cache is keyed by a version
+written into the service worker by hand, and a browser only reinstalls a worker
+whose file has changed — so a release that touched no module left both the
+worker and the cache alone, and anyone with the app installed went on being
+served the shell they first cached. That string was written once and never
+changed again: twenty releases, five of the last seven touching nothing the
+worker would notice. Nothing anywhere said so.
+
+There are two defences now, because either alone has a hole. The version lives
+in `src/version.js`, is shown in *What was worked out*, and the test suite fails
+if the worker disagrees with it — a forgotten bump breaks the build rather than
+the user. And a cached answer is now refreshed in the background after it is
+served, so even a worker that never changes cannot serve last month's app twice.
+A whole page load still comes from whatever the cache held when it began, so the
+modules on any single load are a matching set; new ones take effect on the next
+visit.
+
 ### Saying what was worked out
 
 A good deal is now decided for the person holding the picture: the kind of image

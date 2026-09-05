@@ -181,6 +181,7 @@ export const ru = {
     'decided.redrawButton': 'ждёт кнопки, последний {#ms} мс',
     'decided.redrawNone': 'пока ничего не считалось',
     'decided.cleanup': 'Чистка линий',
+    'decided.version': 'Версия',
     'decided.cleanupOn': 'включена на {value}: сперва по направлению, затем по силе',
     'decided.cleanupOff': 'выключена',
     'decided.cleanupNoEdges': 'детектор не выбран',
