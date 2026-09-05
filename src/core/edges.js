@@ -216,10 +216,13 @@ export function lineMap(plane, width, height, {
   // Then, given what survived that, is it strong or at least joined to
   // something strong. Weighting first means the seeds are chosen from ink that
   // has already been judged, rather than from whatever happened to be brightest.
-  // The gate has to look where the detector looked. A boundary that only
-  // colour can see has next to no brightness gradient, so a tensor built from
-  // brightness alone would find no direction there and the cleaning would throw
-  // away precisely the ink the colour axes just won.
+  // The gate has to look where the detector looked -- not because a colour join
+  // has no direction in brightness (a straight one has: measured, coherence
+  // 1.000 either way at a lightness step of 0.007), but because a colour stroke
+  // lying on brightness speckle would otherwise be judged by the speckle. There
+  // the brightness tensor answers 0.004 and all three answer 0.376, and the
+  // cleaning keeps the same stroke while taking a fifth more of the noise with
+  // it. On the six test pictures it moves 0.8% to 5.5% of the ink.
   const directed = weighByCoherence(
     found, coherenceMap(plane, width, height, COHERENCE_RADIUS, softened), amount,
   );

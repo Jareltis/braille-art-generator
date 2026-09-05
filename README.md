@@ -353,11 +353,16 @@ noise — 2.0 to 2.6 times against 1.6 to 2.5. Four is the middle that holds: at
 eight the photographs settle further but the equiluminant join answers 40 out of
 255 instead of 146, and at two both detectors are noisier than at four.
 
-The coherence gate had to learn the same lesson: a tensor built from brightness
-alone finds no direction where only colour changes, and the cleaning would have
-thrown away exactly the ink the colour axes had just won. With colour in play
-the tensor sums its products across all three channels — Di Zenzo's form — so
-the gate looks where the detector looked.
+The coherence gate reads the same channels, for a narrower reason than it first
+appeared. A straight colour join is perfectly directional in brightness too — at
+a lightness step of 0.007 the gate still answers 1.000 — so nothing was being
+thrown away there. What the brightness-only tensor cannot judge is a colour
+stroke lying on brightness speckle: it answers 0.004 to the stroke, being
+surrounded by noise pointing every way, where all three channels together answer
+0.376. With colour in play the tensor sums its products across the three
+channels — Di Zenzo's form, at no extra blurs — and the cleaning then keeps the
+same stroke while taking a fifth more of the speckle with it. On the six test
+pictures it moves 0.8% to 5.5% of the ink.
 
 On the equiluminant join above this takes the answer from 7 to 146 out of 255,
 and the art from no ink to a line. On a picture with no colour in it, the axes

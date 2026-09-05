@@ -1894,6 +1894,14 @@ async function run() {
     ok('and with colour it is a line', seeing > 100 && seeing > blind * 5,
        `${blind.toFixed(1)} against ${seeing.toFixed(1)}`);
 
+    // It also has to come through the cleaning, which it does here -- a straight
+    // join is perfectly directional even at a lightness step of 1, so the gate
+    // is happy with it either way.
+    const gated = overJoin(lineMap(light, wide, tall, {
+      ...settings, clean: 0.9, chroma: toChroma(split),
+    }));
+    ok('and it comes through the clean-up', gated > 100, gated.toFixed(1));
+
     // The colour axes of a grey picture are zero, so asking for them there has
     // to change nothing at all -- the option is free where it is useless.
     const grey = new ImageData(wide, tall);
@@ -1920,6 +1928,77 @@ async function run() {
     const with_ = encode(split, { threshold: 128, method: 'threshold', edge: { ...edge, colour: true } });
     ok('and the option carries it into the art', inked(with_.text) > inked(without.text),
        `${inked(without.text)} cells against ${inked(with_.text)}`);
+  }
+
+
+  // --- and the gate has to read what the detector read ---------------------
+  // Where a colour stroke lies on brightness speckle, a tensor built from
+  // brightness alone judges the stroke by noise that has nothing to do with it.
+  // Measured here: the same stroke, the same detector, and the only difference
+  // is which channels the gate looks at.
+  {
+    const wide = 220;
+    const tall = 120;
+    const shot = new ImageData(wide, tall);
+    let seed = 12345;
+    const random = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+    for (let y = 0; y < tall; y++) {
+      for (let x = 0; x < wide; x++) {
+        const i = (y * wide + x) * 4;
+        const grey = 110 + Math.round((random() - 0.5) * 70);
+        shot.data[i] = shot.data[i + 1] = shot.data[i + 2] = grey;
+        shot.data[i + 3] = 255;
+      }
+    }
+    // A bar of colour at the mean brightness of the speckle it sits on.
+    for (let y = 0; y < tall; y++) {
+      for (let x = 100; x < 120; x++) {
+        const i = (y * wide + x) * 4;
+        shot.data[i] = 20;
+        shot.data[i + 1] = 120;
+        shot.data[i + 2] = 37;
+      }
+    }
+
+    const light = toLightness(shot);
+    const chroma = toChroma(shot);
+    const soft = [chroma.a, chroma.b].map((axis) => gaussianBlur(axis, wide, tall, 4));
+
+    const fromLight = coherenceMap(light, wide, tall);
+    const fromAll = coherenceMap(light, wide, tall, 4, soft);
+    const at = 60 * wide + 100;
+    ok('brightness alone finds no direction at the stroke', fromLight[at] < 0.05, fromLight[at].toFixed(3));
+    ok('and the three channels together do', fromAll[at] > 8 * fromLight[at],
+       `${fromLight[at].toFixed(3)} against ${fromAll[at].toFixed(3)}`);
+
+    // What that is worth: the cleaning keeps the stroke either way, because the
+    // thresholds are percentiles and dimming everything moves nothing. What it
+    // buys is the speckle it takes with it.
+    const found = xdog(light, wide, tall, 1);
+    for (const plane of soft) {
+      const also = xdog(plane, wide, tall, 1);
+      for (let i = 0; i < found.length; i++) if (also[i] > found[i]) found[i] = also[i];
+    }
+    const cleaned = (gate) => {
+      const directed = weighByCoherence(found, gate, 0.9);
+      const { high, low } = cleanThresholds(directed, 0.9);
+      const kept = hysteresis(directed, wide, tall, high, low);
+      let ink = 0;
+      let onStroke = 0;
+      for (let i = 0; i < kept.length; i++) {
+        if (!(kept[i] > 0)) continue;
+        ink++;
+        const x = i % wide;
+        if (x >= 94 && x <= 106) onStroke = Math.max(onStroke, found[i]);
+      }
+      return { ink, onStroke };
+    };
+    const byLight = cleaned(fromLight);
+    const byAll = cleaned(fromAll);
+    ok('the stroke survives either way', byLight.onStroke > 200 && byAll.onStroke > 200,
+       `${byLight.onStroke.toFixed(0)} and ${byAll.onStroke.toFixed(0)}`);
+    ok('and reading colour takes more of the speckle with it', byAll.ink < byLight.ink * 0.9,
+       `${byLight.ink} against ${byAll.ink}`);
   }
 
   const failed = log.filter((l) => l.startsWith('FAIL')).length;
