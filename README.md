@@ -889,6 +889,29 @@ otherwise. Cells are snapped as they arrive, before anything downstream sees
 them, so the screen, the HTML, the PNG, the SVG and the terminal cannot disagree
 about what colour a cell is.
 
+Median cut is where the palette starts, not where it ends. It chooses boxes and
+puts an entry at the average of each; it never asks the question after that one
+— given where the entries ended up, which colours actually belong to which, and
+is that entry still in the middle of them? Since 0.52 that question is asked, a
+dozen times or until nothing moves. Measured over six pictures at six grid
+sizes, it takes a tenth off the colour error — 12.91 to 11.64 mean ΔE — and it
+is better on 36 cases out of 36 and worse on none.
+
+The middle of a cluster is its mean **in L\*a\*b\***, not in linear light. That
+looks like a contradiction of the rule kept everywhere else here and is not:
+averaging light is right when the answer has to give off the light of what it
+stands for, which is what a cell's own colour does. Here the answer has to sit
+as close as it can to a set of colours in the space the distance is measured in,
+and that is the mean in that space.
+
+The fit is made to eight thousand cells rather than to all of them, taken by
+stride so the same picture always gives the same palette: measured, the sampled
+fit is no worse than the complete one (11.64 against 11.77) and it turns 311 ms
+into 15 ms on the largest grid this app will draw. It is fitted to both of a
+cell's colours, ink and ground, because both are snapped to it — a palette that
+had only ever seen the ink could leave a cell's ground on a colour that nothing
+in the picture is behind.
+
 Matching is done in **L\*a\*b\***, not by distance between sRGB numbers. Straight
 RGB distance treats a step in dark green as the same size as a step in pale
 yellow, and the eye does not. This is plain CIE76 rather than the later

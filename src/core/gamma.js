@@ -72,6 +72,32 @@ export function lab(r, g, b) {
 }
 
 /**
+ * And back out of L*a*b* again, to sRGB channels.
+ *
+ * Only one caller needs this -- choosing where a palette entry should sit, once
+ * the colours it has to cover are known -- but that caller measures distance in
+ * L*a*b*, so the middle of what it caught is the mean in L*a*b* too, and the
+ * mean has to be turned back into a colour that can be shown.
+ *
+ * Out-of-gamut answers are possible and are simply clamped: the mean of two
+ * real colours can sit outside what a screen can make, and the nearest thing it
+ * can make is the honest reply.
+ */
+const unfold = (t) => (t ** 3 > 0.008856 ? t ** 3 : (t - 16 / 116) / 7.787);
+
+export function fromLab(l, a, b) {
+  const fy = (l + 16) / 116;
+  const x = unfold(fy + a / 500) * WHITE[0];
+  const y = unfold(fy) * WHITE[1];
+  const z = unfold(fy - b / 200) * WHITE[2];
+  return [
+    Math.round(linearToSrgb(3.2406 * x - 1.5372 * y - 0.4986 * z)),
+    Math.round(linearToSrgb(-0.9689 * x + 1.8758 * y + 0.0415 * z)),
+    Math.round(linearToSrgb(0.0557 * x - 0.2040 * y + 1.0570 * z)),
+  ];
+}
+
+/**
  * Perceptual lightness (CIE L*), scaled to 0..255.
  *
  * Edge detection belongs here, not in linear light. A difference of Gaussians

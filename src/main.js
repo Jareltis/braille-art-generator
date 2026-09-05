@@ -394,10 +394,10 @@ async function render() {
 
   // Snapped here, once, so the screen, the HTML, the PNG, the SVG and the
   // terminal all agree about what colour a cell is.
-  // One palette for both, chosen from the ink: two palettes would let a cell's
+  // One palette for both, and fitted to both: two palettes would let a cell's
   // ground land on a colour its ink could not have, and the pair is meant to
   // come from the same picture.
-  const palette = paletteFor(dom.palette.value, colours);
+  const palette = paletteFor(dom.palette.value, colours, background);
   const painted = snap(colours, palette);
   const behind = snap(background, palette);
 

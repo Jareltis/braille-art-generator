@@ -53,7 +53,7 @@ import { drawLattice } from '../src/ui/lattice.js';
 import { GLYPH_SETS, cellsOf, glyphFor, toGlyphs } from '../src/core/glyphs.js';
 import { cellColours, cellHex, colourPattern, colourRuns, sameColour } from '../src/core/colour.js';
 import { PALETTES, TERMINAL_PALETTES, ansiForeground, medianCut, nearest, paletteFor, snap } from '../src/core/palette.js';
-import { lab } from '../src/core/gamma.js';
+import { fromLab, lab } from '../src/core/gamma.js';
 import {
   PLATFORMS, calibrationOf, clearCalibration, forPlatform, messageLength, partsFit, ruler,
   saveCalibration, splitForPlatform,
@@ -1725,6 +1725,86 @@ async function run() {
       if (!inPalette.has(`${snapped[at]},${snapped[at + 1]},${snapped[at + 2]}`)) strays++;
     }
     check('after snapping every cell is a palette colour', strays, 0);
+
+    // Out of L*a*b* and back again. The fitting below moves entries by averaging
+    // in that space, so the way home has to land where it started.
+    {
+      let farthest = 0;
+      let which = '';
+      for (const rgb of [[0, 0, 0], [255, 255, 255], [200, 30, 30], [30, 60, 200], [18, 90, 44], [240, 220, 120]]) {
+        const back = fromLab(...lab(...rgb));
+        const off = Math.max(...back.map((v, i) => Math.abs(v - rgb[i])));
+        if (off > farthest) { farthest = off; which = `${rgb} -> ${back}`; }
+      }
+      ok('a colour survives the trip through L*a*b* and back', farthest <= 1, which || 'exact');
+    }
+
+    // Fitting the entries to the colours. Two clusters, neither centred where
+    // median cut's boxes put their averages, so there is something to fix.
+    {
+      const meanDelta = (colours, palette) => {
+        const snapped = snap(colours, palette);
+        let total = 0;
+        for (let cell = 0; cell * 3 < colours.length; cell++) {
+          const at = cell * 3;
+          const a = lab(colours[at], colours[at + 1], colours[at + 2]);
+          const b = lab(snapped[at], snapped[at + 1], snapped[at + 2]);
+          total += Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+        }
+        return total / (colours.length / 3);
+      };
+
+      // Lopsided on purpose: most of the cells sit at one end of each box, which
+      // is exactly the case a box's plain average gets wrong.
+      const lopsided = new Uint8ClampedArray(200 * 3);
+      for (let cell = 0; cell < 200; cell++) {
+        const at = cell * 3;
+        const low = cell % 10 !== 0;
+        if (cell < 100) {
+          lopsided[at] = low ? 40 : 190;
+          lopsided[at + 1] = low ? 44 : 200;
+          lopsided[at + 2] = low ? 48 : 210;
+        } else {
+          lopsided[at] = low ? 200 : 60;
+          lopsided[at + 1] = low ? 40 : 30;
+          lopsided[at + 2] = low ? 40 : 30;
+        }
+      }
+      const cut = meanDelta(lopsided, medianCut(lopsided, 2));
+      const fitted = meanDelta(lopsided, paletteFor('picture2', lopsided));
+      ok('fitting the entries beats the boxes they came from', fitted < cut - 0.5,
+         `${cut.toFixed(2)} -> ${fitted.toFixed(2)}`);
+
+      // The same picture must give the same palette: a variant tile promises
+      // what the art will be, and a palette that wandered would break that.
+      check('and it lands in the same place twice',
+            String(paletteFor('picture4', lopsided)), String(paletteFor('picture4', lopsided)));
+
+      ok('and never returns more entries than were asked for',
+         paletteFor('picture4', lopsided).length / 3 <= 4,
+         `${paletteFor('picture4', lopsided).length / 3} entries`);
+
+      // Ground is snapped to the same palette, so it has to be part of what the
+      // palette was fitted to. Ink all one hue, ground all another: fitted to
+      // the ink alone, both entries would be red.
+      const inkOnly = new Uint8ClampedArray(60 * 3);
+      const groundOnly = new Uint8ClampedArray(60 * 3);
+      for (let cell = 0; cell < 60; cell++) {
+        const at = cell * 3;
+        inkOnly[at] = 200 + (cell % 3);
+        inkOnly[at + 1] = 30;
+        inkOnly[at + 2] = 30;
+        groundOnly[at] = 30;
+        groundOnly[at + 1] = 40;
+        groundOnly[at + 2] = 190 + (cell % 3);
+      }
+      const pair = paletteFor('picture2', inkOnly, groundOnly);
+      const reds = [0, 1].filter((i) => pair[i * 3] > 150).length;
+      const blues = [0, 1].filter((i) => pair[i * 3 + 2] > 150).length;
+      check('the ground is one of the colours the palette is fitted to', `${reds}/${blues}`, '1/1');
+      ok('and the ground lands on the entry that is its own colour',
+         meanDelta(groundOnly, pair) < 5, meanDelta(groundOnly, pair).toFixed(2));
+    }
 
     check('full colour snaps nothing', paletteFor('full', twoBands), null);
     ok('every offered palette resolves to something usable',
