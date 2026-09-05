@@ -17,7 +17,7 @@
 // refreshed in the background after it is served, so even a worker that never
 // changes cannot serve last month's app twice.
 
-const VERSION = 'v0.45.0';
+const VERSION = 'v0.46.0';
 const CACHE = `braille-art-${VERSION}`;
 
 const ASSETS = [
@@ -60,6 +60,7 @@ const ASSETS = [
   './src/ui/pipeline.js',
   './src/ui/platforms.js',
   './src/ui/settings.js',
+  './src/ui/store.js',
   './src/worker/pipeline.worker.js',
   './src/worker/protocol.js',
   './src/ui/dots.js',

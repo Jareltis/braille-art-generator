@@ -67,6 +67,9 @@ export function applyTranslations(root = document) {
   for (const node of root.querySelectorAll('[data-i18n-title]')) {
     node.title = t(node.dataset.i18nTitle);
   }
+  for (const node of root.querySelectorAll('[data-i18n-placeholder]')) {
+    node.placeholder = t(node.dataset.i18nPlaceholder);
+  }
   for (const node of root.querySelectorAll('[data-i18n-label]')) {
     // A group inside a dropdown carries its label as an attribute the browser
     // draws, not as one a screen reader announces.

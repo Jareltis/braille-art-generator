@@ -1864,6 +1864,62 @@ async function run() {
     }
   }
 
+  {
+    mark('work can be kept and opened again');
+    // --- work can be kept and opened again -----------------------------------
+    // The gallery lives in the browser's own database, which is the only place
+    // a static page can put a photograph. What is checked is the whole round
+    // trip -- save, list, change everything, open it back, delete -- because
+    // each half of it is useless without the other.
+    const drawn = document.createElement('canvas');
+    drawn.width = 160;
+    drawn.height = 100;
+    const paint = drawn.getContext('2d');
+    const ramp = paint.createLinearGradient(0, 0, 160, 100);
+    ramp.addColorStop(0, '#204090');
+    ramp.addColorStop(1, '#f0d060');
+    paint.fillStyle = ramp;
+    paint.fillRect(0, 0, 160, 100);
+    const carrier = new win.DataTransfer();
+    carrier.items.add(new File([await new Promise((r) => drawn.toBlob(r, 'image/png'))],
+      'ramp.png', { type: 'image/png' }));
+
+    $('sourceKind').value = 'image';
+    $('sourceKind').dispatchEvent(new Event('change', { bubbles: true }));
+    $('file').files = carrier.files;
+    $('file').dispatchEvent(new Event('change', { bubbles: true }));
+    await until(() => $('srcMeta').textContent === '160×100');
+
+    $('outWidth').value = '44';
+    $('outWidth').dispatchEvent(new Event('input', { bubbles: true }));
+    const kept = await stable(() => $('output').textContent);
+
+    $('workName').value = 'проба';
+    $('workSave').click();
+    ok('saving says so', await until(() => /Сохранено как/.test($('status').textContent), 8000),
+       $('status').textContent);
+    ok('and the work appears in the list',
+       await until(() => $('worksList').querySelector('.who')?.textContent === 'проба', 5000),
+       $('worksList').textContent.slice(0, 60));
+
+    // Change the art out of recognition, then ask for the saved one back.
+    $('outWidth').value = '70';
+    $('outWidth').dispatchEvent(new Event('input', { bubbles: true }));
+    const wandered = await stable(() => $('output').textContent);
+    ok('the art has moved on', wandered !== kept);
+
+    $('worksList').querySelectorAll('button')[0].click();
+    ok('opening it brings the art back exactly',
+       await until(() => $('output').textContent === kept, 10000),
+       `width ${$('outWidth').value}`);
+    check('and the width with it', $('outWidth').value, '44');
+
+    $('worksList').querySelectorAll('button')[1].click();
+    ok('deleting empties the list',
+       await until(() => /Пока пусто/.test($('worksList').textContent), 5000),
+       $('worksList').textContent.slice(0, 40));
+  }
+
   const failed = log.filter((l) => l.startsWith('FAIL')).length;
   out(`${log.join('\n')}\n${failed ? `\n${failed} FAILED` : '\nAll e2e checks passed.'}`);
 }

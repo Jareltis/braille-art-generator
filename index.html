@@ -356,6 +356,18 @@
       font-family: Inter, system-ui, sans-serif; font-size: 13px; white-space: normal;
     }
 
+    /* Saved work. A list rather than a grid of thumbnails: what tells one of
+       these apart is its name and its size, and a braille thumbnail the size of
+       a postage stamp tells nothing at all. */
+    .works { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; max-height: 190px; overflow: auto; }
+    .works li { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-top: 1px solid var(--line); }
+    .works li:first-child { border-top: 0; }
+    .works .who { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .works .when { color: var(--muted); font-size: 12px; white-space: nowrap; }
+    .works button { padding: 4px 9px; font-size: 12px; }
+    #worksPanel .field.row { align-items: end; }
+    #workName { width: 100%; }
+
     .stagefoot { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
     #meta { margin: 0; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
     #meta.over { color: var(--warn); }
@@ -927,6 +939,24 @@
         </div>
 
         <p class="hint" id="dotHint"></p>
+
+        <details class="decided" id="worksPanel">
+          <summary data-i18n="works.title"></summary>
+          <div class="field row">
+            <div>
+              <label for="workName" data-i18n="works.name"></label>
+              <input id="workName" type="text" maxlength="60" data-i18n-placeholder="works.namePlaceholder">
+            </div>
+            <div class="buttons">
+              <button id="workSave" class="primary" type="button" data-i18n="works.save"></button>
+              <button id="workExport" type="button" data-i18n="works.export"></button>
+              <button id="workImport" type="button" data-i18n="works.import"></button>
+              <input id="workFile" type="file" accept="application/json,.json" hidden>
+            </div>
+          </div>
+          <ul class="works" id="worksList"></ul>
+          <p class="hint" id="worksHint"></p>
+        </details>
 
         <div class="stagefoot">
           <p id="meta"></p>

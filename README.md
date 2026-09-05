@@ -558,6 +558,34 @@ The picture is built with `toDataURL` rather than the tidier `toBlob`: sharing
 has to happen while the tap that started it still counts, and on iOS an await
 between the two loses it.
 
+### Keeping work
+
+Two places, because they answer different questions. **Save here** puts the work
+in the browser's own database: the settings, the art as it stands, and the
+picture it was made from — without that last one a saved work could be looked at
+but never worked on again, which is not what saving means. **To a file** writes
+the same thing as one JSON with the picture inside it as a data URL, which is
+what makes it a file rather than an archive format. Base64 costs a third more
+bytes; not needing a zip library is worth that.
+
+The gallery is IndexedDB rather than `localStorage` because a photograph is
+megabytes and `localStorage` holds five of them in total, as strings. It is not
+cookies either, and would not be: cookies are sent to the server with every
+request, which for a static site means handing the host what someone is working
+on, and four kilobytes is not a picture.
+
+The panel says plainly that the browser is not a safe place to leave something.
+A private window forgets it, "clear site data" takes it, and iOS discards
+everything a site stored after seven days away unless the site was installed.
+That is why the file exists beside the gallery rather than instead of it.
+
+None of this involves an account, and it cannot: a static page has no way to
+hold a GitHub login. The web flow needs a client secret, which means a server;
+the device flow's token endpoint refuses browser requests outright. The
+remaining option — asking someone to paste a personal access token into a web
+page — is a worse idea than it looks. GitHub hosts the app and serves it offline
+as a PWA; where the work goes afterwards is the file's business.
+
 ### Offline, and actually up to date
 
 The app is static and has no backend, so the whole shell is precached and served

@@ -45,6 +45,7 @@ import { FULL_FRAME, isWholeImage } from '../src/ui/crop.js';
 import { DEFAULT_TEXT_FONT, TEXT_FONTS, renderText } from '../src/ui/text.js';
 import { FALLBACK, LOCALES, formatNumber, setLocale, t } from '../src/i18n/index.js';
 import { fromHash, textFits, toHash } from '../src/ui/link.js';
+import { FILE_VERSION, packWork, unpackWork } from '../src/ui/store.js';
 import { brailleToAnsi, brailleToHtml, brailleToSvg, renderDotsToCanvas } from '../src/ui/export.js';
 import { drawLattice } from '../src/ui/lattice.js';
 import { GLYPH_SETS, cellsOf, glyphFor, toGlyphs } from '../src/core/glyphs.js';
@@ -2295,6 +2296,67 @@ async function run() {
     ok('and the svg', svg.includes(String.fromCodePoint(0x2588)));
 
     check('the sets are the two there are', GLYPH_SETS.join(','), 'braille,octants');
+  }
+
+
+  // --- a work in a file ------------------------------------------------------
+  // The browser is not a safe place to leave something: a private window
+  // forgets it, "clear site data" takes it, and iOS drops everything a site
+  // stored after a week away. So a work also goes into one file -- settings,
+  // the art, and the picture it was made from, as a data URL inside the JSON,
+  // which is what makes it one file and not an archive format.
+  {
+    const picture = new Blob([Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10])], { type: 'image/png' });
+    const work = {
+      name: 'the river',
+      saved: Date.parse('2026-09-05T10:00:00Z'),
+      cols: 40,
+      rows: 12,
+      settings: { outWidth: '40', dither: 'ostromoukhov', colour: true },
+      art: '⣿⠀' + String.fromCharCode(10) + '⠀⣿',
+      source: { kind: 'image', name: 'river.png', blob: picture },
+    };
+
+    const file = await packWork(work);
+    const read = JSON.parse(file);
+    check('the file says what it is', `${read.app}/${read.version}`, `braille-art/${FILE_VERSION}`);
+    ok('and carries the picture inside it', read.source.data.startsWith('data:image/png;base64,'),
+       read.source.data.slice(0, 32));
+
+    const back = await unpackWork(file);
+    check('the name comes back', back.name, work.name);
+    check('so do the settings', JSON.stringify(back.settings), JSON.stringify(work.settings));
+    check('and the art itself', back.art, work.art);
+    check('and the grid it was on', `${back.cols}x${back.rows}`, '40x12');
+    check('the picture comes back as bytes', back.source.blob.size, picture.size);
+    check('of the same kind', back.source.blob.type, 'image/png');
+
+    // A work without a picture is still a work.
+    const bare = await unpackWork(await packWork({ ...work, source: null }));
+    check('a work with no picture opens too', bare.source, null);
+
+    // And anything else is refused rather than half-applied.
+    for (const [what, text] of [
+      ['nonsense', 'not json at all'],
+      ['json from somewhere else', '{"app":"other","settings":{}}'],
+      ['ours but empty', '{"app":"braille-art"}'],
+    ]) {
+      let refused = null;
+      try {
+        await unpackWork(text);
+      } catch (error) {
+        refused = error?.i18n ?? 'no key';
+      }
+      check(`${what} is refused, in words the app can translate`, refused, 'works.notOurs');
+    }
+
+    // A file from a later version opens as far as this version understands it,
+    // the same way a link from a later version does.
+    const later = JSON.parse(file);
+    later.version = FILE_VERSION + 5;
+    later.somethingNew = { unknown: true };
+    const forward = await unpackWork(JSON.stringify(later));
+    check('a file from a later version still opens', forward.art, work.art);
   }
 
   const failed = log.filter((l) => l.startsWith('FAIL')).length;

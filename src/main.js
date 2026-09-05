@@ -26,6 +26,7 @@ import {
   saveCalibration, splitForPlatform,
 } from './ui/platforms.js';
 import { clearSettings, loadSettings, saveSettings } from './ui/settings.js';
+import { deleteWork, listWorks, packWork, readWork, saveWork, unpackWork, usage } from './ui/store.js';
 import { fromHash, shareUrl, textFits, updateHash } from './ui/link.js';
 import { createCropper } from './ui/crop.js';
 import { createDotEditor } from './ui/dots.js';
@@ -154,6 +155,14 @@ const dom = {
   copy: el('copy'),
   copyImage: el('copyImage'),
   share: el('share'),
+  worksPanel: el('worksPanel'),
+  worksList: el('worksList'),
+  worksHint: el('worksHint'),
+  workName: el('workName'),
+  workSave: el('workSave'),
+  workExport: el('workExport'),
+  workImport: el('workImport'),
+  workFile: el('workFile'),
   downloadPng: el('downloadPng'),
 };
 
@@ -162,6 +171,7 @@ const controls = {};
 
 let source = null;            // whatever is being encoded: a photo or drawn lettering
 let imageSource = null;       // the last loaded file, kept while text is in use
+let sourceBlob = null;        // and the bytes it came from, for saving the work
 let sourceUrl = null;         // object URL backing `source`
 let previewReady = false;
 let previewBackground = null; // background the preview source was composited over
@@ -507,6 +517,7 @@ function changed({ affectsPreview = true } = {}) {
 
 function loadFile(file) {
   const url = URL.createObjectURL(file);
+  sourceBlob = file;
   const image = new Image();
 
   image.addEventListener('load', () => {
@@ -782,6 +793,139 @@ function setLayout(name) {
   const next = LAYOUTS.includes(name) ? name : LAYOUTS[0];
   dom.layout.value = next;
   dom.app.dataset.layout = next;
+}
+
+/* ------------------------------------------------------------------------ *
+ * Saved work
+ *
+ * Two places, and the panel says why: the browser remembers, a file keeps.
+ * What is stored is the settings, the art as it stands, and the picture it was
+ * made from -- without that last one a saved work could be looked at but never
+ * worked on again, which is not what saving means.
+ * ------------------------------------------------------------------------ */
+let worksReady = true;
+
+/** The picture as bytes, whatever kind of source it came from. */
+async function sourceBytes() {
+  if (dom.sourceKind.value === 'image' && sourceBlob) {
+    return { kind: 'image', name: sourceBlob.name ?? '', blob: sourceBlob };
+  }
+  // Lettering, a camera frame, a drawing: no file ever existed, so one is made.
+  if (!source) return null;
+  const canvas = createCanvas(sourceW(), sourceH());
+  canvas.getContext('2d').drawImage(source, 0, 0);
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+  return blob ? { kind: dom.sourceKind.value, name: '', blob } : null;
+}
+
+/** Everything needed to open this again, later. */
+async function currentWork() {
+  const lines = artText.split('\n');
+  return {
+    name: dom.workName.value.trim() || t('works.namePlaceholder'),
+    settings: collectSettings(),
+    art: artText,
+    cols: artCols || (lines[0]?.length ?? 0),
+    rows: artText ? lines.length : 0,
+    source: await sourceBytes(),
+  };
+}
+
+function showWorks(saved) {
+  dom.worksList.replaceChildren(...saved.map((work) => {
+    const row = document.createElement('li');
+
+    const who = document.createElement('span');
+    who.className = 'who';
+    who.textContent = work.name;
+
+    const when = document.createElement('span');
+    when.className = 'when';
+    when.textContent = `${work.cols}×${work.rows}`;
+
+    const open = document.createElement('button');
+    open.type = 'button';
+    open.textContent = t('works.open');
+    open.addEventListener('click', () => { openWork(work.id).catch(fail); });
+
+    const drop = document.createElement('button');
+    drop.type = 'button';
+    drop.textContent = t('works.delete');
+    drop.addEventListener('click', () => { removeWork(work.id, work.name).catch(fail); });
+
+    row.append(who, when, open, drop);
+    return row;
+  }));
+
+  if (!saved.length) {
+    const row = document.createElement('li');
+    row.className = 'when';
+    row.textContent = t('works.empty');
+    dom.worksList.replaceChildren(row);
+  }
+}
+
+async function refreshWorks() {
+  try {
+    const saved = await listWorks();
+    showWorks(saved);
+    const room = await usage();
+    dom.worksHint.textContent = room
+      ? t('works.room', { count: saved.length, size: `${(room.used / 1048576).toFixed(1)} MB` })
+      : '';
+  } catch (error) {
+    worksReady = false;
+    dom.worksList.replaceChildren();
+    dom.worksHint.textContent = t(error?.i18n ?? 'works.unavailable');
+    dom.workSave.disabled = true;
+  }
+}
+
+/** Put a work back: the settings first, then the picture it was made from. */
+async function applyWork(work) {
+  if (work.source?.blob) {
+    const file = new File([work.source.blob], work.source.name || 'work.png', { type: work.source.blob.type });
+    await new Promise((resolve) => {
+      const image = new Image();
+      const url = URL.createObjectURL(file);
+      image.addEventListener('load', () => {
+        if (sourceUrl) URL.revokeObjectURL(sourceUrl);
+        source = image;
+        imageSource = image;
+        sourceUrl = url;
+        sourceBlob = file;
+        previewReady = false;
+        cropRect = null;
+        cropper?.set(null);
+        dom.srcMeta.textContent = `${image.naturalWidth}×${image.naturalHeight}`;
+        resolve();
+      }, { once: true });
+      image.addEventListener('error', () => { URL.revokeObjectURL(url); resolve(); }, { once: true });
+      image.src = url;
+    });
+  }
+
+  remember();
+  applySettings(work.settings);
+  dom.workName.value = work.name ?? '';
+  syncEdgeControls();
+  syncPlatform();
+  syncRows();
+  schedulePreview();
+  scheduleRender();
+}
+
+async function openWork(id) {
+  const work = await readWork(id);
+  if (!work) return;
+  await applyWork(work);
+  setStatus(t('works.opened', { name: work.name }), 'ok');
+}
+
+async function removeWork(id, name) {
+  await deleteWork(id);
+  await refreshWorks();
+  setStatus(t('works.deleted', { name }), 'info');
 }
 
 /* ------------------------------------------------------------------------ *
@@ -2072,6 +2216,40 @@ function init() {
 
   // On a phone the chat is not on the clipboard, it is behind the share sheet.
   // A browser without one is not shown a button it could never answer.
+  dom.workSave.addEventListener('click', () => {
+    if (!requireArt()) return;
+    (async () => {
+      const work = await currentWork();
+      await saveWork(work);
+      dom.worksPanel.open = true;
+      await refreshWorks();
+      setStatus(t('works.saved', { name: work.name }), 'ok');
+    })().catch(fail);
+  });
+
+  dom.workExport.addEventListener('click', () => {
+    if (!requireArt()) return;
+    (async () => {
+      const work = await currentWork();
+      downloadText(await packWork(work), `${work.name.replace(/[^\p{L}\p{N} _-]/gu, '') || 'work'}.braille.json`);
+      setStatus(t('works.saved', { name: work.name }), 'ok');
+    })().catch(fail);
+  });
+
+  // The picker is the button; the input itself is only how the browser asks.
+  dom.workImport.addEventListener('click', () => dom.workFile.click());
+  dom.workFile.addEventListener('change', () => {
+    const file = dom.workFile.files?.[0];
+    if (!file) return;
+    (async () => {
+      const work = await unpackWork(await file.text());
+      await applyWork(work);
+      setStatus(t('works.opened', { name: work.name || file.name }), 'ok');
+    })().catch(fail).finally(() => { dom.workFile.value = ''; });
+  });
+
+  refreshWorks().catch(() => { /* the panel says so itself */ });
+
   dom.share.hidden = !canShare();
   dom.share.addEventListener('click', async () => {
     if (!requireArt()) return;
