@@ -365,6 +365,13 @@
        buttons with it. */
     .works li { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; padding: 4px 0; border-top: 1px solid var(--line); }
     .works li:first-child { border-top: 0; }
+    /* Drawn by the same function as the page and the PNG, so it cannot show
+       something the art does not. Dark ground behind it, because a work with a
+       transparent background would otherwise sit on the panel's own colour. */
+    .works .peek {
+      width: 104px; height: auto; max-height: 52px; flex: 0 0 auto;
+      border-radius: 4px; background: var(--art-bg); object-fit: contain;
+    }
     .works .who { flex: 1 1 120px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .works .when { color: var(--muted); font-size: 12px; white-space: nowrap; }
     .works .none { color: var(--muted); font-size: 12px; display: block; }
@@ -477,13 +484,33 @@
       .panes .shot:not(.shot-art) figcaption span { display: none; }
     }
 
+    /* A finger is not a mouse pointer. Measured on a phone before this rule:
+       the smallest button was 36x30 and a checkbox 16x16, against the 44 Apple
+       asks for and the 48 Material does. The rule is on the pointer rather than
+       on the width, because a touch laptop is 1440px wide and still has a
+       finger on it -- and because a narrow window on a desktop does not. */
+    @media (pointer: coarse) {
+      button, select, input[type="text"], input[type="number"], input[type="file"] {
+        min-height: 44px;
+      }
+      button { padding: 10px 14px; }
+      .check input[type="checkbox"] { width: 24px; height: 24px; }
+      /* The chips and the list buttons are secondary, not small: 40 is the
+         floor where a thumb still lands on the right one of two side by side. */
+      .actions .chip, .works button { min-height: 40px; padding: 8px 12px; }
+      .modes button { min-height: 40px; }
+    }
+
     /* Screens with little height: a phone held sideways, a short window, a
        cover display. Measured at 844x390 and 320x568, the first thing anyone
        wants -- copying -- fell below the fold, which is where the redesign put
        it on purpose. Everything above it gives up a little so that it does not:
        the art keeps the largest share, the source views shrink to what a glance
        needs, and the rows close up. */
-    @media (max-width: 900px) and (max-height: 620px) {
+    /* 700 rather than 620 because a finger needs bigger buttons and bigger
+       buttons need the room back: on a 360x640 phone with touch targets at 44,
+       the button went 18px under the fold again. */
+    @media (max-width: 900px) and (max-height: 700px) {
       #output { max-height: 34vh; }
       .shot canvas { height: 52px; }
       .shot { padding: 6px 8px; gap: 3px; }
@@ -493,6 +520,16 @@
       .actions { gap: 6px 8px; }
       .actions #status { flex-basis: auto; }
       .topbar { padding: 6px 10px; }
+    }
+
+    /* Sideways on a phone: 390 points of height for a header, a picture, three
+       thumbnails and a row of buttons a finger can hit. Everything gives again,
+       and the art keeps whatever is left. */
+    @media (max-width: 900px) and (max-height: 430px) {
+      #output { max-height: 28vh; }
+      .shot canvas { height: 40px; }
+      .actions { gap: 5px 8px; }
+      button { padding: 8px 12px; }
     }
 
     /* A landscape phone or a tablet: still one column, but wide enough that a

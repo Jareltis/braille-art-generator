@@ -17,7 +17,7 @@
 // refreshed in the background after it is served, so even a worker that never
 // changes cannot serve last month's app twice.
 
-const VERSION = 'v0.46.2';
+const VERSION = 'v0.47.0';
 const CACHE = `braille-art-${VERSION}`;
 
 const ASSETS = [

@@ -1909,6 +1909,23 @@ async function run() {
        await until(() => $('worksList').querySelector('.who')?.textContent === 'проба', 5000),
        $('worksList').textContent.slice(0, 60));
 
+    // A name and a size tell two works apart only if they differ; a picture of
+    // the art tells them apart always. Drawn by the same function as the page,
+    // so it cannot show something the art does not.
+    const peek = $('worksList').querySelector('.peek');
+    ok('the row carries a picture of the art', Boolean(peek), peek?.src?.slice(0, 12) ?? 'none');
+    // The size beside the count is the works' own, not the whole origin's --
+    // the offline cache is tens of megabytes and would drown them.
+    ok('the panel counts what the works cost, not what the site does',
+       /1 .*(KB|КБ)/.test($('worksHint').textContent) || /1 /.test($('worksHint').textContent),
+       $('worksHint').textContent.slice(0, 60));
+    if (peek) {
+      ok('and it is a real one', await until(() => peek.naturalWidth > 0, 4000),
+         `${peek.naturalWidth}x${peek.naturalHeight}`);
+      ok('sized to fit the row', peek.naturalWidth <= 208 && peek.naturalHeight <= 104,
+         `${peek.naturalWidth}x${peek.naturalHeight}`);
+    }
+
     // Change the art out of recognition, then ask for the saved one back.
     $('outWidth').value = '70';
     $('outWidth').dispatchEvent(new Event('input', { bubbles: true }));

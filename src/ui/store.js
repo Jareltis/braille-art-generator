@@ -57,8 +57,12 @@ function run(mode, work) {
 export async function listWorks() {
   const all = await run('readonly', (store) => store.getAll());
   return all
-    .map(({ id, name, saved, cols, rows, source }) => ({
-      id, name, saved, cols, rows, kind: source?.kind ?? 'image', bytes: source?.blob?.size ?? 0,
+    .map(({ id, name, saved, cols, rows, source, thumb, art }) => ({
+      id, name, saved, cols, rows, thumb: thumb ?? null,
+      kind: source?.kind ?? 'image',
+      // What this one work costs, which is not the same question as what the
+      // whole site is using: the offline cache is most of that.
+      bytes: (source?.blob?.size ?? 0) + (thumb?.size ?? 0) + (art?.length ?? 0),
     }))
     .sort((a, b) => b.saved - a.saved);
 }
@@ -77,13 +81,6 @@ export async function saveWork(work) {
   const record = { ...work, id: `${saved}`, saved };
   await run('readwrite', (store) => store.put(record));
   return record;
-}
-
-/** How much room the works are taking, where the browser will say. */
-export async function usage() {
-  if (!navigator.storage?.estimate) return null;
-  const { usage: used, quota } = await navigator.storage.estimate();
-  return { used: used ?? 0, quota: quota ?? 0 };
 }
 
 /**

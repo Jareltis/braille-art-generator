@@ -523,6 +523,18 @@ the first thing anyone wants to do — copying — on the first screen. That las
 one failed in exactly two places, both of them short: the folded phone put the
 button 65px below the fold and the sideways phone 81px below it.
 
+A finger is not a mouse pointer, and the buttons were built for a pointer: the
+smallest was 36×30 and a checkbox 16×16, against the 44 Apple asks for and the
+48 Material does. Where the pointer is coarse — which is the right question, a
+touch laptop being 1440px wide and a narrow desktop window not being touched at
+all — controls take a floor of 44, the secondary chips 40, and checkboxes 24.
+
+That costs height, and height was already the thing the short screens did not
+have: at 44 the button went back under the fold on a 360×640 phone. So the
+short-screen rules start at 700px of height rather than 620, and a third tier
+below 430 gives up more again. All twelve sizes land the button on the first
+screen with a finger on the glass.
+
 Screens with little height now give a little from everywhere above the button:
 the art takes 34vh instead of 44, the source views shrink to 52px thumbnails,
 the rows close up. The art stays the largest thing on the screen, which is
@@ -575,6 +587,15 @@ megabytes and `localStorage` holds five of them in total, as strings. It is not
 cookies either, and would not be: cookies are sent to the server with every
 request, which for a static site means handing the host what someone is working
 on, and four kilobytes is not a picture.
+
+Each saved work carries a small drawing of itself, made by the same function
+that draws the page and the PNG, so a thumbnail cannot show something the art
+does not. A name and a grid size tell two works apart only when they differ; a
+picture of the art tells them apart always, and at a hundred pixels across the
+shape of a photograph is still legible. It costs a couple of kilobytes beside a
+source picture measured in megabytes. The size shown beside the count is what
+the works themselves take, not what the origin does — the offline cache is tens
+of megabytes and would drown them.
 
 The panel says plainly that the browser is not a safe place to leave something.
 A private window forgets it, "clear site data" takes it, and iOS discards

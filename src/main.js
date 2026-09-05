@@ -26,7 +26,7 @@ import {
   saveCalibration, splitForPlatform,
 } from './ui/platforms.js';
 import { clearSettings, loadSettings, saveSettings } from './ui/settings.js';
-import { deleteWork, listWorks, packWork, readWork, saveWork, unpackWork, usage } from './ui/store.js';
+import { deleteWork, listWorks, packWork, readWork, saveWork, unpackWork } from './ui/store.js';
 import { fromHash, shareUrl, textFits, updateHash } from './ui/link.js';
 import { createCropper } from './ui/crop.js';
 import { createDotEditor } from './ui/dots.js';
@@ -818,6 +818,38 @@ async function sourceBytes() {
   return blob ? { kind: dom.sourceKind.value, name: '', blob } : null;
 }
 
+/**
+ * A small drawing of the art, for telling one saved work from another.
+ *
+ * Drawn rather than typeset, by the same function as the page and the PNG, so
+ * a thumbnail cannot show something the art does not. Small enough to store
+ * beside every work without thinking about it: a hundred cells across comes to
+ * a couple of kilobytes.
+ */
+const THUMB_W = 208;
+const THUMB_H = 104;
+
+async function thumbOf() {
+  const lines = artText.split('\n');
+  const cols = lines.reduce((most, line) => Math.max(most, line.length), 0);
+  const rows = lines.length;
+  if (!cols || !rows) return null;
+
+  // The cell keeps its 1:2 shape, and whichever of the two axes runs out first
+  // decides the size -- a tall art and a wide one both land inside the box.
+  const advance = Math.max(1, Math.min(THUMB_W / cols, THUMB_H / rows / 2));
+  const { canvas } = renderDotsToCanvas(artText, {
+    advancePx: advance,
+    lineHeightPx: advance * 2,
+    foreground: getComputedStyle(dom.output).getPropertyValue('--ink').trim() || '#ffffff',
+    background: dom.transparent.checked ? 'transparent' : getComputedStyle(dom.output).backgroundColor,
+    colours: artColours,
+    ground: artGround,
+    fill: glyphSet() === 'octants' ? 'blocks' : 'dots',
+  });
+  return new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+}
+
 /** Everything needed to open this again, later. */
 async function currentWork() {
   const lines = artText.split('\n');
@@ -828,12 +860,29 @@ async function currentWork() {
     cols: artCols || (lines[0]?.length ?? 0),
     rows: artText ? lines.length : 0,
     source: await sourceBytes(),
+    thumb: await thumbOf(),
   };
 }
 
+/** Object URLs handed to the list, released when the list is rebuilt. */
+let shownThumbs = [];
+
 function showWorks(saved) {
+  for (const url of shownThumbs) URL.revokeObjectURL(url);
+  shownThumbs = [];
+
   dom.worksList.replaceChildren(...saved.map((work) => {
     const row = document.createElement('li');
+
+    if (work.thumb) {
+      const url = URL.createObjectURL(work.thumb);
+      shownThumbs.push(url);
+      const shot = document.createElement('img');
+      shot.className = 'peek';
+      shot.src = url;
+      shot.alt = '';
+      row.append(shot);
+    }
 
     const who = document.createElement('span');
     who.className = 'who';
@@ -871,10 +920,13 @@ async function refreshWorks() {
   try {
     const saved = await listWorks();
     showWorks(saved);
-    const room = await usage();
+    // The works' own size, not the origin's: navigator.storage counts the
+    // offline cache too, and "3 saved, 64 MB" would be a lie about them.
+    const bytes = saved.reduce((total, work) => total + work.bytes, 0);
+    const size = bytes > 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.round(bytes / 1024)} KB`;
     const drop = t('works.dropHint');
-    dom.worksHint.textContent = room
-      ? `${t('works.room', { count: saved.length, size: `${(room.used / 1048576).toFixed(1)} MB` })} · ${drop}`
+    dom.worksHint.textContent = saved.length
+      ? `${t('works.room', { count: saved.length, size })} · ${drop}`
       : drop;
   } catch (error) {
     worksReady = false;
