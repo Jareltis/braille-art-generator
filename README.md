@@ -565,7 +565,9 @@ in the browser's own database: the settings, the art as it stands, and the
 picture it was made from — without that last one a saved work could be looked at
 but never worked on again, which is not what saving means. **To a file** writes
 the same thing as one JSON with the picture inside it as a data URL, which is
-what makes it a file rather than an archive format. Base64 costs a third more
+what makes it a file rather than an archive format. It opens by being dropped on
+the page, the same gesture as dropping the picture it holds, or through the
+button for anyone who would rather browse. Base64 costs a third more
 bytes; not needing a zip library is worth that.
 
 The gallery is IndexedDB rather than `localStorage` because a photograph is

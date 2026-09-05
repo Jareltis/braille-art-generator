@@ -1914,6 +1914,32 @@ async function run() {
        `width ${$('outWidth').value}`);
     check('and the width with it', $('outWidth').value, '44');
 
+    // The same work, dropped on the page as a file. Dropping a picture is how
+    // most things start here; a saved work is the other thing worth dropping,
+    // and it should not need a different gesture.
+    {
+      // Built by the app's own packer, so the test cannot drift from the format.
+      const module = await import('../src/ui/store.js');
+      const packed = await module.packWork({
+        name: 'из файла',
+        saved: Date.now(),
+        cols: 30,
+        rows: 8,
+        settings: { outWidth: '30', dither: 'bayer4' },
+        art: '⣿⠿' + NEWLINE + '⠿⣿',
+        source: null,
+      });
+      const carry = new win.DataTransfer();
+      carry.items.add(new File([packed], 'work.braille.json', { type: 'application/json' }));
+      frame.contentWindow.dispatchEvent(new win.DragEvent('drop', {
+        dataTransfer: carry, bubbles: true, cancelable: true,
+      }));
+      ok('a dropped work file opens', await until(() => /из файла/.test($('status').textContent), 6000),
+         $('status').textContent);
+      ok('and its settings arrive with it', await until(() => $('dither').value === 'bayer4', 4000),
+         `${$('dither').value}, width ${$('outWidth').value}`);
+    }
+
     $('worksList').querySelectorAll('button')[1].click();
     ok('deleting empties the list',
        await until(() => /Пока пусто/.test($('worksList').textContent), 5000),

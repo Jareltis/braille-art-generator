@@ -870,9 +870,10 @@ async function refreshWorks() {
     const saved = await listWorks();
     showWorks(saved);
     const room = await usage();
+    const drop = t('works.dropHint');
     dom.worksHint.textContent = room
-      ? t('works.room', { count: saved.length, size: `${(room.used / 1048576).toFixed(1)} MB` })
-      : '';
+      ? `${t('works.room', { count: saved.length, size: `${(room.used / 1048576).toFixed(1)} MB` })} · ${drop}`
+      : drop;
   } catch (error) {
     worksReady = false;
     dom.worksList.replaceChildren();
@@ -1104,6 +1105,26 @@ function firstImage(list) {
   return [...(list ?? [])].find((item) => item && item.type && item.type.startsWith('image/'));
 }
 
+/**
+ * A saved work, as opposed to a picture.
+ *
+ * Some browsers hand a dropped .json a type of application/json, some hand it
+ * an empty string, and some guess text/plain; the name is the only thing all of
+ * them agree on. Whatever it is, it is read and then judged by its contents --
+ * a file that is not ours is refused there, not here.
+ */
+function firstWork(list) {
+  return [...(list ?? [])].find((item) => item
+    && (/json/.test(item.type) || /\.json$/i.test(item.name ?? '')));
+}
+
+/** Open a dropped or chosen work file, saying so or saying why not. */
+async function openWorkFile(file) {
+  const work = await unpackWork(await file.text());
+  await applyWork(work);
+  setStatus(t('works.opened', { name: work.name || file.name }), 'ok');
+}
+
 function acceptDroppedFiles() {
   // dragenter/dragleave fire for every child element crossed, so the highlight
   // is refcounted rather than toggled, or it flickers across the whole layout.
@@ -1124,9 +1145,20 @@ function acceptDroppedFiles() {
     event.preventDefault();
     depth = 0;
     highlight(false);
-    const file = firstImage(event.dataTransfer?.files);
-    if (file) loadFile(file);
-    else setStatus(t('source.notAnImage'), 'warn');
+    // A picture is the usual thing to drop here; a saved work is the other one,
+    // and dropping it is the same gesture as dropping the picture it holds.
+    const dropped = event.dataTransfer?.files;
+    const picture = firstImage(dropped);
+    if (picture) {
+      loadFile(picture);
+      return;
+    }
+    const work = firstWork(dropped);
+    if (work) {
+      openWorkFile(work).catch(fail);
+      return;
+    }
+    setStatus(t('source.notAnImage'), 'warn');
   });
 }
 
@@ -2241,11 +2273,7 @@ function init() {
   dom.workFile.addEventListener('change', () => {
     const file = dom.workFile.files?.[0];
     if (!file) return;
-    (async () => {
-      const work = await unpackWork(await file.text());
-      await applyWork(work);
-      setStatus(t('works.opened', { name: work.name || file.name }), 'ok');
-    })().catch(fail).finally(() => { dom.workFile.value = ''; });
+    openWorkFile(file).catch(fail).finally(() => { dom.workFile.value = ''; });
   });
 
   refreshWorks().catch(() => { /* the panel says so itself */ });

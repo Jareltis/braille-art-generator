@@ -299,6 +299,7 @@ export const en = {
     'works.import': 'Open a file',
     'works.open': 'Open',
     'works.delete': 'Delete',
+    'works.dropHint': 'A work file can also be dropped on the page, like a picture.',
     'works.empty': 'Nothing saved yet. What is saved here stays in this browser: a private window, clearing site data, or a week away on iOS will take it. A file will not.',
     'works.saved': 'Saved as "{name}".',
     'works.opened': 'Opened "{name}".',
