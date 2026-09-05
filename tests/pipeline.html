@@ -53,6 +53,8 @@ import {
 import { createPipeline } from '../src/ui/pipeline.js';
 import { APP_VERSION } from '../src/version.js';
 import { LIVE_BUDGET_MS, LIVE_RESUME_MS, keepsUp } from '../src/ui/pace.js';
+import { contourAgreement } from '../src/core/score.js';
+import { contourFor } from '../src/core/variants.js';
 
 const out = (t) => {
   document.getElementById('r').textContent = t;
@@ -1332,6 +1334,36 @@ async function run() {
        `${diffused.toFixed(3)} at ${VIEWING_BLUR} against ${sharp.toFixed(3)} up close`);
   }
 
+  // --- a drawing judged as a drawing ---------------------------------------
+  // Measured over 48 draws across four pictures, a line variant was offered
+  // exactly never: it is scored against the light, and light is the one thing a
+  // line drawing does not reproduce, so it came out at 0.00 every time and the
+  // quality floor threw it away. The version before that had just spent its
+  // whole length making those lines good.
+  {
+    const W2 = 64, H2 = 64;
+    const ink = new Float32Array(W2 * H2);
+    const bits = new Uint8Array(W2 * H2);
+    // A contour down the middle, and an art that draws exactly that.
+    for (let y = 0; y < H2; y++) {
+      for (let x = 30; x <= 33; x++) { ink[y * W2 + x] = 255; bits[y * W2 + x] = 1; }
+    }
+    near('ink on the contour scores near one', contourAgreement(bits, ink, W2, H2), 0.9, 1);
+
+    // The same amount of ink, in the wrong place.
+    const misplaced = new Uint8Array(W2 * H2);
+    for (let y = 0; y < H2; y++) for (let x = 5; x <= 8; x++) misplaced[y * W2 + x] = 1;
+    ok('ink somewhere else scores far lower',
+       contourAgreement(misplaced, ink, W2, H2) < 0.2,
+       contourAgreement(misplaced, ink, W2, H2).toFixed(3));
+
+    // Drawing nothing, and drawing everything, are both wrong in their own way.
+    check('drawing nothing scores nothing', contourAgreement(new Uint8Array(W2 * H2), ink, W2, H2), 0);
+    ok('drawing everywhere is punished by precision',
+       contourAgreement(new Uint8Array(W2 * H2).fill(1), ink, W2, H2) < 0.5,
+       contourAgreement(new Uint8Array(W2 * H2).fill(1), ink, W2, H2).toFixed(3));
+  }
+
   // --- four variants worth offering ----------------------------------------
   {
     const canvas = createCanvas(120, 80);
@@ -1354,6 +1386,14 @@ async function run() {
     const chosen = chooseVariants(pixels, options, reference, 4, seededRandom(1));
 
     check('four are offered', chosen.length, 4);
+
+    // A picture with nothing much to draw must not spend a square on a drawing:
+    // the place is earned by finding the contours better than the best tonal
+    // candidate already does, and on a smooth ramp no drawing can.
+    const smooth = chooseVariants(pixels, options, reference, 4, seededRandom(3), contourFor(pixels, grid.cols, grid.rows));
+    ok('a drawing takes a place only when there is something to draw',
+       smooth.every((entry) => entry.judge !== 'contour' || entry.score > 0.2),
+       smooth.map((entry) => `${entry.key} ${entry.score.toFixed(2)}`).join(', '));
     ok('best first', chosen.every((entry, i) => i === 0 || chosen[i - 1].score >= entry.score),
        chosen.map((c) => c.score.toFixed(2)).join(' >= '));
 
@@ -1413,8 +1453,12 @@ async function run() {
       const families = new Set(offers.map((o) => o.key)).size;
       leastFamilies = Math.min(leastFamilies, families);
       if (families === 4) allFour++;
-      const best = Math.max(...offers.map((o) => o.score));
-      worstScore = Math.min(worstScore, Math.min(...offers.map((o) => o.score)) / (best || 1));
+      // Compared within a measure, not across: a tonal tile is scored against
+      // the light and a drawing against the contours, and the two numbers are
+      // answers to different questions. Racing them against each other is the
+      // mistake this version exists to undo.
+      const tonal = offers.filter((offer) => offer.judge !== 'contour').map((offer) => offer.score);
+      if (tonal.length) worstScore = Math.min(worstScore, Math.min(...tonal) / (Math.max(...tonal) || 1));
     }
     ok('a draw never falls back on one or two ways of working', leastFamilies >= 3,
        `the narrowest draw offered ${leastFamilies} families`);

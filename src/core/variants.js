@@ -18,12 +18,21 @@
 // Quality is then held twice over: everything is scored against the picture and
 // ranked, and a candidate too far behind the best is dropped rather than shown
 // to fill a square.
+//
+// The local threshold used to be a family here and is not any more. Its purpose
+// is to throw the illumination away so the content stays legible, which is the
+// opposite of reproducing the picture -- so neither measure rewards it, and
+// measured over 48 draws it took a square exactly never, including on pictures
+// deliberately lit from one side. A family that cannot be offered is a promise
+// the list does not keep. Sauvola is still there to be chosen by hand.
 
-import { encode, toLuminance } from './braille.js';
+import { encode, toLightness, toLuminance } from './braille.js';
+import { lineMap } from './edges.js';
+import { reduceMax } from './sample.js';
 import { seededRandom } from './bluenoise.js';
 import { CELL_W, CELL_H } from './pixels.js';
 import { reduceStats } from './sample.js';
-import { scoreArt } from './score.js';
+import { contourAgreement, scoreArt } from './score.js';
 
 const between = (random, low, high) => low + random() * (high - low);
 const pick = (random, list) => list[Math.min(list.length - 1, Math.floor(random() * list.length))];
@@ -53,6 +62,7 @@ const nudge = (random, base) =>
 export const VARIANT_FAMILIES = Object.freeze([
   {
     key: 'tone',
+    judge: 'tone',
     draw: (random, base) => ({
       threshold: nudge(random, base),
       // Floyd-Steinberg twice over, so the draw leans towards the one that
@@ -65,6 +75,7 @@ export const VARIANT_FAMILIES = Object.freeze([
   },
   {
     key: 'grain',
+    judge: 'tone',
     draw: (random, base) => ({
       threshold: nudge(random, base),
       method: pick(random, ['bluenoise', 'bayer4']),
@@ -74,6 +85,7 @@ export const VARIANT_FAMILIES = Object.freeze([
   },
   {
     key: 'contrast',
+    judge: 'tone',
     draw: (random, base) => ({
       threshold: nudge(random, base),
       method: pick(random, ['atkinson', 'threshold']),
@@ -82,16 +94,10 @@ export const VARIANT_FAMILIES = Object.freeze([
     }),
   },
   {
-    key: 'local',
-    draw: (random, base) => ({
-      threshold: nudge(random, base),
-      method: 'sauvola',
-      detail: step(random, 20, 60),
-      edge: { mode: 'none' },
-    }),
-  },
-  {
     key: 'lines',
+    // Judged on where its ink landed, not on how much light it emits. A line
+    // drawing does not reproduce light and never claimed to.
+    judge: 'contour',
     draw: (random, base) => ({
       threshold: base,
       method: 'threshold',
@@ -106,6 +112,7 @@ export const VARIANT_FAMILIES = Object.freeze([
   },
   {
     key: 'mixed',
+    judge: 'tone',
     draw: (random, base) => ({
       threshold: nudge(random, base),
       method: pick(random, ['floyd-steinberg', 'bluenoise']),
@@ -169,7 +176,9 @@ export function difference(a, b) {
 export function sampleRecipes(random, base = 128, draws = DRAWS_PER_FAMILY) {
   const recipes = [];
   for (const family of VARIANT_FAMILIES) {
-    for (let n = 0; n < draws; n++) recipes.push({ key: family.key, ...family.draw(random, base) });
+    for (let n = 0; n < draws; n++) {
+      recipes.push({ key: family.key, judge: family.judge, ...family.draw(random, base) });
+    }
   }
   return recipes;
 }
@@ -187,6 +196,21 @@ export function referenceFor(pixels, cols, rows) {
 }
 
 /**
+ * Where the picture's contours are, at dot resolution.
+ *
+ * The same detector the drawing families use, run on the picture itself, so
+ * what a line variant is measured against is the thing it was trying to find
+ * rather than some other idea of an edge.
+ */
+export function contourFor(pixels, cols, rows) {
+  const { width, height } = pixels;
+  return reduceMax(
+    lineMap(toLightness(pixels), width, height, { mode: 'xdog', radius: 1, clean: 0.9 }),
+    width, height, cols * CELL_W, rows * CELL_H,
+  );
+}
+
+/**
  * Render the drawn spread, score it, and return the best few that are neither
  * each other nor a wasted square.
  *
@@ -197,7 +221,7 @@ export function referenceFor(pixels, cols, rows) {
  *   2. any family again, still above the floor and different
  *   3. whatever is left, by score
  */
-export function chooseVariants(pixels, options, reference, want = 4, random = Math.random) {
+export function chooseVariants(pixels, options, reference, want = 4, random = Math.random, contour = null) {
   const gridW = options.grid.cols * CELL_W;
   const gridH = options.grid.rows * CELL_H;
 
@@ -205,15 +229,17 @@ export function chooseVariants(pixels, options, reference, want = 4, random = Ma
     const art = encode(pixels, { ...options, ...encodeOptions(recipe) });
     return {
       key: recipe.key,
+      judge: recipe.judge ?? 'tone',
       recipe,
       text: art.text,
       bits: art.bits,
-      score: scoreArt(art.bits, gridW, gridH, reference),
+      score: recipe.judge === 'contour' && contour
+        ? contourAgreement(art.bits, contour, gridW, gridH)
+        : scoreArt(art.bits, gridW, gridH, reference),
     };
   });
 
   scored.sort((a, b) => b.score - a.score);
-  const floor = (scored[0]?.score ?? 0) * QUALITY_FLOOR;
 
   const chosen = [];
   const families = new Set();
@@ -223,16 +249,44 @@ export function chooseVariants(pixels, options, reference, want = 4, random = Ma
   };
   const distinct = (candidate) => chosen.every((taken) => difference(taken.bits, candidate.bits) >= DISTINCT);
 
-  for (const candidate of scored) {
-    if (chosen.length >= want) break;
+  // A drawing gets a place of its own, and takes it on its own measure.
+  //
+  // The two numbers answer different questions -- how much light came out right,
+  // and where the ink landed -- so they are not raced against one another.
+  // Ranking on light stays the house rule, and it is what most people bringing a
+  // photograph want. But before this a line variant could never appear at all,
+  // on any picture: light is the one thing it does not try to reproduce, so it
+  // scored zero every time and the floor threw it out. Measured over 48 draws
+  // across four pictures, it was offered exactly never.
+  const drawings = scored.filter((candidate) => candidate.judge === 'contour');
+  const tonal = scored.filter((candidate) => candidate.judge !== 'contour');
+
+  // The place is earned, not reserved. A drawing takes it only by finding the
+  // contours better than the best tonal candidate already does -- which is the
+  // real question about that tile: does it add anything. No new constant is
+  // needed for that, and it settles the case of a picture with nothing much to
+  // draw: on a smooth gradient the best drawing scored 0.03 and would otherwise
+  // have taken a square from something worth looking at.
+  const bestTonal = tonal[0];
+  const alreadyDrawn = bestTonal && contour
+    ? contourAgreement(bestTonal.bits, contour, gridW, gridH)
+    : 0;
+  const bestDrawing = drawings.find((candidate) => candidate.score > alreadyDrawn);
+
+  const floor = (tonal[0]?.score ?? 0) * QUALITY_FLOOR;
+  const room = bestDrawing ? want - 1 : want;
+
+  for (const candidate of tonal) {
+    if (chosen.length >= room) break;
     if (candidate.score < floor || families.has(candidate.key) || !distinct(candidate)) continue;
     take(candidate);
   }
-  for (const candidate of scored) {
-    if (chosen.length >= want) break;
+  for (const candidate of tonal) {
+    if (chosen.length >= room) break;
     if (chosen.includes(candidate) || candidate.score < floor || !distinct(candidate)) continue;
     take(candidate);
   }
+  if (bestDrawing) take(bestDrawing);
   for (const candidate of scored) {
     if (chosen.length >= want) break;
     if (!chosen.includes(candidate)) take(candidate);
@@ -241,16 +295,10 @@ export function chooseVariants(pixels, options, reference, want = 4, random = Ma
   return chosen;
 }
 
-/**
- * Everything a caller needs, from pixels to a table of offers.
- *
- * A seed makes the draw repeatable, which is what the tests need; without one
- * the page gets a fresh spread every time the button is pressed, which is the
- * point of drawing it at all.
- */
 export function variantsOf(pixels, options, want = 4, seed = null) {
   const { cols, rows } = options.grid;
   const random = seed === null ? Math.random : seededRandom(seed);
-  return chooseVariants(pixels, options, referenceFor(pixels, cols, rows), want, random)
-    .map(({ key, recipe, text, score }) => ({ key, recipe, text, score }));
+  return chooseVariants(
+    pixels, options, referenceFor(pixels, cols, rows), want, random, contourFor(pixels, cols, rows),
+  ).map(({ key, judge, recipe, text, score }) => ({ key, judge, recipe, text, score }));
 }

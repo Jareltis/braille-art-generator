@@ -144,7 +144,12 @@ function bayer4(plane, width, height, threshold, neutral = threshold) {
 function sauvola(plane, width, height, threshold, neutral = threshold) {
   const K = 0.2;
   const R = 128;                 // the range local spread is measured against
-  const radius = Math.max(3, Math.round(Math.min(width, height) / 16));
+  // A sixteenth of the shorter side was too tight. Measured on three pictures
+  // at sixty columns, the score climbs steadily out to a radius of about 24 and
+  // falls off past it: the landscape gained 28% between the old radius and the
+  // best one, the others 4-6%. An eighth lands inside that range at every width
+  // the app offers, and stays a rule rather than a number picked for one size.
+  const radius = Math.max(3, Math.round(Math.min(width, height) / 8));
   const stride = width + 1;
 
   const sum = new Float64Array(stride * (height + 1));

@@ -372,10 +372,32 @@ leaves everything as it was, down to the message in the status line.
 The spread is drawn rather than listed, so pressing again is worth doing. Drawing
 freely from the whole parameter space would mostly produce rubbish, so the draw
 happens inside **families** — ways of working rather than settings: carry the
-half-tones, lay an even grain, cut hard for contrast, threshold locally, draw the
-lines, mix lines with tone. Which family a tile comes from is settled first and
-only its dials are random: method within the family, detail, edge radius and
-weight, and the threshold within about twenty levels of where it stands.
+half-tones, lay an even grain, cut hard for contrast, draw the lines, mix lines
+with tone. Which family a tile comes from is settled first and only its dials
+are random: method within the family, detail, edge radius and weight, and the
+threshold within about twenty levels of where it stands.
+
+A drawing is judged by a different question, because it answers one. Scored
+against the light, every line variant came out at 0.00 — light is the one thing
+a line drawing does not reproduce — and across 48 draws on four pictures not one
+was ever offered, in the version immediately after the one that had made those
+lines good. So a drawing is measured on where its ink landed instead: precision
+and recall against the picture's own contours, as one number. The two scales
+turned out comparable without being made to be — drawings reach 0.88–0.96 on
+their measure where tonal variants reach 0.84–0.94 on theirs — but they are not
+raced against each other, because they answer different questions. Ranking on
+light stays the house rule, and a drawing takes one place by earning it: it must
+find the contours better than the best tonal candidate already does. On a smooth
+gradient, where there is nothing to draw, it takes no place at all.
+
+The local threshold used to be a family and is not any more. Its purpose is to
+throw the illumination away so the content stays legible, which is the opposite
+of reproducing the picture, so neither measure rewards it — measured, it took a
+square exactly never, including on pictures deliberately lit from one side. A
+family that cannot be offered is a promise this list does not keep. Sauvola is
+still there to be chosen by hand, and its window is now an eighth of the shorter
+side rather than a sixteenth: measured on three pictures, the old radius was
+consistently too tight, costing a landscape 28%.
 
 Then the four squares go to four *different* families where it can manage it,
 which is what keeps a press from being the same tool four times with the dials

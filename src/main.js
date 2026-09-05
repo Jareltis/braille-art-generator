@@ -959,7 +959,11 @@ function showOffers(offers, { opener, onDismiss } = {}) {
 
     const why = document.createElement('span');
     why.className = 'offer-why';
-    why.textContent = t('offer.match', { score: Math.round(offer.score * 100) });
+    // Which question the number answers, because two are being asked: a tonal
+    // variant is measured against the light and a drawing against the contours,
+    // and one percentage standing for either would mean nothing.
+    why.textContent = t(offer.judge === 'contour' ? 'offer.matchContour' : 'offer.matchTone',
+                        { score: Math.round(offer.score * 100) });
 
     tile.append(art, name, why);
     tile.addEventListener('click', () => {

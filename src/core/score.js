@@ -105,6 +105,48 @@ export function toneAgreement(seen, wanted) {
 }
 
 /**
+ * How well the ink landed on the contours: precision and recall, as one number.
+ *
+ * A line drawing is not trying to reproduce light, so measuring it against light
+ * says nothing -- literally nothing, as it turned out: every line variant scored
+ * 0.00 and none was ever offered, on any picture, while the version before this
+ * one had just spent its whole length making those lines good.
+ *
+ * The question a drawing should be asked is different: is the ink where the
+ * contours are, and are the contours all drawn. That is precision and recall,
+ * and the harmonic mean of the two is the usual way to say both at once. Both
+ * sides are blurred first, so a dot half a cell out still counts -- the question
+ * is whether the drawing is of the right thing, not whether it is exact.
+ *
+ * The two measures come out on comparable scales, which was checked rather than
+ * hoped for: line variants reach 0.92-0.94 here where tonal ones reach 0.84-0.94
+ * on their own measure.
+ */
+export function contourAgreement(bits, contour, width, height, blur = VIEWING_BLUR) {
+  const ink = gaussianBlur(coverage(bits), width, height, blur);
+  const wanted = gaussianBlur(contour, width, height, blur);
+
+  let together = 0;
+  let drawn = 0;
+  let asked = 0;
+  for (let i = 0; i < ink.length; i++) {
+    const has = ink[i] / 255;
+    const needs = Math.min(1, wanted[i] / 255);
+    together += Math.min(has, needs);
+    drawn += has;
+    asked += needs;
+  }
+  // Nothing drawn, or nothing to draw, is nothing -- and so is ink that misses
+  // the contours entirely, where precision and recall are both zero and the
+  // harmonic mean would otherwise be 0/0.
+  if (!drawn || !asked || !together) return 0;
+
+  const precision = together / drawn;
+  const recall = together / asked;
+  return (2 * precision * recall) / (precision + recall);
+}
+
+/**
  * What a candidate is worth: 0 is nothing like the picture, 1 is the picture.
  *
  * `reference` is the light the picture asks for, at dot resolution and in
